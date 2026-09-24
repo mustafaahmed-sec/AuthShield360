@@ -1,9 +1,12 @@
 from io import StringIO
+from unittest.mock import patch
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
 from accounts.models import User
+from school.management.commands.seed_demo import ADMIN_TARGET
 from school.models import Assignment, Course, Enrollment, EnrollmentChangeRequest, ExamResult, StudentRecord
 
 
@@ -31,6 +34,14 @@ class SeedDemoTests(TestCase):
         applicant.refresh_from_db()
         self.assertEqual(applicant.approval_status, User.ApprovalStatus.PENDING)
         self.assertEqual(User.objects.filter(role=User.Role.STUDENT).count(), 487)
+
+    def test_seeded_administrator_roster_matches_its_target(self):
+        self.assertEqual(User.objects.filter(role=User.Role.ADMIN).count(), ADMIN_TARGET)
+
+    def test_seed_fails_if_configured_administrator_count_drifts(self):
+        with patch("school.management.commands.seed_demo.ADMIN_TARGET", ADMIN_TARGET + 1):
+            with self.assertRaisesRegex(CommandError, "administrator roster"):
+                call_command("seed_demo", stdout=StringIO())
 
     def test_rerun_preserves_admin_changes_to_existing_demo_records(self):
         replacement = User.objects.create_user(

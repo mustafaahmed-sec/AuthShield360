@@ -19,10 +19,6 @@ from school.teacher_views import (
 from school.views import dashboard, home
 
 
-admin.site.site_header = "AuthShield 360 administration"
-admin.site.site_title = "AuthShield 360"
-admin.site.index_title = "Fictional school data"
-
 urlpatterns = [
     path("", home, name="home"),
     path("signup/", signup, {"role": "student"}, name="signup"),

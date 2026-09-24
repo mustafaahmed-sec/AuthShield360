@@ -224,6 +224,10 @@ class Command(BaseCommand):
         return result
 
     def _ensure_administrators(self, User):
+        if len(ADMINISTRATORS) != ADMIN_TARGET:
+            raise CommandError(
+                f"The configured administrator roster does not match the {ADMIN_TARGET}-administrator target."
+            )
         existing = {
             user.email: user
             for user in User.objects.filter(email__in=[email for email, _ in ADMINISTRATORS])
