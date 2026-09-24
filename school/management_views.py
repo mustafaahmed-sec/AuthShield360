@@ -12,7 +12,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from accounts.models import User
 
-from .audit import record_event
+from .audit import record_event, record_role_denial
 from .forms import (
     EnrollmentChangeRequestForm,
     TeacherStudentNameForm,
@@ -23,11 +23,13 @@ from .models import Course, Enrollment, EnrollmentChangeRequest, PortalAuditEven
 
 def _require_admin(user):
     if user.role != User.Role.ADMIN or not user.is_staff or not user.is_superuser or not user.is_active:
+        record_role_denial(user, "administrator management")
         raise PermissionDenied("Only an active Administrator can manage school accounts.")
 
 
 def _require_teacher(user):
     if user.role != User.Role.TEACHER or not user.is_active or user.approval_status != User.ApprovalStatus.APPROVED:
+        record_role_denial(user, "teacher student management")
         raise PermissionDenied("Only an approved, active Teacher can manage assigned students.")
 
 

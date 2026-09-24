@@ -7,6 +7,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 
 from .forms import EmailAuthenticationForm, RegistrationStatusForm, StudentSignupForm, TeacherSignupForm
+from school.audit import record_auth_event
 
 
 User = get_user_model()
@@ -61,6 +62,35 @@ class BaselineLoginView(LoginView):
             raise PermissionDenied("The local password-only baseline is disabled.")
         return super().dispatch(request, *args, **kwargs)
 
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        record_auth_event(
+            "login_success",
+            email=form.get_user().email,
+            actor=form.get_user(),
+            description="Successful password-only sign-in.",
+        )
+        return response
+
+    def form_invalid(self, form):
+        email = self.request.POST.get("username", "").strip().lower()
+        record_auth_event(
+            "login_failure",
+            email=email,
+            description="Failed password-only sign-in.",
+        )
+        return super().form_invalid(form)
+
 
 class BaselineLogoutView(LogoutView):
     next_page = reverse_lazy("home")
+
+    def post(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            record_auth_event(
+                "logout_success",
+                email=request.user.email,
+                actor=request.user,
+                description="User signed out.",
+            )
+        return super().post(request, *args, **kwargs)

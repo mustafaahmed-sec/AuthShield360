@@ -18,8 +18,8 @@
         {% for field in form %}
           <div class="form-field{% if field.errors %} has-error{% endif %}">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-            {% if field.help_text %}<div class="help-text">{{ field.help_text|safe }}</div>{% endif %}
+            {% if field.name == 'password1' or field.name == 'password2' %}<div class="password-input-row">{{ field }}<button class="password-toggle" type="button" data-password-toggle aria-controls="{{ field.id_for_label }}" aria-pressed="false">Show</button></div>{% else %}{{ field }}{% endif %}
+            {% if field.name == 'password1' %}<div id="password-policy" class="help-text">{{ field.help_text }}</div><div class="password-suggestion"><button class="password-suggest-button" type="button" data-password-suggest>Generate a unique password for me</button><span class="help-text" data-password-suggestion-status aria-live="polite">Creates a fresh random suggestion for this sign-up; it does not use your name, email, or phone number.</span></div>{% elif field.help_text %}<div class="help-text">{{ field.help_text|safe }}</div>{% endif %}
             {% if field.errors %}<div class="field-error" role="alert">{{ field.errors }}</div>{% endif %}
           </div>
         {% endfor %}

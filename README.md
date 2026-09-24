@@ -18,7 +18,7 @@ A fictional school portal for the Aptech TechWiz 7 identity-security demonstrati
 ## Local setup on Windows
 
 1. Create a local PostgreSQL login role named `authshield_app` with a password and permission to log in. Create database `authshield360` owned by that role. Do this in pgAdmin as the PostgreSQL administrator. The application must use this dedicated role rather than the `postgres` superuser.
-2. Copy `.env.example` to `.env`. Replace `DJANGO_SECRET_KEY` with a random value and put the role password after `DB_PASSWORD=`. Set `AUTHSHIELD_BASELINE_LOGIN=true` only for the local comparison stage and choose unique random values of at least 16 characters for the three `DEMO_*_PASSWORD` entries. The current project setup already generated these values in its ignored `.env`; keep them private. Do not commit or share `.env`.
+2. Copy `.env.example` to `.env`. Replace `DJANGO_SECRET_KEY` with a random value and put the role password after `DB_PASSWORD=`. Set `AUTHSHIELD_BASELINE_LOGIN=true` only for the local comparison stage and choose unique random values of at least 22 characters for the three `DEMO_*_PASSWORD` entries. Each password must include a lowercase letter, uppercase letter, number, and special character. The current project setup already generated these values in its ignored `.env`; keep them private. Do not commit or share `.env`.
 3. From this folder, run the commands below in PowerShell:
 
 ```powershell

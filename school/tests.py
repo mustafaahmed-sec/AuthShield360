@@ -2,7 +2,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from accounts.models import User
-from .models import Course, Enrollment, EnrollmentChangeRequest, StudentRecord
+from .models import Assignment, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
 
 
 class AccountApprovalFlowTests(TestCase):
@@ -124,7 +124,113 @@ class TeacherRosterPermissionTests(TestCase):
         self.assertRedirects(response, reverse("admin_management"))
         self.assertFalse(Enrollment.objects.filter(pk=self.enrollment.pk).exists())
 
+    def test_teacher_cannot_submit_work_for_another_teachers_course_or_students(self):
+        self.client.force_login(self.teacher)
+        assignment_response = self.client.post(reverse("create_assignment"), {
+            "course": self.other_course.pk,
+            "title": "Unauthorized assignment",
+            "description": "Test only",
+            "due_date": "2026-10-01",
+        })
+        self.assertEqual(assignment_response.status_code, 200)
+        self.assertFalse(Assignment.objects.filter(title="Unauthorized assignment").exists())
+
+        result_response = self.client.post(reverse("create_exam_result"), {
+            "course": self.course.pk,
+            "student": self.other_student.pk,
+            "exam_name": "Unauthorized result",
+            "score": 10,
+            "max_score": 10,
+        })
+        self.assertEqual(result_response.status_code, 200)
+        self.assertFalse(ExamResult.objects.filter(exam_name="Unauthorized result").exists())
+
     def test_teacher_cannot_open_administrator_management(self):
         self.client.force_login(self.teacher)
         response = self.client.get(reverse("admin_management"))
         self.assertEqual(response.status_code, 403)
+        self.assertTrue(PortalAuditEvent.objects.filter(
+            actor=self.teacher,
+            action="role_access_denied",
+            target_name="administrator management",
+        ).exists())
+
+
+class StudentRoleBoundaryTests(TestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(
+            "student-boundary@example.test", "student-password",
+            full_name="Boundary Student", role=User.Role.STUDENT,
+        )
+        self.other_student = User.objects.create_user(
+            "other-student@example.test", "student-password",
+            full_name="Other Student", role=User.Role.STUDENT,
+        )
+        self.teacher = User.objects.create_user(
+            "boundary-teacher@example.test", "teacher-password",
+            full_name="Boundary Teacher", role=User.Role.TEACHER,
+        )
+        self.course = Course.objects.create(code="BND-101", title="Boundary course", teacher=self.teacher)
+        StudentRecord.objects.create(student=self.student, admission_number="BND-001", grade="Grade 8")
+        StudentRecord.objects.create(student=self.other_student, admission_number="BND-002", grade="Grade 9")
+        Enrollment.objects.create(student=self.student, course=self.course)
+        Assignment.objects.create(course=self.course, title="Visible assignment", due_date="2026-10-01")
+
+    def test_student_dashboard_only_shows_own_scope(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Visible assignment")
+        self.assertNotContains(response, "Other Student")
+        self.assertEqual(response.context["record"].student, self.student)
+
+    def test_student_is_denied_direct_teacher_and_administrator_urls(self):
+        self.client.force_login(self.student)
+        protected_paths = (
+            "teacher_students",
+            "create_assignment",
+            "create_exam_result",
+            "request_enrollment_change",
+            "admin_management",
+        )
+
+        for path_name in protected_paths:
+            with self.subTest(path=path_name):
+                response = self.client.get(reverse(path_name))
+                self.assertEqual(response.status_code, 403)
+
+        self.assertGreaterEqual(
+            PortalAuditEvent.objects.filter(actor=self.student, action="role_access_denied").count(),
+            3,
+        )
+
+
+class DjangoAdminRoleBoundaryTests(TestCase):
+    def test_staff_flagged_teacher_cannot_access_django_admin(self):
+        teacher = User.objects.create_user(
+            "staff-teacher@example.test",
+            "teacher-password",
+            full_name="Staff Flagged Teacher",
+            role=User.Role.TEACHER,
+            is_staff=True,
+        )
+        self.client.force_login(teacher)
+
+        response = self.client.get(reverse("admin:index"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(PortalAuditEvent.objects.filter(
+            actor=teacher,
+            action="role_access_denied",
+            target_name="Django administrator",
+        ).exists())
+
+    @override_settings(AUTHSHIELD_BASELINE_LOGIN_ENABLED=False)
+    def test_django_admin_login_obeys_baseline_login_gate(self):
+        response = self.client.get(reverse("admin:login"))
+        self.assertEqual(response.status_code, 403)
+
+    def test_django_admin_login_uses_portal_login(self):
+        response = self.client.get(reverse("admin:login"))
+        self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)

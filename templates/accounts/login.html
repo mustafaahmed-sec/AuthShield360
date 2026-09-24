@@ -11,7 +11,7 @@
         {% csrf_token %}
         {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
         {% for field in form %}
-          <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.errors %}<div class="field-error">{{ field.errors }}</div>{% endif %}</div>
+          <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.name == 'password' %}<div class="password-input-row">{{ field }}<button class="password-toggle" type="button" data-password-toggle aria-controls="{{ field.id_for_label }}" aria-pressed="false">Show</button></div>{% else %}{{ field }}{% endif %}{% if field.errors %}<div class="field-error">{{ field.errors }}</div>{% endif %}</div>
         {% endfor %}
         <button class="button full" type="submit">Sign in to portal</button>
       </form>

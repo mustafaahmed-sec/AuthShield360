@@ -29,6 +29,19 @@ class AccountSignupForm(UserCreationForm):
         super().__init__(*args, **kwargs)
         self.fields["full_name"].required = True
         self.fields["email"].required = True
+        self.fields["password1"].widget.attrs.update({
+            "autocomplete": "new-password",
+            "minlength": "22",
+            "aria-describedby": "password-policy",
+        })
+        self.fields["password1"].help_text = (
+            "Use at least 22 characters, including a lowercase letter, uppercase letter, "
+            "number, and special character. A suggested password is available below."
+        )
+        self.fields["password2"].widget.attrs.update({
+            "autocomplete": "new-password",
+            "minlength": "22",
+        })
 
     def clean_email(self):
         email = self.cleaned_data["email"].strip().lower()
@@ -63,6 +76,10 @@ class RegistrationStatusForm(forms.Form):
 
 class EmailAuthenticationForm(AuthenticationForm):
     username = forms.EmailField(label="Email address", widget=forms.EmailInput(attrs={"autocomplete": "username"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["password"].widget.attrs.update({"autocomplete": "current-password"})
 
     def confirm_login_allowed(self, user):
         super().confirm_login_allowed(user)

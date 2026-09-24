@@ -55,6 +55,15 @@ button { cursor: pointer; }
 .form-field input, .form-field select, .form-field textarea { display: block; width: 100%; min-height: 2.9rem; border: 1px solid #9db1c4; border-radius: .5rem; padding: .65rem .8rem; background: #fff; color: #172b42; }
 .form-field textarea { min-height: 7rem; resize: vertical; }
 .form-field input:focus-visible, .form-field select:focus-visible, .form-field textarea:focus-visible, .button:focus-visible, .nav-button:focus-visible, .site-nav a:focus-visible { outline: 3px solid #0a8278; outline-offset: 2px; }
+.password-input-row { display: flex; align-items: stretch; gap: .5rem; }
+.password-input-row input { flex: 1; min-width: 0; }
+.password-toggle, .password-suggest-button { border: 1px solid #9db1c4; border-radius: .45rem; background: #f5f8fb; color: #174a7a; font-weight: 650; }
+.password-toggle { min-width: 4.1rem; padding: .35rem .65rem; font-size: .88rem; }
+.password-toggle:hover, .password-suggest-button:hover { background: #e8f1f7; }
+.password-toggle:focus-visible, .password-suggest-button:focus-visible { outline: 3px solid #0a8278; outline-offset: 2px; }
+.password-suggestion { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .65rem; }
+.password-suggest-button { padding: .45rem .65rem; font-size: .85rem; }
+.password-suggestion .help-text { flex: 1 1 100%; margin-top: 0; }
 .form-field input[aria-invalid="true"] { border-color: #a62626; }
 .help-text { margin-top: .4rem; color: #50647b; font-size: .85rem; line-height: 1.45; }
 .help-text ul { padding-left: 1.2rem; }

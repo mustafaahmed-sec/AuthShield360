@@ -4,6 +4,8 @@ import os
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -22,8 +24,14 @@ class Command(BaseCommand):
             "DEMO_ADMIN_PASSWORD",
         )
         passwords = {name: os.environ.get(name, "") for name in names}
-        if any(len(value) < 16 for value in passwords.values()):
-            raise CommandError("Set all three DEMO_*_PASSWORD values to at least 16 characters in the ignored .env file.")
+        try:
+            for value in passwords.values():
+                validate_password(value)
+        except ValidationError as error:
+            raise CommandError(
+                "Each DEMO_*_PASSWORD in the ignored .env file must be at least 22 characters "
+                "and include lowercase, uppercase, a number, and a special character."
+            ) from error
 
         User = get_user_model()
         accounts = (
