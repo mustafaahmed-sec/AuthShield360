@@ -62,7 +62,7 @@ class TeacherStudentRecordForm(forms.ModelForm):
         grades = ["Kindergarten", *(f"Grade {grade}" for grade in range(1, 13))]
         if student.student_record.grade not in grades:
             grades.append(student.student_record.grade)
-        self.fields["grade"].widget = forms.Select(
+        self.fields["grade"] = forms.ChoiceField(
             choices=[("", "Select grade"), *((grade, grade) for grade in grades)]
         )
 
