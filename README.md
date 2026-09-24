@@ -74,7 +74,7 @@ See [the requirement map](docs/REQUIREMENTS.md) for the full SRS checklist and t
 
 ## Vercel deployment preparation
 
-This repository is being prepared for a Vercel demo before OTP is implemented. Vercel detects `manage.py`, uses `config/wsgi.py`, and collects static files from `STATIC_ROOT`. The deployed site needs a separate hosted PostgreSQL database; the laptop's PostgreSQL server remains local. Set the hosted connection in Vercel as `DATABASE_URL`. Keep all deployment secrets in Vercel environment variables, never in GitHub or `.env.example`.
+This repository is configured for a protected Vercel demo while OTP is being developed. Vercel detects `manage.py`, uses `config/wsgi.py`, and collects static files from `STATIC_ROOT`. The deployed site uses a hosted PostgreSQL database; the laptop's PostgreSQL server remains local. The hosted connection is supplied to Vercel as `DATABASE_URL`. Keep all deployment secrets in Vercel environment variables, never in GitHub or `.env.example`.
 
 Use a new `DJANGO_SECRET_KEY` for Vercel, set `DJANGO_DEBUG=false`, and set `AUTHSHIELD_BASELINE_LOGIN=true` only for the temporary password comparison. Set `AUTHSHIELD_PROTECTED_DEMO=true` only after Vercel Authentication protects the deployment. The local `.env` remains ignored and is not uploaded. Hosted database migrations, fictional seed data, and new demo passwords must be prepared separately from the local database.
 
