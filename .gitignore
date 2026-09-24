@@ -1,9 +1,21 @@
 .venv/
 __pycache__/
 *.py[cod]
-.env
-.env.local
-.env.*.local
+# Local environment files and credentials. Keep only the safe template tracked.
+.env*
+!.env.example
+!.env.sample
+!.env.template
+env/
+venv/
+credentials/
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite3
+*.db
 .vercel/
 .pytest_cache/
 .coverage
