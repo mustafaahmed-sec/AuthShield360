@@ -1,4 +1,5 @@
 from io import StringIO
+from datetime import date, timedelta
 from unittest.mock import patch
 
 from django.core.management import call_command
@@ -42,6 +43,14 @@ class SeedDemoTests(TestCase):
         with patch("school.management.commands.seed_demo.ADMIN_TARGET", ADMIN_TARGET + 1):
             with self.assertRaisesRegex(CommandError, "administrator roster"):
                 call_command("seed_demo", stdout=StringIO())
+
+    def test_reset_schedules_assignments_one_week_ahead(self):
+        reset_date = date(2026, 9, 25)
+        with patch("school.management.commands.seed_demo.timezone.localdate", return_value=reset_date):
+            call_command("seed_demo", reset=True, stdout=StringIO())
+
+        assignment = Assignment.objects.filter(course__code="SCI-101").first()
+        self.assertEqual(assignment.due_date, reset_date + timedelta(days=7))
 
     def test_rerun_preserves_admin_changes_to_existing_demo_records(self):
         replacement = User.objects.create_user(

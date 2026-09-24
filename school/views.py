@@ -1,9 +1,13 @@
 """Public home and role-specific dashboards."""
 
+from datetime import timedelta
+
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
+from django.db.models import Avg, ExpressionWrapper, F, FloatField, Q
 from django.shortcuts import render
+from django.utils import timezone
 
 from accounts.models import User
 
@@ -24,9 +28,29 @@ def home(request):
 def dashboard(request):
     user = request.user
     if user.is_portal_student:
+        today = timezone.localdate()
+        courses = (
+            Course.objects.filter(enrollments__student=user)
+            .select_related("teacher")
+            .annotate(
+                average_percent=Avg(
+                    ExpressionWrapper(
+                        F("exam_results__score") * 100.0 / F("exam_results__max_score"),
+                        output_field=FloatField(),
+                    ),
+                    filter=Q(exam_results__student=user),
+                )
+            )
+            .order_by("code")
+        )
         context = {
             "record": StudentRecord.objects.filter(student=user).first(),
-            "courses": Course.objects.filter(enrollments__student=user).select_related("teacher").order_by("code"),
+            "courses": courses,
+            "due_soon": Assignment.objects.filter(
+                course__enrollments__student=user,
+                due_date__gte=today,
+                due_date__lte=today + timedelta(days=14),
+            ).select_related("course").order_by("due_date", "id"),
             "assignments": Assignment.objects.filter(course__enrollments__student=user)
             .select_related("course").order_by("due_date", "id"),
             "results": ExamResult.objects.filter(student=user).select_related("course").order_by("course__code", "exam_name"),

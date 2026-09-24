@@ -1,12 +1,13 @@
 """Create a balanced, repeatable fictional K–12 school roster for the demo."""
 
 import json
-from datetime import date
+from datetime import timedelta
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.utils import timezone
 
 from school.models import Assignment, Course, Enrollment, ExamResult, StudentRecord
 
@@ -358,6 +359,7 @@ class Command(BaseCommand):
             Course.objects.bulk_update(changed_courses, ["title", "teacher"], batch_size=500)
 
         assignment_specs = []
+        due_date = timezone.localdate() + timedelta(days=7)
         for key, code, _, _, is_featured_science in course_specs:
             grade_index, _, subject_index = key
             course = courses[key]
@@ -368,7 +370,7 @@ class Command(BaseCommand):
                 if is_featured_science
                 else f"Fictional {ACADEMIC_YEAR} learning check for {GRADE_NAMES[grade_index]} students."
             )
-            assignment_specs.append((course, title, description, date(2026, 10, 16)))
+            assignment_specs.append((course, title, description, due_date))
 
         existing_assignments = {
             (assignment.course_id, assignment.title): assignment

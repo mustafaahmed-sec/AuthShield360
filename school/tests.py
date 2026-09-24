@@ -1,3 +1,6 @@
+from datetime import date, timedelta
+from unittest.mock import patch
+
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -291,6 +294,77 @@ class StudentRoleBoundaryTests(TestCase):
             PortalAuditEvent.objects.filter(actor=self.student, action="role_access_denied").count(),
             3,
         )
+
+
+class StudentDashboardProgressTests(TestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(
+            "progress-student@example.test", "student-password",
+            full_name="Progress Student", role=User.Role.STUDENT,
+        )
+        self.other_student = User.objects.create_user(
+            "other-progress-student@example.test", "student-password",
+            full_name="Other Progress Student", role=User.Role.STUDENT,
+        )
+        self.teacher = User.objects.create_user(
+            "progress-teacher@example.test", "teacher-password",
+            full_name="Progress Teacher", role=User.Role.TEACHER,
+        )
+        self.course = Course.objects.create(
+            code="PROG-101", title="Progress course", teacher=self.teacher,
+        )
+        self.ungraded_course = Course.objects.create(
+            code="PROG-201", title="Ungraded course", teacher=self.teacher,
+        )
+        self.other_course = Course.objects.create(
+            code="PROG-301", title="Other course", teacher=self.teacher,
+        )
+        Enrollment.objects.create(student=self.student, course=self.course)
+        Enrollment.objects.create(student=self.student, course=self.ungraded_course)
+        Enrollment.objects.create(student=self.other_student, course=self.course)
+        Enrollment.objects.create(student=self.other_student, course=self.other_course)
+        ExamResult.objects.create(
+            student=self.student, course=self.course, exam_name="First result", score=80, max_score=100,
+        )
+        ExamResult.objects.create(
+            student=self.student, course=self.course, exam_name="Second result", score=18, max_score=20,
+        )
+        ExamResult.objects.create(
+            student=self.other_student, course=self.course, exam_name="Other student's result", score=20, max_score=100,
+        )
+
+    def test_dashboard_averages_only_this_students_results_and_shows_ungraded_courses(self):
+        self.client.force_login(self.student)
+
+        response = self.client.get(reverse("dashboard"))
+
+        averages = {course.code: course.average_percent for course in response.context["courses"]}
+        self.assertAlmostEqual(averages["PROG-101"], 85.0)
+        self.assertIsNone(averages["PROG-201"])
+        self.assertNotIn("PROG-301", averages)
+        self.assertContains(response, "Average result: 85.0%")
+        self.assertContains(response, "No graded results yet.")
+
+    def test_due_soon_includes_today_through_day_fourteen_only(self):
+        today = date(2026, 9, 25)
+        for title, due_date in (
+            ("Due today", today),
+            ("Due in fourteen days", today + timedelta(days=14)),
+            ("Due in fifteen days", today + timedelta(days=15)),
+            ("Past assignment", today - timedelta(days=1)),
+        ):
+            Assignment.objects.create(course=self.course, title=title, due_date=due_date)
+        Assignment.objects.create(
+            course=self.other_course, title="Not enrolled", due_date=today + timedelta(days=3),
+        )
+        self.client.force_login(self.student)
+
+        with patch("school.views.timezone.localdate", return_value=today):
+            response = self.client.get(reverse("dashboard"))
+
+        titles = list(response.context["due_soon"].values_list("title", flat=True))
+        self.assertEqual(titles, ["Due today", "Due in fourteen days"])
+        self.assertContains(response, "Due soon")
 
 
 class DjangoAdminRoleBoundaryTests(TestCase):

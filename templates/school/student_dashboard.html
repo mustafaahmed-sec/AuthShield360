@@ -6,6 +6,36 @@
   <div class="dashboard-grid">
     <section class="panel"><h2>My record</h2>{% if record %}<dl class="details"><dt>Admission number</dt><dd>{{ record.admission_number }}</dd><dt>Grade</dt><dd>{{ record.grade }}</dd>{% if record.age %}<dt>Age</dt><dd>{{ record.age }}</dd>{% endif %}{% if record.gender %}<dt>Gender</dt><dd>{{ record.get_gender_display }}</dd>{% endif %}</dl>{% else %}<p class="empty">Your school record has not been assigned yet.</p>{% endif %}</section>
     <section class="panel"><h2>My courses</h2>{% if courses %}<ul class="item-list">{% for course in courses %}<li><strong>{{ course.code }} · {{ course.title }}</strong><span>Teacher: {{ course.teacher.full_name }}</span></li>{% endfor %}</ul>{% else %}<p class="empty">No courses assigned yet.</p>{% endif %}</section>
+    <section class="panel" aria-labelledby="progress-title">
+      <h2 id="progress-title">My progress</h2>
+      {% if courses %}
+        <ul class="item-list">
+          {% for course in courses %}
+            <li>
+              <strong>{{ course.code }} · {{ course.title }}</strong>
+              {% if course.average_percent is not None %}
+                <span>Average result: {{ course.average_percent|floatformat:1 }}%</span>
+              {% else %}
+                <span>No graded results yet.</span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}<p class="empty">Course averages will appear when classes are assigned.</p>{% endif %}
+    </section>
+    <section class="panel" aria-labelledby="due-soon-title">
+      <h2 id="due-soon-title">Due soon</h2>
+      {% if due_soon %}
+        <ul class="item-list">
+          {% for assignment in due_soon %}
+            <li>
+              <strong>{{ assignment.title }}</strong>
+              <span>{{ assignment.course.code }} · Due {{ assignment.due_date|date:"j M Y" }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}<p class="empty">No assignments are due in the next 14 days.</p>{% endif %}
+    </section>
     <section class="panel"><h2>Assignments</h2>{% if assignments %}<ul class="item-list">{% for assignment in assignments %}<li><strong>{{ assignment.title }}</strong><span>{{ assignment.course.code }} · Due {{ assignment.due_date|date:"j M Y" }}</span><p>{{ assignment.description }}</p></li>{% endfor %}</ul>{% else %}<p class="empty">No assignments yet.</p>{% endif %}</section>
     <section class="panel"><h2>Exam results</h2>{% if results %}<ul class="item-list">{% for result in results %}<li><strong>{{ result.exam_name }}</strong><span>{{ result.course.code }} · {{ result.score }} / {{ result.max_score }}</span></li>{% endfor %}</ul>{% else %}<p class="empty">No results posted yet.</p>{% endif %}</section>
   </div>
