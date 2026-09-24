@@ -33,7 +33,7 @@ button { cursor: pointer; }
 .site-nav form { margin: 0; }
 .nav-button { border: 0; background: transparent; color: #174a7a; font-weight: 650; padding: .5rem 0; }
 .nav-button:hover, .nav-button:focus { text-decoration: underline; }
-.site-nav .nav-signup { border: 1px solid #b8cadb; border-radius: .5rem; padding: .55rem .75rem; }
+.site-nav .nav-signup, .site-nav .nav-teacher { border: 1px solid #b8cadb; border-radius: .5rem; padding: .55rem .75rem; }
 .main-content { width: min(100% - 2rem, 1100px); margin: clamp(2.5rem, 6vw, 5rem) auto; }
 .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 2rem; }
 .button { display: inline-flex; justify-content: center; align-items: center; min-height: 2.9rem; padding: .72rem 1.1rem; border: 1px solid #124a78; border-radius: .55rem; background: #124a78; color: #fff; text-decoration: none; font-weight: 700; line-height: 1.3; }
@@ -81,10 +81,6 @@ button { cursor: pointer; }
 .signup-heading-row h1 { margin-bottom: .35rem; }
 .review-chip, .count-chip, .course-tag { display: inline-flex; align-items: center; border: 1px solid #b9d7d4; border-radius: 999px; background: #f0faf8; color: #075d59; padding: .36rem .68rem; font-size: .78rem; font-weight: 700; white-space: nowrap; }
 .count-chip { margin-left: .35rem; }
-.signup-switch { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem; padding: .3rem; margin: 1.4rem 0; border-radius: .7rem; background: #edf3f7; }
-.signup-switch a { display: block; text-align: center; padding: .72rem; border-radius: .48rem; text-decoration: none; font-weight: 700; }
-.signup-switch a:hover, .signup-switch a:focus-visible { background: #fff; outline: 2px solid #0a8278; outline-offset: 1px; }
-.signup-switch a.selected { color: #fff; background: #124a78; }
 .signup-aside h2 { margin: .55rem 0 1.2rem; font-size: 1.55rem; }
 .signup-steps { list-style: none; padding: 0; margin: 0; }
 .signup-steps li { display: grid; grid-template-columns: 2rem 1fr; gap: .75rem; padding: .95rem 0; border-top: 1px solid #dce7ed; }
@@ -125,4 +121,5 @@ tr:last-child td { border-bottom: 0; }
 .edit-student-layout { max-width: 900px; }
 .edit-student-layout .actions { margin-top: 1rem; }
 @media (max-width: 720px) { .auth-layout, .dashboard-grid { grid-template-columns: 1fr; } .side-card { padding: 1.4rem; } }
-@media (max-width: 520px) { .site-header { align-items: flex-start; flex-direction: column; } .site-nav { width: 100%; justify-content: space-between; flex-wrap: wrap; gap: .5rem; } .stats { grid-template-columns: 1fr; margin: 2rem 0; } .stat { padding: 1.15rem; } .signup-heading-row, .admin-summary, .panel-heading { align-items: flex-start; flex-direction: column; } .review-chip { white-space: normal; } .filter-bar label { flex-basis: 100%; } .pagination { flex-wrap: wrap; } .table-wrap { margin-left: -.25rem; width: calc(100% + .5rem); } }
+@media (max-width: 760px) { .site-header { align-items: flex-start; flex-direction: column; } .site-nav { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: .6rem; } }
+@media (max-width: 520px) { .guest-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .guest-nav a { display: grid; place-items: center; min-height: 2.7rem; border: 1px solid #b8cadb; border-radius: .5rem; padding: .55rem; text-align: center; } .guest-nav .nav-teacher { grid-column: 1 / -1; } .stats { grid-template-columns: 1fr; margin: 2rem 0; } .stat { padding: 1.15rem; } .signup-heading-row, .admin-summary, .panel-heading { align-items: flex-start; flex-direction: column; } .review-chip { white-space: normal; } .filter-bar label { flex-basis: 100%; } .pagination { flex-wrap: wrap; } .table-wrap { margin-left: -.25rem; width: calc(100% + .5rem); } }

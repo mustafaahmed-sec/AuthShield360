@@ -3,15 +3,11 @@
 {% block content %}
   <div class="eyebrow">Identity security learning environment</div>
   <h1>A trusted place to learn, teach, and manage.</h1>
-  <p class="intro">This fictional school portal lets us compare local password-only access with stronger multi-factor authentication as the project develops.</p>
-  <div class="actions">
-    {% if request.user.is_authenticated %}<a class="button" href="{% url 'dashboard' %}">Open my dashboard</a>
-    {% else %}<a class="button" href="{% url 'login' %}">Sign in</a><a class="button secondary" href="{% url 'signup' %}">Create student account</a>{% endif %}
-  </div>
+  <p class="intro">This fictional school portal lets us compare password-only sign-in with stronger multi-factor authentication as the project develops.</p>
   <section class="stats" aria-label="Fictional records in the database">
     <div class="stat"><strong>{{ student_count }}</strong><span>student records</span></div>
     <div class="stat"><strong>{{ course_count }}</strong><span>courses</span></div>
     <div class="stat"><strong>{{ assignment_count }}</strong><span>assignments</span></div>
   </section>
-  <section class="note" aria-labelledby="lab-stage"><h2 id="lab-stage">Current lab stage</h2><p>Student sign-up and role dashboards are available. Password-only sign-in is enabled for the controlled local baseline. OTP verification is the next authentication stage.</p></section>
+  <section class="note" aria-labelledby="lab-stage"><h2 id="lab-stage">Current lab stage</h2><p>Student sign-up, teacher access requests, and role dashboards are available. Password-only sign-in is enabled for the controlled baseline. OTP verification is the next authentication stage.</p></section>
 {% endblock %}

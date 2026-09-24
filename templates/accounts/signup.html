@@ -1,21 +1,16 @@
 {% extends "base.html" %}
-{% block title %}{% if role == 'teacher' %}Request teacher access{% else %}Student registration{% endif %} | AuthShield 360{% endblock %}
+{% block title %}{% if role == 'teacher' %}Teacher access request{% else %}Student sign-up request{% endif %} | AuthShield 360{% endblock %}
 {% block content %}
   <div class="auth-layout signup-layout">
     <section class="form-card signup-card" aria-labelledby="signup-title">
       <div class="signup-heading-row">
         <div>
           <div class="eyebrow">{{ role_label }} access request</div>
-          <h1 id="signup-title">{% if role == 'teacher' %}Request teacher access{% else %}Create a student account{% endif %}</h1>
+          <h1 id="signup-title">{% if role == 'teacher' %}Teacher access request{% else %}Student sign-up request{% endif %}</h1>
         </div>
         <span class="review-chip">Admin review required</span>
       </div>
       <p class="muted">{% if role == 'teacher' %}Send a teacher access request. An administrator reviews it before the account can sign in.{% else %}Create a student access request. An administrator must approve it before you can sign in.{% endif %}</p>
-
-      <nav class="signup-switch" aria-label="Choose registration type">
-        <a href="{% url 'student_signup' %}"{% if role == 'student' %} class="selected" aria-current="page"{% endif %}>Student</a>
-        <a href="{% url 'teacher_signup' %}"{% if role == 'teacher' %} class="selected" aria-current="page"{% endif %}>Teacher</a>
-      </nav>
 
       {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
       <form method="post" action="{% if role == 'teacher' %}{% url 'teacher_signup' %}{% else %}{% url 'student_signup' %}{% endif %}">
@@ -28,9 +23,9 @@
             {% if field.errors %}<div class="field-error" role="alert">{{ field.errors }}</div>{% endif %}
           </div>
         {% endfor %}
-        <button class="button full signup-submit" type="submit">Submit {{ role_label }} request</button>
+        <button class="button full signup-submit" type="submit">{% if role == 'teacher' %}Submit teacher access request{% else %}Submit student sign-up request{% endif %}</button>
       </form>
-      <p class="form-foot">Already approved? <a href="{% url 'login' %}">Sign in</a>. Submitted a request? <a href="{% url 'registration_status' %}">Check its status</a>.</p>
+      <p class="form-foot">Already submitted a request? <a href="{% url 'registration_status' %}">Check its status</a>.</p>
     </section>
 
     <aside class="side-card signup-aside" aria-labelledby="signup-steps-title">

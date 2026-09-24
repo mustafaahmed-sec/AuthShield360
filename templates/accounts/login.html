@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Sign in | AuthShield 360{% endblock %}
+{% block title %}Portal sign-in | AuthShield 360{% endblock %}
 {% block content %}
   <div class="auth-layout">
     <section class="form-card" aria-labelledby="login-title">
       <div class="eyebrow">Account access</div>
-      <h1 id="login-title">Sign in</h1>
-      <p class="muted">Use a fictional account created for this local school portal.</p>
+      <h1 id="login-title">Portal sign-in</h1>
+      <p class="muted">Approved students, teachers, and administrators sign in here with their fictional accounts.</p>
       {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
       <form method="post" action="{% url 'login' %}" novalidate>
         {% csrf_token %}
@@ -13,10 +13,9 @@
         {% for field in form %}
           <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.errors %}<div class="field-error">{{ field.errors }}</div>{% endif %}</div>
         {% endfor %}
-        <button class="button full" type="submit">Sign in</button>
+        <button class="button full" type="submit">Sign in to portal</button>
       </form>
-      <p class="form-foot">New student? <a href="{% url 'signup' %}">Create an account</a></p>
     </section>
-    <aside class="side-card"><span class="eyebrow">Local baseline</span><h2>One step at a time</h2><p>This stage records how password-only access works. Mobile and email OTP will be added in later stages.</p><p>Never use a real school account or personal password in this demo.</p></aside>
+    <aside class="side-card"><span class="eyebrow">Demo baseline</span><h2>One step at a time</h2><p>This stage records how password-only access works. Mobile and email OTP will be added in later stages.</p><p>Never use a real school account or personal password in this demo.</p></aside>
   </div>
 {% endblock %}
