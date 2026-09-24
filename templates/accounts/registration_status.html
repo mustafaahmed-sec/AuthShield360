@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Request status | AuthShield 360{% endblock %}
+{% block content %}
+  <div class="auth-layout status-layout">
+    <section class="form-card" aria-labelledby="status-title">
+      <div class="eyebrow">Account access</div>
+      <h1 id="status-title">Check request status</h1>
+      <p class="muted">Enter the email and password you used when requesting Student or Teacher access.</p>
+      {% if result == 'pending' %}
+        <div class="status-banner status-pending" role="status"><strong>Waiting for review</strong><span>Your request is pending administrator approval. Check again after it has been reviewed.</span></div>
+      {% elif result == 'approved' %}
+        <div class="status-banner status-approved" role="status"><strong>Request approved</strong><span>Your account is ready. You can now <a href="{% url 'login' %}">sign in</a>.</span></div>
+      {% elif result == 'not_approved' %}
+        <div class="status-banner status-pending" role="status"><strong>Access is not available</strong><span>This request was not approved or the account has been deactivated. Contact the portal administrator.</span></div>
+      {% endif %}
+      {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+      <form method="post" action="{% url 'registration_status' %}">
+        {% csrf_token %}
+        {% for field in form %}
+          <div class="form-field{% if field.errors %} has-error{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.errors %}<div class="field-error" role="alert">{{ field.errors }}</div>{% endif %}</div>
+        {% endfor %}
+        <button class="button full" type="submit">Check status</button>
+      </form>
+      <p class="form-foot"><a href="{% url 'student_signup' %}">Student request</a><span aria-hidden="true"> · </span><a href="{% url 'teacher_signup' %}">Teacher request</a></p>
+    </section>
+    <aside class="side-card status-aside"><span class="eyebrow">Protected lookup</span><h2>Your password stays private</h2><p>Only the correct email and password can view the request status. This page does not sign you in or reveal whether another email address has an account.</p></aside>
+  </div>
+{% endblock %}

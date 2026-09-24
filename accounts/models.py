@@ -32,11 +32,29 @@ class User(AbstractUser):
         TEACHER = "teacher", "Teacher"
         ADMIN = "admin", "Administrator"
 
+    class ApprovalStatus(models.TextChoices):
+        PENDING = "pending", "Pending review"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Not approved"
+
     username = None
     email = models.EmailField(unique=True)
     full_name = models.CharField(max_length=150)
     phone_number = models.CharField(max_length=32, blank=True)
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.STUDENT)
+    approval_status = models.CharField(
+        max_length=16,
+        choices=ApprovalStatus.choices,
+        default=ApprovalStatus.APPROVED,
+    )
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+    reviewed_by = models.ForeignKey(
+        "self",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_accounts",
+    )
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["full_name"]

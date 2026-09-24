@@ -11,6 +11,4 @@ __pycache__
 staticfiles
 media
 .vercel-deploy-credentials.txt
-.agents
-.agents/**
 skills-lock.json

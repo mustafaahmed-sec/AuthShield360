@@ -1,21 +1,47 @@
 {% extends "base.html" %}
-{% block title %}Student sign-up | AuthShield 360{% endblock %}
+{% block title %}{% if role == 'teacher' %}Request teacher access{% else %}Student registration{% endif %} | AuthShield 360{% endblock %}
 {% block content %}
-  <div class="auth-layout">
-    <section class="form-card" aria-labelledby="signup-title">
-      <div class="eyebrow">Student registration</div>
-      <h1 id="signup-title">Create an account</h1>
-      <p class="muted">Public registration creates a Student account. A portal administrator assigns Teacher and Administrator access.</p>
+  <div class="auth-layout signup-layout">
+    <section class="form-card signup-card" aria-labelledby="signup-title">
+      <div class="signup-heading-row">
+        <div>
+          <div class="eyebrow">{{ role_label }} access request</div>
+          <h1 id="signup-title">{% if role == 'teacher' %}Request teacher access{% else %}Create a student account{% endif %}</h1>
+        </div>
+        <span class="review-chip">Admin review required</span>
+      </div>
+      <p class="muted">{% if role == 'teacher' %}Send a teacher access request. An administrator reviews it before the account can sign in.{% else %}Create a student access request. An administrator must approve it before you can sign in.{% endif %}</p>
+
+      <nav class="signup-switch" aria-label="Choose registration type">
+        <a href="{% url 'student_signup' %}"{% if role == 'student' %} class="selected" aria-current="page"{% endif %}>Student</a>
+        <a href="{% url 'teacher_signup' %}"{% if role == 'teacher' %} class="selected" aria-current="page"{% endif %}>Teacher</a>
+      </nav>
+
       {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
-      <form method="post" action="{% url 'signup' %}" novalidate>
+      <form method="post" action="{% if role == 'teacher' %}{% url 'teacher_signup' %}{% else %}{% url 'student_signup' %}{% endif %}">
         {% csrf_token %}
         {% for field in form %}
-          <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<div class="help-text">{{ field.help_text|safe }}</div>{% endif %}{% if field.errors %}<div class="field-error">{{ field.errors }}</div>{% endif %}</div>
+          <div class="form-field{% if field.errors %} has-error{% endif %}">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="help-text">{{ field.help_text|safe }}</div>{% endif %}
+            {% if field.errors %}<div class="field-error" role="alert">{{ field.errors }}</div>{% endif %}
+          </div>
         {% endfor %}
-        <button class="button full" type="submit">Create student account</button>
+        <button class="button full signup-submit" type="submit">Submit {{ role_label }} request</button>
       </form>
-      <p class="form-foot">Already registered? <a href="{% url 'login' %}">Sign in</a></p>
+      <p class="form-foot">Already approved? <a href="{% url 'login' %}">Sign in</a>. Submitted a request? <a href="{% url 'registration_status' %}">Check its status</a>.</p>
     </section>
-    <aside class="side-card"><span class="eyebrow">Data policy</span><h2>Use fictional details</h2><p>This portal is for an authorized educational demonstration. Enter a made-up name, test email address, and test phone number.</p><p>Choose a unique password for this lab account.</p></aside>
+
+    <aside class="side-card signup-aside" aria-labelledby="signup-steps-title">
+      <span class="eyebrow">A clear path to access</span>
+      <h2 id="signup-steps-title">Request. Review. Sign in.</h2>
+      <ol class="signup-steps">
+        <li><span class="step-number">1</span><div><strong>Send your request</strong><p>Use fictional contact details and choose a unique password for this demonstration.</p></div></li>
+        <li><span class="step-number">2</span><div><strong>Wait for administrator approval</strong><p>New Student and Teacher accounts cannot sign in while a request is pending.</p></div></li>
+        <li><span class="step-number">3</span><div><strong>Check your status</strong><p>Use your email and password on the status page. Once approved, sign in normally.</p></div></li>
+      </ol>
+      <div class="privacy-note"><strong>Fictional data only</strong><p>Never enter a real school email, phone number, student record, or password here.</p></div>
+    </aside>
   </div>
 {% endblock %}

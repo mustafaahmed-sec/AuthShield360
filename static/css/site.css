@@ -76,5 +76,53 @@ button { cursor: pointer; }
 .item-list strong, .item-list span { display: block; }
 .item-list span { margin-top: .2rem; color: #50647b; }
 .item-list p { margin: .55rem 0 0; line-height: 1.5; }
+.signup-card { border-color: #d3e0e9; }
+.signup-heading-row, .panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.signup-heading-row h1 { margin-bottom: .35rem; }
+.review-chip, .count-chip, .course-tag { display: inline-flex; align-items: center; border: 1px solid #b9d7d4; border-radius: 999px; background: #f0faf8; color: #075d59; padding: .36rem .68rem; font-size: .78rem; font-weight: 700; white-space: nowrap; }
+.count-chip { margin-left: .35rem; }
+.signup-switch { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem; padding: .3rem; margin: 1.4rem 0; border-radius: .7rem; background: #edf3f7; }
+.signup-switch a { display: block; text-align: center; padding: .72rem; border-radius: .48rem; text-decoration: none; font-weight: 700; }
+.signup-switch a:hover, .signup-switch a:focus-visible { background: #fff; outline: 2px solid #0a8278; outline-offset: 1px; }
+.signup-switch a.selected { color: #fff; background: #124a78; }
+.signup-aside h2 { margin: .55rem 0 1.2rem; font-size: 1.55rem; }
+.signup-steps { list-style: none; padding: 0; margin: 0; }
+.signup-steps li { display: grid; grid-template-columns: 2rem 1fr; gap: .75rem; padding: .95rem 0; border-top: 1px solid #dce7ed; }
+.signup-steps li:first-child { border-top: 0; padding-top: .2rem; }
+.step-number { display: grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 50%; background: #124a78; color: #fff; font-weight: 750; }
+.signup-steps strong { display: block; }
+.signup-steps p { margin: .28rem 0 0; color: #50647b; line-height: 1.5; }
+.privacy-note { margin-top: 1.1rem; padding: .95rem; border-radius: .65rem; background: #e5f3f1; }
+.privacy-note p { margin: .3rem 0 0; color: #405870; line-height: 1.5; }
+.status-banner { display: grid; gap: .35rem; margin: 1.2rem 0; padding: 1rem; border-left: 4px solid #087c75; background: #edf8f5; line-height: 1.5; }
+.status-pending { border-color: #a66c08; background: #fff8e8; }
+.status-approved { border-color: #087c48; background: #edf8f1; }
+.admin-summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.admin-summary .button { flex: 0 0 auto; }
+.admin-summary p { margin-bottom: 0; }
+.panel-heading h2 { margin: 0; }
+.panel-heading > a { font-weight: 650; }
+.management-section { margin-top: 1.4rem; }
+.management-section h2 { margin: 0 0 1rem; font-size: 1.3rem; }
+.filter-bar { display: flex; flex-wrap: wrap; align-items: end; gap: .8rem; margin: 1rem 0; }
+.filter-bar label { display: grid; gap: .35rem; flex: 1 1 180px; font-size: .9rem; font-weight: 700; }
+.filter-bar input, .filter-bar select { width: 100%; min-height: 2.7rem; border: 1px solid #9db1c4; border-radius: .5rem; padding: .55rem .7rem; background: #fff; color: #172b42; font: inherit; }
+.filter-bar :focus-visible { outline: 3px solid #0a8278; outline-offset: 2px; }
+.table-wrap { width: 100%; overflow-x: auto; border: 1px solid #e1e8ef; border-radius: .65rem; }
+table { width: 100%; border-collapse: collapse; background: #fff; font-size: .9rem; }
+th, td { padding: .8rem .75rem; text-align: left; vertical-align: top; border-bottom: 1px solid #e4ebf2; }
+th { color: #405870; background: #f3f7fa; font-size: .82rem; letter-spacing: .02em; }
+tr:last-child td { border-bottom: 0; }
+.inline-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.inline-actions form { margin: 0; }
+.button.compact { min-height: 2.25rem; padding: .45rem .68rem; font-size: .84rem; white-space: nowrap; }
+.button.danger { border-color: #a63838; background: #a63838; }
+.button.danger:hover, .button.danger:focus-visible { background: #7c2424; }
+.button.danger.secondary { color: #9a2929; background: #fff; }
+.pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; padding-top: 1rem; }
+.pagination span { color: #50647b; font-size: .9rem; }
+.course-tag { padding: .2rem .5rem; margin: .1rem .15rem .1rem 0; }
+.edit-student-layout { max-width: 900px; }
+.edit-student-layout .actions { margin-top: 1rem; }
 @media (max-width: 720px) { .auth-layout, .dashboard-grid { grid-template-columns: 1fr; } .side-card { padding: 1.4rem; } }
-@media (max-width: 520px) { .site-header { align-items: flex-start; flex-direction: column; } .site-nav { width: 100%; justify-content: space-between; } .stats { grid-template-columns: 1fr; margin: 2rem 0; } .stat { padding: 1.15rem; } }
+@media (max-width: 520px) { .site-header { align-items: flex-start; flex-direction: column; } .site-nav { width: 100%; justify-content: space-between; flex-wrap: wrap; gap: .5rem; } .stats { grid-template-columns: 1fr; margin: 2rem 0; } .stat { padding: 1.15rem; } .signup-heading-row, .admin-summary, .panel-heading { align-items: flex-start; flex-direction: column; } .review-chip { white-space: normal; } .filter-bar label { flex-basis: 100%; } .pagination { flex-wrap: wrap; } .table-wrap { margin-left: -.25rem; width: calc(100% + .5rem); } }
