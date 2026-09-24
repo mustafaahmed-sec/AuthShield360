@@ -14,12 +14,7 @@ class AuthShieldAdminSite(AdminSite):
 
     def has_permission(self, request):
         user = request.user
-        allowed = (
-            user.is_active
-            and user.is_staff
-            and user.is_superuser
-            and getattr(user, "role", None) == "admin"
-        )
+        allowed = user.is_authenticated and getattr(user, "is_portal_admin", False)
         if user.is_authenticated and not allowed:
             from school.audit import record_role_denial
 

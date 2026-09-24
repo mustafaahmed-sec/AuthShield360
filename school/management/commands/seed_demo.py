@@ -121,52 +121,43 @@ class Command(BaseCommand):
         parser.add_argument(
             "--reset",
             action="store_true",
-            help="Delete only this command's generated demo roster, then rebuild it; keeps the three primary demo accounts.",
+            help="Rebuild generated demo accounts and restore the seeded school records; keeps the three primary demo accounts and course history.",
         )
 
     @transaction.atomic
     def handle(self, *args, **options):
         User = get_user_model()
         if options["reset"]:
-            Course.objects.filter(code__startswith=COURSE_PREFIX).delete()
+            # Preserve courses referenced by roster requests (their FK is
+            # protected) and retain historical decisions linked to them.
             User.objects.filter(email__startswith="demo.student.", role=User.Role.STUDENT).delete()
             User.objects.filter(email__startswith="demo.teacher.", role=User.Role.TEACHER).delete()
             User.objects.filter(email__startswith="demo.admin.", role=User.Role.ADMIN).delete()
 
-        self._ensure_primary_account(User, STUDENT_EMAIL, "Ali Khan", User.Role.STUDENT)
-        self._ensure_primary_account(User, TEACHER_EMAIL, "Mina Rahman", User.Role.TEACHER)
-        self._ensure_primary_account(User, ADMIN_EMAIL, "Sara Miller", User.Role.ADMIN)
-
-        counts = {
-            User.Role.STUDENT: User.objects.filter(role=User.Role.STUDENT).count(),
-            User.Role.TEACHER: User.objects.filter(role=User.Role.TEACHER).count(),
-            User.Role.ADMIN: User.objects.filter(role=User.Role.ADMIN).count(),
-        }
-        targets = {
-            User.Role.STUDENT: STUDENT_TARGET,
-            User.Role.TEACHER: TEACHER_TARGET,
-            User.Role.ADMIN: ADMIN_TARGET,
-        }
-        for role, count in counts.items():
-            if count > targets[role]:
-                raise CommandError(
-                    f"Found {count} {role} accounts, above the demo target of {targets[role]}. "
-                    "The seed command will not delete or demote existing accounts."
-                )
+        self._ensure_primary_account(User, STUDENT_EMAIL, "Ali Khan", User.Role.STUDENT, options["reset"])
+        self._ensure_primary_account(User, TEACHER_EMAIL, "Mina Rahman", User.Role.TEACHER, options["reset"])
+        self._ensure_primary_account(User, ADMIN_EMAIL, "Sara Miller", User.Role.ADMIN, options["reset"])
 
         teacher_users = self._ensure_teachers(User)
         self._ensure_administrators(User)
-        student_users = self._ensure_students(User, STUDENT_TARGET - counts[User.Role.STUDENT])
+        student_users = self._ensure_students(User)
 
-        self._seed_academic_records(student_users, teacher_users)
+        course_codes = self._seed_academic_records(student_users, teacher_users, reset_existing=options["reset"])
+        seeded_courses = Course.objects.filter(code__in=course_codes)
+        seeded_enrollments = Enrollment.objects.filter(student__in=student_users, course__in=seeded_courses)
+        seeded_results = ExamResult.objects.filter(student__in=student_users, course__in=seeded_courses)
         self.stdout.write(
             self.style.SUCCESS(
-                "Ready: 486 fictional students with age/grade profiles, 32 teachers, 3 administrators, "
-                "104 courses, 104 assignments, and 1,944 enrollments and exam results."
+                f"Ready: {len(student_users)} seeded students, "
+                f"{sum(len(group) for _, group in teacher_users)} seeded teachers, "
+                f"{len(ADMINISTRATORS)} seeded administrators, "
+                f"{seeded_courses.count()} courses, "
+                f"{Assignment.objects.filter(course__in=seeded_courses).count()} assignments, "
+                f"{seeded_enrollments.count()} enrollments, and {seeded_results.count()} exam results."
             )
         )
 
-    def _ensure_primary_account(self, User, email, name, role):
+    def _ensure_primary_account(self, User, email, name, role, reset_existing=False):
         user, created = User.objects.get_or_create(
             email=email,
             defaults={"full_name": name, "role": role},
@@ -177,7 +168,7 @@ class Command(BaseCommand):
             user.full_name = name
             user.set_unusable_password()
             user.save(update_fields=["full_name", "password"])
-        elif user.full_name != name:
+        elif reset_existing and user.full_name != name:
             user.full_name = name
             user.save(update_fields=["full_name"])
         if role == User.Role.ADMIN and (not user.is_staff or not user.is_superuser):
@@ -218,7 +209,6 @@ class Command(BaseCommand):
         }
         created = []
         changed = []
-        renamed = []
         for email, name in ADMINISTRATORS:
             user = existing.get(email)
             if user and user.role != User.Role.ADMIN:
@@ -238,57 +228,41 @@ class Command(BaseCommand):
                 user.is_staff = True
                 user.is_superuser = True
                 changed.append(user)
-            if user.full_name != name:
-                user.full_name = name
-                renamed.append(user)
         if created:
             User.objects.bulk_create(created, batch_size=500)
         if changed:
             User.objects.bulk_update(changed, ["is_staff", "is_superuser"], batch_size=500)
-        if renamed:
-            User.objects.bulk_update(renamed, ["full_name"], batch_size=500)
 
-    def _ensure_students(self, User, missing_count):
+    def _ensure_students(self, User):
         fixture_path = Path(__file__).resolve().parents[2] / "data" / "demo_students.json"
         profiles = json.loads(fixture_path.read_text(encoding="utf-8"))
         if len(profiles) != STUDENT_TARGET - 1:
             raise CommandError("The fictional student-name fixture must contain exactly 485 profiles.")
-        seeded_students = {
-            int(user.email.split(".")[2].split("@")[0]): user
-            for user in User.objects.filter(email__startswith="demo.student.", role=User.Role.STUDENT)
-        }
-        renamed = []
-        for number, user in seeded_students.items():
-            if 1 <= number <= len(profiles):
-                name = profiles[number - 1]["full_name"]
-                if user.full_name != name:
-                    user.full_name = name
-                    renamed.append(user)
-        if renamed:
-            User.objects.bulk_update(renamed, ["full_name"], batch_size=500)
-
+        expected_emails = [f"demo.student.{number:04d}@example.test" for number in range(1, len(profiles) + 1)]
+        existing = {user.email: user for user in User.objects.filter(email__in=expected_emails)}
         created = []
         for number, profile in enumerate(profiles, start=1):
-            if len(created) >= missing_count:
-                break
-            email = f"demo.student.{number:04d}@example.test"
-            if number in seeded_students:
-                continue
-            if User.objects.filter(email=email).exists():
+            email = expected_emails[number - 1]
+            user = existing.get(email)
+            if user and user.role != User.Role.STUDENT:
                 raise CommandError(f"Reserved fictional student email {email} already belongs to another role.")
+            if user and user.approval_status != User.ApprovalStatus.APPROVED:
+                raise CommandError(f"Reserved fictional student email {email} has a pending or rejected request.")
+            if user:
+                continue
             user = User(email=email, full_name=profile["full_name"], role=User.Role.STUDENT)
             user.set_unusable_password()
             created.append(user)
         if created:
             User.objects.bulk_create(created, batch_size=500)
 
-        existing = list(User.objects.filter(role=User.Role.STUDENT).order_by("pk"))
-        existing.sort(key=lambda user: (user.email != STUDENT_EMAIL, user.pk))
-        if len(existing) != STUDENT_TARGET:
-            raise CommandError(f"Expected {STUDENT_TARGET} students after seeding; found {len(existing)}.")
-        return existing
+        roster = {user.email: user for user in User.objects.filter(email__in=[STUDENT_EMAIL, *expected_emails])}
+        students = [roster[email] for email in [STUDENT_EMAIL, *expected_emails]]
+        if len(students) != STUDENT_TARGET:
+            raise CommandError("The reserved fictional student roster is incomplete.")
+        return students
 
-    def _seed_academic_records(self, students, teacher_groups):
+    def _seed_academic_records(self, students, teacher_groups, reset_existing=False):
         student_fixture_path = Path(__file__).resolve().parents[2] / "data" / "demo_students.json"
         source_profiles = json.loads(student_fixture_path.read_text(encoding="utf-8"))
 
@@ -341,13 +315,14 @@ class Command(BaseCommand):
         courses = {}
         new_courses = []
         changed_courses = []
+        existing_course_codes = set(existing_courses)
         for key, code, title, teacher, _ in course_specs:
             course = existing_courses.get(code)
             if course is None:
                 course = Course(code=code, title=title, teacher=teacher)
                 new_courses.append(course)
                 existing_courses[code] = course
-            elif course.title != title or course.teacher_id != teacher.pk:
+            elif reset_existing and (course.title != title or course.teacher_id != teacher.pk):
                 course.title = title
                 course.teacher = teacher
                 changed_courses.append(course)
@@ -381,7 +356,7 @@ class Command(BaseCommand):
             if assignment is None:
                 assignment = Assignment(course=course, title=title, description=description, due_date=due_date)
                 new_assignments.append(assignment)
-            elif assignment.description != description or assignment.due_date != due_date:
+            elif reset_existing and (assignment.description != description or assignment.due_date != due_date):
                 assignment.description = description
                 assignment.due_date = due_date
                 changed_assignments.append(assignment)
@@ -435,7 +410,7 @@ class Command(BaseCommand):
                 )
                 new_records.append(record)
             else:
-                if (
+                if reset_existing and (
                     record.admission_number != admission_number
                     or record.grade != slot["grade"]
                     or record.age != slot["age"]
@@ -476,14 +451,19 @@ class Command(BaseCommand):
             section = slot["section"]
             for subject_index, (_, subject_name, _) in enumerate(subjects):
                 course = courses[(grade_index, section, subject_index)]
-                if (student.pk, course.pk) not in existing_enrollments:
+                should_fill_relation = (
+                    reset_existing
+                    or student.pk not in existing_records
+                    or course.code not in existing_course_codes
+                )
+                if should_fill_relation and (student.pk, course.pk) not in existing_enrollments:
                     new_enrollments.append(Enrollment(student=student, course=course))
                 score = 65 + ((student_index * 13 + grade_index * 7 + subject_index * 11) % 36)
                 exam_name = "Sample term exam" if course.code == "SCI-101" else f"{ACADEMIC_YEAR} Term 1 {subject_name} Check-In"
                 result = existing_results.get((student.pk, course.pk, exam_name))
-                if result is None:
+                if result is None and should_fill_relation:
                     new_results.append(ExamResult(student=student, course=course, exam_name=exam_name, score=score, max_score=100))
-                elif result.score != score or result.max_score != 100:
+                elif result is not None and reset_existing and (result.score != score or result.max_score != 100):
                     result.score = score
                     result.max_score = 100
                     changed_results.append(result)
@@ -494,3 +474,4 @@ class Command(BaseCommand):
             ExamResult.objects.bulk_create(new_results, batch_size=500)
         if changed_results:
             ExamResult.objects.bulk_update(changed_results, ["score", "max_score"], batch_size=500)
+        return requested_course_codes

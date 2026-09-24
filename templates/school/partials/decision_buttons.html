@@ -1,0 +1,12 @@
+<div class="inline-actions">
+  <form method="post" action="{{ review_url }}">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="approve">
+    <button class="button compact" type="submit">Approve</button>
+  </form>
+  <form method="post" action="{{ review_url }}">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="reject">
+    <button class="button compact danger" type="submit">Reject</button>
+  </form>
+</div>

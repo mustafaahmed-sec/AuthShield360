@@ -2,17 +2,21 @@ from django.contrib import admin
 from django.urls import path
 
 from accounts.views import BaselineLoginView, BaselineLogoutView, registration_status, signup
-from school.management_views import (
+from school.admin_views import (
     admin_management,
     change_account_access,
     delete_school_account,
-    edit_assigned_student,
-    request_enrollment_change,
     review_account_request,
     review_enrollment_request,
+)
+from school.teacher_views import (
+    create_assignment,
+    create_exam_result,
+    edit_assigned_student,
+    request_enrollment_change,
     teacher_students,
 )
-from school.views import create_assignment, create_exam_result, dashboard, home
+from school.views import dashboard, home
 
 
 admin.site.site_header = "AuthShield 360 administration"

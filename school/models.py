@@ -3,6 +3,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 
+from accounts.models import User
+
 
 class StudentRecord(models.Model):
     class Gender(models.TextChoices):
@@ -17,7 +19,7 @@ class StudentRecord(models.Model):
     gender = models.CharField(max_length=16, choices=Gender.choices, blank=True, default="")
 
     def clean(self):
-        if self.student_id and self.student.role != "student":
+        if self.student_id and self.student.role != User.Role.STUDENT:
             raise ValidationError({"student": "Student records require a Student account."})
 
     def __str__(self):
@@ -36,7 +38,7 @@ class Course(models.Model):
     )
 
     def clean(self):
-        if self.teacher_id and self.teacher.role != "teacher":
+        if self.teacher_id and self.teacher.role != User.Role.TEACHER:
             raise ValidationError({"teacher": "Courses require a Teacher account."})
 
     def __str__(self):
@@ -130,7 +132,7 @@ class Enrollment(models.Model):
         constraints = [models.UniqueConstraint(fields=["student", "course"], name="unique_student_course")]
 
     def clean(self):
-        if self.student_id and self.student.role != "student":
+        if self.student_id and self.student.role != User.Role.STUDENT:
             raise ValidationError({"student": "Enrollments require a Student account."})
 
     def __str__(self):
@@ -156,7 +158,7 @@ class ExamResult(models.Model):
 
     def clean(self):
         errors = {}
-        if self.student_id and self.student.role != "student":
+        if self.student_id and self.student.role != User.Role.STUDENT:
             errors["student"] = "Exam results require a Student account."
         if self.student_id and self.course_id and not Enrollment.objects.filter(student_id=self.student_id, course_id=self.course_id).exists():
             errors["course"] = "The student must be enrolled in this course."

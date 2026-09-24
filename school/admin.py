@@ -48,6 +48,9 @@ class PortalAuditEventAdmin(admin.ModelAdmin):
     search_fields = ("actor_name", "actor_email", "target_name", "description")
     readonly_fields = tuple(field.name for field in PortalAuditEvent._meta.fields)
 
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_authenticated and request.user.is_portal_admin
+
     def has_add_permission(self, request):
         return False
 

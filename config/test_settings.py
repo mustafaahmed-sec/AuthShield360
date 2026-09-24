@@ -8,6 +8,10 @@ from .settings import *  # noqa: F403
 
 DEBUG = True
 ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1", "authshield360.vercel.app"]
+SECURE_SSL_REDIRECT = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
+SECURE_PROXY_SSL_HEADER = None
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",

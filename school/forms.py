@@ -31,6 +31,8 @@ class TeacherExamResultForm(forms.ModelForm):
         self.fields["course"].queryset = teacher_courses.order_by("code")
         self.fields["student"].queryset = User.objects.filter(
             role=User.Role.STUDENT,
+            is_active=True,
+            approval_status=User.ApprovalStatus.APPROVED,
             enrollments__course__in=teacher_courses,
         ).distinct().order_by("full_name")
 
@@ -57,22 +59,23 @@ class TeacherStudentRecordForm(forms.ModelForm):
 
     def __init__(self, *args, teacher, student, **kwargs):
         super().__init__(*args, **kwargs)
-        grades = (
-            StudentRecord.objects.filter(student__enrollments__course__teacher=teacher)
-            .values_list("grade", flat=True)
-            .distinct()
-            .order_by("grade")
-        )
+        grades = ["Kindergarten", *(f"Grade {grade}" for grade in range(1, 13))]
+        if student.student_record.grade not in grades:
+            grades.append(student.student_record.grade)
         self.fields["grade"].widget = forms.Select(
-            choices=[("", "Select grade")] + [(grade, grade) for grade in grades]
-            + ([(student.student_record.grade, student.student_record.grade)] if student.student_record.grade not in grades else [])
+            choices=[("", "Select grade"), *((grade, grade) for grade in grades)]
         )
 
 
 class EnrollmentChangeRequestForm(forms.ModelForm):
+    student_email = forms.EmailField(
+        label="Student email",
+        help_text="Enter the fictional school email of the student to add or remove.",
+    )
+
     class Meta:
         model = EnrollmentChangeRequest
-        fields = ("course", "action", "student", "reason")
+        fields = ("course", "action", "student_email", "reason")
         widgets = {"reason": forms.Textarea(attrs={"rows": 3, "maxlength": 500})}
 
     def __init__(self, *args, teacher, **kwargs):
@@ -80,27 +83,21 @@ class EnrollmentChangeRequestForm(forms.ModelForm):
         self.teacher = teacher
         courses = Course.objects.filter(teacher=teacher, teacher__is_active=True).order_by("code")
         self.fields["course"].queryset = courses
-        course_id = self.data.get("course") or self.initial.get("course")
-        action = self.data.get("action") or self.initial.get("action")
-        students = User.objects.filter(
-            role=User.Role.STUDENT,
-            is_active=True,
-            student_record__isnull=False,
-        )
-        if course_id:
-            if action == EnrollmentChangeRequest.Action.REMOVE:
-                students = students.filter(enrollments__course_id=course_id)
-            elif action == EnrollmentChangeRequest.Action.ADD:
-                students = students.exclude(enrollments__course_id=course_id)
-        else:
-            students = students.filter(enrollments__course__in=courses)
-        self.fields["student"].queryset = students.distinct().order_by("full_name")
 
     def clean(self):
         cleaned = super().clean()
         course = cleaned.get("course")
-        student = cleaned.get("student")
+        email = cleaned.get("student_email", "").strip().lower()
         action = cleaned.get("action")
+        student = User.objects.filter(
+            email__iexact=email,
+            role=User.Role.STUDENT,
+            is_active=True,
+            approval_status=User.ApprovalStatus.APPROVED,
+            student_record__isnull=False,
+        ).first() if email else None
+        if email and not student:
+            self.add_error("student_email", "Enter an active Student account's email address.")
         if course and course.teacher_id != self.teacher.pk:
             raise ValidationError("Choose one of your assigned courses.")
         if course and student and action:
@@ -116,4 +113,5 @@ class EnrollmentChangeRequestForm(forms.ModelForm):
                 status=EnrollmentChangeRequest.Status.PENDING,
             ).exists():
                 raise ValidationError("A matching request is already waiting for administrator review.")
+        cleaned["student"] = student
         return cleaned

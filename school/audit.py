@@ -1,12 +1,16 @@
 """Small immutable event records for account and student-record changes."""
 
+import logging
+
 from .models import PortalAuditEvent
+
+logger = logging.getLogger("authshield.audit")
 
 
 def record_event(actor, action, description, target_name=""):
     if not actor or not actor.is_authenticated:
         return None
-    return PortalAuditEvent.objects.create(
+    event = PortalAuditEvent.objects.create(
         actor=actor,
         actor_name=actor.full_name,
         actor_email=actor.email,
@@ -15,13 +19,15 @@ def record_event(actor, action, description, target_name=""):
         target_name=target_name,
         description=description[:300],
     )
+    logger.info("event=%s actor_id=%s event_id=%s", action, actor.pk, event.pk)
+    return event
 
 
 def record_auth_event(action, email="", actor=None, description=""):
     """Record an authentication event, including attempts without an actor."""
     if actor and actor.is_authenticated:
         return record_event(actor, action, description or action.replace("_", " "), target_name=email)
-    return PortalAuditEvent.objects.create(
+    event = PortalAuditEvent.objects.create(
         actor=None,
         actor_name="Unauthenticated user",
         actor_email=(email or "unknown@example.test")[:254],
@@ -30,6 +36,8 @@ def record_auth_event(action, email="", actor=None, description=""):
         target_name="",
         description=(description or action.replace("_", " "))[:300],
     )
+    logger.info("event=%s actor_id=anonymous event_id=%s", action, event.pk)
+    return event
 
 
 def record_role_denial(actor, resource):

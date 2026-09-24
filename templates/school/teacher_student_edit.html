@@ -1,8 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Edit student record | AuthShield 360{% endblock %}
 {% block content %}
-  <div class="auth-layout edit-student-layout"><section class="form-card"><div class="eyebrow">Assigned student record</div><h1>Edit {{ student.full_name }}</h1><p class="muted">You may update the displayed name and school details. Account email, access, and class enrollment are controlled by an administrator.</p>
-    {% if name_form.non_field_errors or record_form.non_field_errors %}<div class="form-error" role="alert">{{ name_form.non_field_errors }}{{ record_form.non_field_errors }}</div>{% endif %}
-    <form method="post" novalidate>{% csrf_token %}{% for field in name_form %}<div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.errors %}<div class="field-error" role="alert">{{ field.errors }}</div>{% endif %}</div>{% endfor %}{% for field in record_form %}<div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.errors %}<div class="field-error" role="alert">{{ field.errors }}</div>{% endif %}</div>{% endfor %}<div class="actions"><button class="button" type="submit">Save recorded changes</button><a class="button secondary" href="{% url 'teacher_students' %}">Cancel</a></div></form>
-  </section><aside class="side-card"><span class="eyebrow">Change history</span><h2>Changes are recorded</h2><p>Saved edits appear in your activity history and the administrator’s activity log. Ask an administrator to change an email, sign-in status, or class enrollment.</p></aside></div>
+  <div class="auth-layout edit-student-layout">
+    <section class="form-card">
+      <div class="eyebrow">Assigned student record</div>
+      <h1>Edit {{ student.full_name }}</h1>
+      <p class="muted">You may update the displayed name and school details. Account email, access, and class enrollment are controlled by an administrator.</p>
+      {% if name_form.non_field_errors or record_form.non_field_errors %}
+        <div class="form-error" role="alert">{{ name_form.non_field_errors }}{{ record_form.non_field_errors }}</div>
+      {% endif %}
+      <form method="post" novalidate>
+        {% csrf_token %}
+        {% for field in name_form %}{% include "school/partials/form_field.html" %}{% endfor %}
+        {% for field in record_form %}{% include "school/partials/form_field.html" %}{% endfor %}
+        <div class="actions">
+          <button class="button" type="submit">Save recorded changes</button>
+          <a class="button secondary" href="{% url 'teacher_students' %}">Cancel</a>
+        </div>
+      </form>
+    </section>
+    <aside class="side-card">
+      <span class="eyebrow">Change history</span>
+      <h2>Changes are recorded</h2>
+      <p>Saved edits appear in your activity history and the administrator’s activity log. Ask an administrator to change an email, sign-in status, or class enrollment.</p>
+    </aside>
+  </div>
 {% endblock %}

@@ -68,5 +68,25 @@ class User(AbstractUser):
             self.email = self.email.strip().lower()
         super().save(*args, **kwargs)
 
+    @property
+    def is_portal_admin(self):
+        return self.is_active and self.role == self.Role.ADMIN and self.is_staff and self.is_superuser
+
+    @property
+    def is_portal_teacher(self):
+        return (
+            self.is_active
+            and self.role == self.Role.TEACHER
+            and self.approval_status == self.ApprovalStatus.APPROVED
+        )
+
+    @property
+    def is_portal_student(self):
+        return (
+            self.is_active
+            and self.role == self.Role.STUDENT
+            and self.approval_status == self.ApprovalStatus.APPROVED
+        )
+
     def __str__(self):
         return self.full_name or self.email

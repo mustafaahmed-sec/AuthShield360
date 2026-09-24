@@ -11,7 +11,7 @@
       {% elif result == 'approved' %}
         <div class="status-banner status-approved" role="status"><strong>Request approved</strong><span>Your account is ready. You can now <a href="{% url 'login' %}">sign in</a>.</span></div>
       {% elif result == 'not_approved' %}
-        <div class="status-banner status-pending" role="status"><strong>Access is not available</strong><span>This request was not approved or the account has been deactivated. Contact the portal administrator.</span></div>
+        <div class="status-banner status-pending" role="status"><strong>Access is not available</strong><span>A rejected applicant can send a new request using the same email and password. For a deactivated account, contact the portal administrator.</span></div>
       {% endif %}
       {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
       <form method="post" action="{% url 'registration_status' %}">

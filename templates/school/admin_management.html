@@ -4,34 +4,161 @@
   <div class="eyebrow">Administrator controls</div>
   <h1>Accounts and requests</h1>
   <p class="intro">Approve fictional Student and Teacher accounts, manage access, and review class roster requests.</p>
-  <div class="actions"><a class="button secondary" href="{% url 'dashboard' %}">Back to dashboard</a><a class="button secondary" href="{% url 'admin:index' %}">School data administration</a></div>
+  <div class="actions">
+    <a class="button secondary" href="{% url 'dashboard' %}">Back to dashboard</a>
+    <a class="button secondary" href="{% url 'admin:index' %}">School data administration</a>
+  </div>
 
   <section class="panel management-section" aria-labelledby="pending-accounts-title">
-    <h2 id="pending-accounts-title">New account requests <span class="count-chip">{{ pending_accounts|length }}</span></h2>
-    {% if pending_accounts %}<div class="table-wrap"><table><thead><tr><th>Name</th><th>Request type</th><th>Email</th><th>Submitted</th><th>Decision</th></tr></thead><tbody>
-      {% for account in pending_accounts %}<tr><td>{{ account.full_name }}</td><td>{{ account.get_role_display }}</td><td>{{ account.email }}</td><td>{{ account.date_joined|date:"j M Y, H:i" }}</td><td><div class="inline-actions"><form method="post" action="{% url 'review_account_request' account.pk %}">{% csrf_token %}<input type="hidden" name="action" value="approve"><button class="button compact" type="submit">Approve</button></form><form method="post" action="{% url 'review_account_request' account.pk %}">{% csrf_token %}<input type="hidden" name="action" value="reject"><button class="button compact danger" type="submit">Reject</button></form></div></td></tr>{% endfor %}
-    </tbody></table></div>{% else %}<p class="empty">No account requests are waiting for review.</p>{% endif %}
+    <h2 id="pending-accounts-title">New account requests <span class="count-chip">{{ pending_accounts.paginator.count }}</span></h2>
+    {% if pending_accounts %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Request type</th><th>Email</th><th>Submitted</th><th>Decision</th></tr></thead>
+          <tbody>
+            {% for account in pending_accounts %}
+              <tr>
+                <td>{{ account.full_name }}</td>
+                <td>{{ account.get_role_display }}</td>
+                <td>{{ account.email }}</td>
+                <td>{{ account.date_joined|date:"j M Y, H:i" }}</td>
+                <td>
+                  {% url 'review_account_request' account.pk as review_url %}
+                  {% include "school/partials/decision_buttons.html" with review_url=review_url %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% include "school/partials/pagination.html" with page_obj=pending_accounts page_url="?pending_page=" label="Account request pages" %}
+    {% else %}
+      <p class="empty">No account requests are waiting for review.</p>
+    {% endif %}
   </section>
 
   <section class="panel management-section" aria-labelledby="roster-requests-title">
-    <h2 id="roster-requests-title">Teacher roster requests <span class="count-chip">{{ pending_changes|length }}</span></h2>
-    {% if pending_changes %}<div class="table-wrap"><table><thead><tr><th>Requested by</th><th>Action</th><th>Student</th><th>Course</th><th>Reason</th><th>Decision</th></tr></thead><tbody>
-      {% for change in pending_changes %}<tr><td>{{ change.requester_name }}</td><td>{{ change.get_action_display }}</td><td>{{ change.student_name }}</td><td>{{ change.course.code }}</td><td>{{ change.reason }}</td><td><div class="inline-actions"><form method="post" action="{% url 'review_enrollment_request' change.pk %}">{% csrf_token %}<input type="hidden" name="action" value="approve"><button class="button compact" type="submit">Approve</button></form><form method="post" action="{% url 'review_enrollment_request' change.pk %}">{% csrf_token %}<input type="hidden" name="action" value="reject"><button class="button compact danger" type="submit">Reject</button></form></div></td></tr>{% endfor %}
-    </tbody></table></div>{% else %}<p class="empty">No class roster requests are waiting for review.</p>{% endif %}
+    <h2 id="roster-requests-title">Teacher roster requests <span class="count-chip">{{ pending_changes.paginator.count }}</span></h2>
+    {% if pending_changes %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Requested by</th><th>Action</th><th>Student</th><th>Course</th><th>Reason</th><th>Decision</th></tr></thead>
+          <tbody>
+            {% for change in pending_changes %}
+              <tr>
+                <td>{{ change.requester_name }}</td>
+                <td>{{ change.get_action_display }}</td>
+                <td>{{ change.student_name }}</td>
+                <td>{{ change.course.code }}</td>
+                <td>{{ change.reason }}</td>
+                <td>
+                  {% url 'review_enrollment_request' change.pk as review_url %}
+                  {% include "school/partials/decision_buttons.html" with review_url=review_url %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% include "school/partials/pagination.html" with page_obj=pending_changes page_url="?change_page=" label="Roster request pages" %}
+    {% else %}
+      <p class="empty">No class roster requests are waiting for review.</p>
+    {% endif %}
   </section>
 
   <section class="panel management-section" aria-labelledby="account-list-title">
-    <div class="panel-heading"><h2 id="account-list-title">Student and Teacher accounts</h2><span class="muted">{{ student_count }} students · {{ teacher_count }} teachers</span></div>
-    <form method="get" class="filter-bar" role="search"><label>Find account <input type="search" name="q" value="{{ search }}" placeholder="Name or email"></label><label>Role <select name="role"><option value="">All roles</option><option value="student"{% if role_filter == 'student' %} selected{% endif %}>Student</option><option value="teacher"{% if role_filter == 'teacher' %} selected{% endif %}>Teacher</option></select></label><label>Access <select name="status"><option value="">All access states</option><option value="active"{% if status_filter == 'active' %} selected{% endif %}>Active</option><option value="inactive"{% if status_filter == 'inactive' %} selected{% endif %}>Inactive</option><option value="pending"{% if status_filter == 'pending' %} selected{% endif %}>Pending</option></select></label><button class="button compact" type="submit">Apply</button><a class="button compact secondary" href="{% url 'admin_management' %}">Clear</a></form>
-    {% if accounts %}<div class="table-wrap"><table><thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Grade</th><th>Approval</th><th>Access</th><th>Actions</th></tr></thead><tbody>
-      {% for account in accounts %}<tr><td>{{ account.full_name }}</td><td>{{ account.get_role_display }}</td><td>{{ account.email }}</td><td>{% if account.role == 'student' and account.student_record %}{{ account.student_record.grade }}{% else %}<span class="muted">—</span>{% endif %}</td><td>{{ account.get_approval_status_display }}</td><td>{% if account.is_active %}Active{% else %}Inactive{% endif %}</td><td><div class="inline-actions">
-        {% if account.approval_status == 'approved' %}<form method="post" action="{% url 'change_account_access' account.pk %}">{% csrf_token %}<input type="hidden" name="action" value="{% if account.is_active %}deactivate{% else %}reactivate{% endif %}"><button class="button compact secondary" type="submit">{% if account.is_active %}Deactivate{% else %}Reactivate{% endif %}</button></form>{% endif %}
-        <form method="post" action="{% url 'delete_school_account' account.pk %}" onsubmit="return confirm('Permanently delete this fictional school account and linked records?');">{% csrf_token %}<button class="button compact danger" type="submit">Delete</button></form>
-      </div></td></tr>{% endfor %}
-    </tbody></table></div>
-    {% if accounts.has_other_pages %}<nav class="pagination" aria-label="Account pages">{% if accounts.has_previous %}<a class="button compact secondary" href="?q={{ search|urlencode }}&role={{ role_filter|urlencode }}&status={{ status_filter|urlencode }}&page={{ accounts.previous_page_number }}">Previous</a>{% endif %}<span>Page {{ accounts.number }} of {{ accounts.paginator.num_pages }}</span>{% if accounts.has_next %}<a class="button compact secondary" href="?q={{ search|urlencode }}&role={{ role_filter|urlencode }}&status={{ status_filter|urlencode }}&page={{ accounts.next_page_number }}">Next</a>{% endif %}</nav>{% endif %}
-    {% else %}<p class="empty">No accounts match those filters.</p>{% endif %}
+    <div class="panel-heading">
+      <h2 id="account-list-title">Student and Teacher accounts</h2>
+      <span class="muted">{{ student_count }} students · {{ teacher_count }} teachers</span>
+    </div>
+    <form method="get" class="filter-bar" role="search">
+      <label>Find account
+        <input type="search" name="q" value="{{ search }}" placeholder="Name or email">
+      </label>
+      <label>Role
+        <select name="role">
+          <option value="">All roles</option>
+          <option value="student"{% if role_filter == 'student' %} selected{% endif %}>Student</option>
+          <option value="teacher"{% if role_filter == 'teacher' %} selected{% endif %}>Teacher</option>
+        </select>
+      </label>
+      <label>Access
+        <select name="status">
+          <option value="">All access states</option>
+          <option value="active"{% if status_filter == 'active' %} selected{% endif %}>Active</option>
+          <option value="inactive"{% if status_filter == 'inactive' %} selected{% endif %}>Inactive</option>
+          <option value="pending"{% if status_filter == 'pending' %} selected{% endif %}>Pending</option>
+          <option value="rejected"{% if status_filter == 'rejected' %} selected{% endif %}>Rejected</option>
+        </select>
+      </label>
+      <button class="button compact" type="submit">Apply</button>
+      <a class="button compact secondary" href="{% url 'admin_management' %}">Clear</a>
+    </form>
+    {% if accounts %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Grade</th><th>Approval</th><th>Access</th><th>Actions</th></tr></thead>
+          <tbody>
+            {% for account in accounts %}
+              <tr>
+                <td>{{ account.full_name }}</td>
+                <td>{{ account.get_role_display }}</td>
+                <td>{{ account.email }}</td>
+                <td>
+                  {% if account.role == 'student' and account.student_record %}
+                    {{ account.student_record.grade }}
+                  {% else %}<span class="muted">—</span>{% endif %}
+                </td>
+                <td>{{ account.get_approval_status_display }}</td>
+                <td>{% if account.is_active %}Active{% else %}Inactive{% endif %}</td>
+                <td>
+                  <div class="inline-actions">
+                    {% if account.approval_status == 'approved' %}
+                      <form method="post" action="{% url 'change_account_access' account.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="{% if account.is_active %}deactivate{% else %}reactivate{% endif %}">
+                        <button class="button compact secondary" type="submit">
+                          {% if account.is_active %}Deactivate{% else %}Reactivate{% endif %}
+                        </button>
+                      </form>
+                    {% elif account.approval_status == 'rejected' %}
+                      <form method="post" action="{% url 'review_account_request' account.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="approve">
+                        <button class="button compact secondary" type="submit">Reapprove</button>
+                      </form>
+                    {% endif %}
+                    <form method="post" action="{% url 'delete_school_account' account.pk %}" onsubmit="return confirm('Permanently delete this fictional school account and linked records?');">
+                      {% csrf_token %}
+                      <button class="button compact danger" type="submit">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% include "school/partials/pagination.html" with page_obj=accounts page_url=account_page_url label="Account pages" %}
+    {% else %}
+      <p class="empty">No accounts match those filters.</p>
+    {% endif %}
   </section>
 
-  <section class="panel management-section"><h2>Recent security and account activity</h2>{% if recent_events %}<ul class="item-list">{% for event in recent_events %}<li><strong>{{ event.action|cut:"_" }}</strong><span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.actor_name }} ({{ event.actor_role }}) · {{ event.target_name }}</span><p>{{ event.description }}</p></li>{% endfor %}</ul>{% else %}<p class="empty">No activity has been recorded yet.</p>{% endif %}</section>
+  <section class="panel management-section">
+    <h2>Recent security and account activity</h2>
+    {% if recent_events %}
+      <ul class="item-list">
+        {% for event in recent_events %}
+          <li>
+            <strong>{{ event.action|cut:"_" }}</strong>
+            <span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.actor_name }} ({{ event.actor_role }}) · {{ event.target_name }}</span>
+            <p>{{ event.description }}</p>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No activity has been recorded yet.</p>
+    {% endif %}
+  </section>
 {% endblock %}

@@ -1,14 +1,85 @@
 {% extends "base.html" %}
 {% block title %}Teacher dashboard | AuthShield 360{% endblock %}
 {% block content %}
-  <div class="eyebrow">Teacher portal</div><h1>Welcome, {{ request.user.full_name }}</h1>
+  <div class="eyebrow">Teacher portal</div>
+  <h1>Welcome, {{ request.user.full_name }}</h1>
   <p class="intro">Only classes assigned to you and their related records appear here.</p>
-  <div class="actions"><a class="button" href="{% url 'teacher_students' %}">Search students</a><a class="button secondary" href="{% url 'request_enrollment_change' %}">Request a class roster change</a><a class="button secondary" href="{% url 'create_assignment' %}">Create assignment</a><a class="button secondary" href="{% url 'create_exam_result' %}">Record exam result</a></div>
+  <div class="actions">
+    <a class="button" href="{% url 'teacher_students' %}">Search students</a>
+    <a class="button secondary" href="{% url 'request_enrollment_change' %}">Request a class roster change</a>
+    <a class="button secondary" href="{% url 'create_assignment' %}">Create assignment</a>
+    <a class="button secondary" href="{% url 'create_exam_result' %}">Record exam result</a>
+  </div>
   <div class="dashboard-grid">
-    <section class="panel"><h2>My courses</h2>{% if courses %}<ul class="item-list">{% for course in courses %}<li><strong>{{ course.code }} · {{ course.title }}</strong></li>{% endfor %}</ul>{% else %}<p class="empty">No courses assigned yet.</p>{% endif %}</section>
-    <section class="panel"><div class="panel-heading"><h2>Students in my courses</h2><a href="{% url 'teacher_students' %}">Search and manage</a></div>{% if enrollments %}<ul class="item-list">{% for enrollment in enrollments %}<li><strong>{{ enrollment.student.full_name }}</strong><span>{{ enrollment.course.code }} · {{ enrollment.student.student_record.grade }}{% if enrollment.student.student_record.age %} · age {{ enrollment.student.student_record.age }}{% endif %}</span></li>{% endfor %}</ul>{% else %}<p class="empty">No students enrolled yet.</p>{% endif %}</section>
-    <section class="panel"><h2>Assignments</h2>{% if assignments %}<ul class="item-list">{% for assignment in assignments %}<li><strong>{{ assignment.title }}</strong><span>{{ assignment.course.code }} · Due {{ assignment.due_date|date:"j M Y" }}</span><p>{{ assignment.description }}</p></li>{% endfor %}</ul>{% else %}<p class="empty">No assignments yet.</p>{% endif %}</section>
-    <section class="panel"><h2>Exam results</h2>{% if results %}<ul class="item-list">{% for result in results %}<li><strong>{{ result.student.full_name }} · {{ result.exam_name }}</strong><span>{{ result.course.code }} · {{ result.score }} / {{ result.max_score }}</span></li>{% endfor %}</ul>{% else %}<p class="empty">No results posted yet.</p>{% endif %}</section>
-    <section class="panel"><h2>My recent activity</h2>{% if recent_changes %}<ul class="item-list">{% for event in recent_changes %}<li><strong>{{ event.action|cut:"_" }}</strong><span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.target_name }}</span><p>{{ event.description }}</p></li>{% endfor %}</ul>{% else %}<p class="empty">Changes you make and roster requests you submit will appear here.</p>{% endif %}</section>
+    <section class="panel">
+      <h2>My courses</h2>
+      {% if courses %}
+        <ul class="item-list">
+          {% for course in courses %}
+            <li><strong>{{ course.code }} · {{ course.title }}</strong></li>
+          {% endfor %}
+        </ul>
+      {% else %}<p class="empty">No courses assigned yet.</p>{% endif %}
+    </section>
+    <section class="panel">
+      <div class="panel-heading">
+        <h2>Students in my courses</h2>
+        <a href="{% url 'teacher_students' %}">Search and manage</a>
+      </div>
+      {% if enrollments %}
+        <ul class="item-list">
+          {% for enrollment in enrollments %}
+            <li>
+              <strong>{{ enrollment.student.full_name }}</strong>
+              <span>{{ enrollment.course.code }} · {{ enrollment.student.student_record.grade }}{% if enrollment.student.student_record.age %} · age {{ enrollment.student.student_record.age }}{% endif %}</span>
+            </li>
+          {% endfor %}
+        </ul>
+        {% include "school/partials/pagination.html" with page_obj=enrollments page_url="?students_page=" label="Student preview pages" %}
+      {% else %}<p class="empty">No students enrolled yet.</p>{% endif %}
+    </section>
+    <section class="panel">
+      <h2>Assignments</h2>
+      {% if assignments %}
+        <ul class="item-list">
+          {% for assignment in assignments %}
+            <li>
+              <strong>{{ assignment.title }}</strong>
+              <span>{{ assignment.course.code }} · Due {{ assignment.due_date|date:"j M Y" }}</span>
+              <p>{{ assignment.description }}</p>
+            </li>
+          {% endfor %}
+        </ul>
+        {% include "school/partials/pagination.html" with page_obj=assignments page_url="?assignments_page=" label="Assignment pages" %}
+      {% else %}<p class="empty">No assignments yet.</p>{% endif %}
+    </section>
+    <section class="panel">
+      <h2>Exam results</h2>
+      {% if results %}
+        <ul class="item-list">
+          {% for result in results %}
+            <li>
+              <strong>{{ result.student.full_name }} · {{ result.exam_name }}</strong>
+              <span>{{ result.course.code }} · {{ result.score }} / {{ result.max_score }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+        {% include "school/partials/pagination.html" with page_obj=results page_url="?results_page=" label="Exam result pages" %}
+      {% else %}<p class="empty">No results posted yet.</p>{% endif %}
+    </section>
+    <section class="panel">
+      <h2>My recent activity</h2>
+      {% if recent_changes %}
+        <ul class="item-list">
+          {% for event in recent_changes %}
+            <li>
+              <strong>{{ event.action|cut:"_" }}</strong>
+              <span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.target_name }}</span>
+              <p>{{ event.description }}</p>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}<p class="empty">Changes you make and roster requests you submit will appear here.</p>{% endif %}
+    </section>
   </div>
 {% endblock %}

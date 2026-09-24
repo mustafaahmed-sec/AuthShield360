@@ -74,6 +74,10 @@ button { cursor: pointer; }
 .side-card { padding: 2rem; background: #f1f7fa; }
 .messages { margin-bottom: 1.5rem; }
 .message { margin: 0; border-left: 3px solid #087c75; background: #e8f7f3; padding: .8rem 1rem; }
+.message-success { border-color: #087c48; background: #eaf7ee; color: #164f31; }
+.message-error { border-color: #a62626; background: #fff2f2; color: #7e2222; }
+.message-info { border-color: #27689b; background: #eef5fb; color: #194769; }
+.message-warning { border-color: #9b6a16; background: #fff8e9; color: #6e4b12; }
 .dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin-top: 2rem; }
 .panel { padding: 1.5rem; min-width: 0; }
 .details { display: grid; grid-template-columns: max-content 1fr; gap: .5rem 1rem; margin: 0; }

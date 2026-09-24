@@ -106,7 +106,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "Asia/Karachi"
+# The fictional demonstration school uses US Eastern time for displayed events.
+TIME_ZONE = "America/New_York"
 USE_I18N = True
 USE_TZ = True
 
@@ -127,3 +128,17 @@ AUTHSHIELD_BASELINE_LOGIN_ENABLED = (
     os.environ.get("AUTHSHIELD_BASELINE_LOGIN", "false").lower() == "true"
     and (DEBUG or AUTHSHIELD_PROTECTED_DEMO)
 )
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "portal": {"format": "%(levelname)s %(name)s %(message)s"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "portal"},
+    },
+    "loggers": {
+        "authshield": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
+}

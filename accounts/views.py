@@ -24,7 +24,7 @@ def signup(request, role="student"):
         raise PermissionDenied("Public registration is available for Student and Teacher requests only.")
     form = form_class(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        user = form.save()
+        form.save()
         messages.success(
             request,
             f"Your {role_label} access request was submitted. An administrator must approve it before you can sign in.",

@@ -26,6 +26,18 @@ class AccountSignupForm(UserCreationForm):
         }
 
     def __init__(self, *args, **kwargs):
+        data = args[0] if args else kwargs.get("data")
+        if data and not kwargs.get("instance"):
+            email = data.get("email", "").strip().lower()
+            password = data.get("password1", "")
+            existing = User.objects.filter(email__iexact=email).first() if email else None
+            if (
+                existing
+                and existing.role == self.requested_role
+                and existing.approval_status == User.ApprovalStatus.REJECTED
+                and existing.check_password(password)
+            ):
+                kwargs["instance"] = existing
         super().__init__(*args, **kwargs)
         self.fields["full_name"].required = True
         self.fields["email"].required = True
@@ -45,7 +57,7 @@ class AccountSignupForm(UserCreationForm):
 
     def clean_email(self):
         email = self.cleaned_data["email"].strip().lower()
-        if User.objects.filter(email__iexact=email).exists():
+        if User.objects.filter(email__iexact=email).exclude(pk=self.instance.pk).exists():
             raise forms.ValidationError("We could not submit this request. Check your details or contact the administrator.")
         return email
 
@@ -56,6 +68,8 @@ class AccountSignupForm(UserCreationForm):
         user.is_superuser = False
         user.is_active = False
         user.approval_status = User.ApprovalStatus.PENDING
+        user.reviewed_at = None
+        user.reviewed_by = None
         if commit:
             user.save()
         return user

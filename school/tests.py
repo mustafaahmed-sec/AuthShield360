@@ -18,8 +18,8 @@ class AccountApprovalFlowTests(TestCase):
                 "full_name": f"Test {role.title()}",
                 "email": f"{role}@example.test",
                 "phone_number": "+1 555 010 0100",
-                "password1": "FictionalDemo!2468",
-                "password2": "FictionalDemo!2468",
+                "password1": "FictionalDemo!2468-Strong",
+                "password2": "FictionalDemo!2468-Strong",
             })
             self.assertRedirects(response, reverse("registration_status"))
             user = User.objects.get(email=f"{role}@example.test")
@@ -33,6 +33,26 @@ class AccountApprovalFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Accounts and requests")
         self.assertContains(response, "New account requests")
+
+    def test_pending_accounts_are_paginated(self):
+        for number in range(21):
+            User.objects.create_user(
+                f"applicant{number}@example.test", "FictionalDemo!2468",
+                full_name=f"Applicant {number}", role=User.Role.STUDENT,
+                approval_status=User.ApprovalStatus.PENDING, is_active=False,
+            )
+        self.client.force_login(self.admin)
+
+        first = self.client.get(reverse("admin_management"))
+        second = self.client.get(reverse("admin_management") + "?pending_page=2")
+
+        self.assertEqual(len(first.context["pending_accounts"]), 20)
+        self.assertEqual(len(second.context["pending_accounts"]), 1)
+
+    def test_administrator_can_view_but_not_edit_audit_events(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("admin:school_portalauditevent_changelist"))
+        self.assertEqual(response.status_code, 200)
 
     @override_settings(AUTHSHIELD_BASELINE_LOGIN_ENABLED=True)
     def test_pending_account_cannot_sign_in_and_admin_approval_enables_it(self):
@@ -91,20 +111,21 @@ class TeacherRosterPermissionTests(TestCase):
         self.assertEqual(response.status_code, 404)
         response = self.client.post(reverse("edit_assigned_student", args=[self.student.pk]), {
             "name-full_name": "Updated Student",
-            "record-grade": "Grade 8",
+            "record-grade": "Grade 9",
             "record-age": "13",
             "record-gender": "not_specified",
         })
         self.assertRedirects(response, reverse("teacher_students"))
         self.student.refresh_from_db()
         self.assertEqual(self.student.full_name, "Updated Student")
+        self.assertEqual(self.student.student_record.grade, "Grade 9")
 
     def test_teacher_must_request_roster_change_and_admin_approval_applies_it(self):
         self.client.force_login(self.teacher)
         response = self.client.post(reverse("request_enrollment_change"), {
             "course": self.course.pk,
             "action": EnrollmentChangeRequest.Action.REMOVE,
-            "student": self.student.pk,
+            "student_email": self.student.email,
             "reason": "Student transferred to another section.",
         })
         self.assertRedirects(response, reverse("teacher_students"))
@@ -145,6 +166,24 @@ class TeacherRosterPermissionTests(TestCase):
         self.assertEqual(result_response.status_code, 200)
         self.assertFalse(ExamResult.objects.filter(exam_name="Unauthorized result").exists())
 
+    def test_teacher_can_request_an_existing_student_from_another_class(self):
+        self.client.force_login(self.teacher)
+        response = self.client.post(reverse("request_enrollment_change"), {
+            "course": self.course.pk,
+            "action": EnrollmentChangeRequest.Action.ADD,
+            "student_email": self.other_student.email,
+            "reason": "Student transferred into this section.",
+        })
+
+        self.assertRedirects(response, reverse("teacher_students"))
+        self.assertTrue(EnrollmentChangeRequest.objects.filter(
+            requester=self.teacher,
+            student=self.other_student,
+            course=self.course,
+            action=EnrollmentChangeRequest.Action.ADD,
+        ).exists())
+        self.assertFalse(Enrollment.objects.filter(student=self.other_student, course=self.course).exists())
+
     def test_teacher_cannot_open_administrator_management(self):
         self.client.force_login(self.teacher)
         response = self.client.get(reverse("admin_management"))
@@ -154,6 +193,24 @@ class TeacherRosterPermissionTests(TestCase):
             action="role_access_denied",
             target_name="administrator management",
         ).exists())
+
+    def test_teacher_dashboard_students_are_paginated(self):
+        for number in range(20):
+            student = User.objects.create_user(
+                f"extra{number}@example.test", "FictionalDemo!2468",
+                full_name=f"Extra Student {number}", role=User.Role.STUDENT,
+            )
+            StudentRecord.objects.create(
+                student=student, admission_number=f"EX-{number:04}", grade="Grade 8"
+            )
+            Enrollment.objects.create(student=student, course=self.course)
+        self.client.force_login(self.teacher)
+
+        first = self.client.get(reverse("dashboard"))
+        second = self.client.get(reverse("dashboard") + "?students_page=2")
+
+        self.assertEqual(len(first.context["enrollments"]), 20)
+        self.assertEqual(len(second.context["enrollments"]), 1)
 
 
 class StudentRoleBoundaryTests(TestCase):
