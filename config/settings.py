@@ -39,6 +39,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "config.middleware.ProtectedDemoRedirectMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -120,7 +121,8 @@ LOGOUT_REDIRECT_URL = "home"
 # Password-only access remains a controlled lab stage. For a Vercel demo it
 # requires a separately configured protected deployment; ordinary users never
 # choose the authentication mode from the portal.
+AUTHSHIELD_PROTECTED_DEMO = os.environ.get("AUTHSHIELD_PROTECTED_DEMO", "false").lower() == "true"
 AUTHSHIELD_BASELINE_LOGIN_ENABLED = (
     os.environ.get("AUTHSHIELD_BASELINE_LOGIN", "false").lower() == "true"
-    and (DEBUG or os.environ.get("AUTHSHIELD_PROTECTED_DEMO", "false").lower() == "true")
+    and (DEBUG or AUTHSHIELD_PROTECTED_DEMO)
 )
