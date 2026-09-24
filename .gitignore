@@ -15,3 +15,4 @@ media/
 .vscode/
 .agents/
 .vercel-deploy-credentials.txt
+skills-lock.json
