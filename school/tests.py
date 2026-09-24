@@ -119,6 +119,25 @@ class TeacherRosterPermissionTests(TestCase):
         self.student.refresh_from_db()
         self.assertEqual(self.student.full_name, "Updated Student")
         self.assertEqual(self.student.student_record.grade, "Grade 9")
+        event = PortalAuditEvent.objects.get(
+            actor=self.teacher,
+            action="student_school_record_updated",
+            target_name="Updated Student",
+        )
+        self.assertIn("name, grade, age, gender", event.description)
+
+    def test_teacher_edit_rejects_grade_outside_offered_choices(self):
+        self.client.force_login(self.teacher)
+        response = self.client.post(reverse("edit_assigned_student", args=[self.student.pk]), {
+            "name-full_name": self.student.full_name,
+            "record-grade": "Grade 99",
+            "record-age": "13",
+            "record-gender": "not_specified",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.student.student_record.refresh_from_db()
+        self.assertEqual(self.student.student_record.grade, "Grade 8")
+
 
     def test_teacher_must_request_roster_change_and_admin_approval_applies_it(self):
         self.client.force_login(self.teacher)
@@ -183,6 +202,17 @@ class TeacherRosterPermissionTests(TestCase):
             action=EnrollmentChangeRequest.Action.ADD,
         ).exists())
         self.assertFalse(Enrollment.objects.filter(student=self.other_student, course=self.course).exists())
+
+    def test_roster_request_with_non_numeric_course_is_rejected_without_error(self):
+        self.client.force_login(self.teacher)
+        response = self.client.post(reverse("request_enrollment_change"), {
+            "course": "not-a-number",
+            "action": EnrollmentChangeRequest.Action.ADD,
+            "student_email": self.other_student.email,
+            "reason": "Invalid course input must not create a request.",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(EnrollmentChangeRequest.objects.exists())
 
     def test_teacher_cannot_open_administrator_management(self):
         self.client.force_login(self.teacher)
@@ -291,3 +321,110 @@ class DjangoAdminRoleBoundaryTests(TestCase):
     def test_django_admin_login_uses_portal_login(self):
         response = self.client.get(reverse("admin:login"))
         self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
+
+
+class PortalNavigationAndFeedbackTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            "admin@example.test", "admin-password", full_name="Portal Administrator",
+        )
+        self.teacher = User.objects.create_user(
+            "teacher@example.test", "teacher-password", full_name="Portal Teacher", role=User.Role.TEACHER,
+        )
+        self.student = User.objects.create_user(
+            "student@example.test", "student-password", full_name="Portal Student", role=User.Role.STUDENT,
+        )
+
+    def test_guest_navigation_has_specific_request_and_sign_in_links(self):
+        response = self.client.get(reverse("home"))
+        self.assertContains(response, "Sign in")
+        self.assertContains(response, "Enroll as student")
+        self.assertContains(response, "Join as teacher")
+        self.assertContains(response, "Check request status")
+        self.assertNotContains(response, "Security log")
+        self.assertNotContains(response, "Accounts &amp; requests")
+
+    def test_role_navigation_only_shows_each_users_relevant_destinations(self):
+        cases = (
+            (self.admin, ("Accounts &amp; requests", "Security log"), ("My students",)),
+            (self.teacher, ("My students",), ("Security log", "Accounts &amp; requests")),
+            (self.student, (), ("Security log", "Accounts &amp; requests", "My students")),
+        )
+        for user, expected, absent in cases:
+            with self.subTest(role=user.role):
+                self.client.force_login(user)
+                response = self.client.get(reverse("dashboard"))
+                self.assertEqual(response.status_code, 200)
+                for label in expected:
+                    self.assertContains(response, label)
+                for label in absent:
+                    self.assertNotContains(response, label)
+
+    def test_identity_chip_shows_name_and_role_without_email(self):
+        self.client.force_login(self.teacher)
+        response = self.client.get(reverse("dashboard"))
+        self.assertContains(response, "Portal Teacher · Teacher")
+        self.assertNotContains(response, self.teacher.email)
+
+    @override_settings(DEBUG=True, AUTHSHIELD_PROTECTED_DEMO=False)
+    def test_authentication_mode_badge_only_appears_in_local_or_protected_demo(self):
+        response = self.client.get(reverse("home"))
+        self.assertContains(response, "Password-only baseline")
+        with override_settings(DEBUG=False, AUTHSHIELD_PROTECTED_DEMO=True):
+            response = self.client.get(reverse("home"))
+        self.assertContains(response, "Password-only baseline")
+        with override_settings(DEBUG=False, AUTHSHIELD_PROTECTED_DEMO=False):
+            response = self.client.get(reverse("home"))
+        self.assertNotContains(response, "Password-only baseline")
+
+    def test_messages_have_distinct_label_and_accessibility_role(self):
+        self.client.force_login(self.admin)
+        applicant = User.objects.create_user(
+            "pending@example.test", "pending-password", full_name="Pending Applicant",
+            role=User.Role.STUDENT, approval_status=User.ApprovalStatus.PENDING, is_active=False,
+        )
+        error = self.client.post(
+            reverse("review_account_request", args=[applicant.pk]), {"action": "bad"}, follow=True
+        )
+        self.assertRedirects(error, reverse("admin_management"))
+        self.assertContains(error, "message-error")
+        self.assertContains(error, "Error:")
+        self.assertContains(error, 'role="alert"')
+
+        teacher_request = User.objects.create_user(
+            "teacher-request@example.test", "teacher-password", full_name="Teacher Request",
+            role=User.Role.TEACHER, approval_status=User.ApprovalStatus.PENDING, is_active=False,
+        )
+        success = self.client.post(
+            reverse("review_account_request", args=[teacher_request.pk]), {"action": "approve"}, follow=True
+        )
+        self.assertRedirects(success, reverse("admin_management"))
+        self.assertContains(success, "message-success")
+        self.assertContains(success, "Success:")
+        self.assertContains(success, 'role="status"')
+
+    def test_logout_confirms_session_ended_and_login_next_explains_required_sign_in(self):
+        self.client.force_login(self.student)
+        logout = self.client.post(reverse("logout"), follow=True)
+        self.assertContains(logout, "You have signed out. This session can no longer be used.")
+        login = self.client.get(reverse("login") + "?next=/dashboard/")
+        self.assertContains(login, "Please sign in to continue. Your previous session is not active.")
+
+    @override_settings(DEBUG=False)
+    def test_forbidden_and_missing_pages_use_custom_templates(self):
+        self.client.force_login(self.teacher)
+        forbidden = self.client.get(reverse("admin_management"))
+        self.assertEqual(forbidden.status_code, 403)
+        self.assertContains(
+            forbidden,
+            "You don't have permission to open this page. This attempt has been recorded.",
+            status_code=403,
+        )
+        missing = self.client.get("/definitely-not-a-portal-page/")
+        self.assertEqual(missing.status_code, 404)
+        self.assertContains(missing, "The address may be incorrect", status_code=404)
+
+    def test_auth_forms_expose_submission_feedback_for_progressive_enhancement(self):
+        self.assertContains(self.client.get(reverse("login")), 'data-busy-label="Signing in…"')
+        self.assertContains(self.client.get(reverse("student_signup")), 'data-busy-label="Submitting request…"')
+        self.assertContains(self.client.get(reverse("registration_status")), 'data-busy-label="Checking status…"')

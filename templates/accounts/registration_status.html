@@ -14,7 +14,7 @@
         <div class="status-banner status-pending" role="status"><strong>Access is not available</strong><span>A rejected applicant can send a new request using the same email and password. For a deactivated account, contact the portal administrator.</span></div>
       {% endif %}
       {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
-      <form method="post" action="{% url 'registration_status' %}">
+      <form method="post" action="{% url 'registration_status' %}" data-busy-label="Checking status…">
         {% csrf_token %}
         {% for field in form %}
           <div class="form-field{% if field.errors %} has-error{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.name == 'password' %}<div class="password-input-row">{{ field }}<button class="password-toggle" type="button" data-password-toggle aria-controls="{{ field.id_for_label }}" aria-pressed="false">Show</button></div>{% else %}{{ field }}{% endif %}{% if field.errors %}<div class="field-error" role="alert">{{ field.errors }}</div>{% endif %}</div>

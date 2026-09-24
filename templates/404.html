@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Page not found | AuthShield 360{% endblock %}
+{% block content %}
+  <section class="form-card" aria-labelledby="error-title">
+    <div class="eyebrow">Page unavailable</div>
+    <h1 id="error-title">Page not found</h1>
+    <p>The address may be incorrect, or the page may have moved.</p>
+    <a class="button" href="{% if request.user.is_authenticated %}{% url 'dashboard' %}{% else %}{% url 'home' %}{% endif %}">Return to the portal</a>
+  </section>
+{% endblock %}

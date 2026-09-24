@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Access denied | AuthShield 360{% endblock %}
+{% block content %}
+  <section class="form-card" aria-labelledby="error-title">
+    <div class="eyebrow">Request recorded</div>
+    <h1 id="error-title">Access denied</h1>
+    <p>You don't have permission to open this page. This attempt has been recorded.</p>
+    <a class="button" href="{% if request.user.is_authenticated %}{% url 'dashboard' %}{% else %}{% url 'home' %}{% endif %}">Return to the portal</a>
+  </section>
+{% endblock %}

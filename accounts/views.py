@@ -93,4 +93,5 @@ class BaselineLogoutView(LogoutView):
                 actor=request.user,
                 description="User signed out.",
             )
+            messages.success(request, "You have signed out. This session can no longer be used.")
         return super().post(request, *args, **kwargs)

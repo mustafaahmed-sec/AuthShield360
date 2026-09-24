@@ -6,8 +6,9 @@
       <div class="eyebrow">Account access</div>
       <h1 id="login-title">Portal sign-in</h1>
       <p class="muted">Approved students, teachers, and administrators sign in here with their fictional accounts.</p>
+      {% if next %}<div class="status-banner status-pending" role="status"><strong>Sign in required</strong><span>Please sign in to continue. Your previous session is not active.</span></div>{% endif %}
       {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
-      <form method="post" action="{% url 'login' %}" novalidate>
+      <form method="post" action="{% url 'login' %}" novalidate data-busy-label="Signing in…">
         {% csrf_token %}
         {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
         {% for field in form %}

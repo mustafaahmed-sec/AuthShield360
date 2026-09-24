@@ -68,6 +68,16 @@
     });
   });
 
+  document.querySelectorAll("form[data-busy-label]").forEach((form) => {
+    form.addEventListener("submit", () => {
+      const submit = form.querySelector('button[type="submit"], input[type="submit"]');
+      if (!submit || submit.disabled) return;
+      if (submit instanceof HTMLInputElement) submit.value = form.dataset.busyLabel;
+      else submit.textContent = form.dataset.busyLabel;
+      submit.disabled = true;
+    });
+  });
+
   function randomIndex(max) {
     const limit = Math.floor(0x100000000 / max) * max;
     const sample = new Uint32Array(1);

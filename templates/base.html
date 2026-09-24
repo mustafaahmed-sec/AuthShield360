@@ -5,6 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}AuthShield 360{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{% static 'img/authshield-icon.svg' %}">
   <link rel="stylesheet" href="{% static 'css/site.css' %}">
   <script src="{% static 'js/password-tools.js' %}" defer></script>
 </head>
@@ -15,17 +16,26 @@
     <nav class="site-nav{% if not request.user.is_authenticated %} guest-nav{% endif %}" aria-label="Primary navigation">
       {% if request.user.is_authenticated %}
         <a href="{% url 'dashboard' %}">Dashboard</a>
+        {% if request.user.is_portal_admin %}
+          <a href="{% url 'admin_management' %}">Accounts &amp; requests</a>
+          <a href="{% url 'admin:school_portalauditevent_changelist' %}">Security log</a>
+        {% elif request.user.is_portal_teacher %}
+          <a href="{% url 'teacher_students' %}">My students</a>
+        {% endif %}
+        <span class="review-chip identity-chip">{{ request.user.full_name }} · {{ request.user.get_role_display }}</span>
         <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="nav-button" type="submit">Sign out</button></form>
       {% else %}
-        <a href="{% url 'login' %}">Portal sign-in</a>
-        <a class="nav-signup" href="{% url 'student_signup' %}">Student sign-up</a>
-        <a class="nav-teacher" href="{% url 'teacher_signup' %}">Teacher access request</a>
+        <a class="nav-enroll" href="{% url 'student_signup' %}">Enroll as student</a>
+        <a class="nav-teacher" href="{% url 'teacher_signup' %}">Join as teacher</a>
+        <a class="nav-status" href="{% url 'registration_status' %}">Check request status</a>
+        <a class="nav-signin" href="{% url 'login' %}">Sign in</a>
       {% endif %}
     </nav>
+    {% if auth_mode_label %}<span class="environment" title="Authentication mode">{{ auth_mode_label }}</span>{% endif %}
   </header>
   <main id="main" class="main-content">
     {% if messages %}
-      <div class="messages" aria-live="polite">{% for message in messages %}<p class="message message-{{ message.tags }}">{{ message }}</p>{% endfor %}</div>
+      <div class="messages">{% for message in messages %}<p class="message message-{{ message.tags }}" role="{% if 'error' in message.tags or 'warning' in message.tags %}alert{% else %}status{% endif %}"><span aria-hidden="true">{% if 'error' in message.tags %}⚠{% elif 'warning' in message.tags %}⚠{% elif 'success' in message.tags %}✓{% else %}ℹ{% endif %}</span> <strong>{% if 'error' in message.tags %}Error:{% elif 'warning' in message.tags %}Warning:{% elif 'success' in message.tags %}Success:{% else %}Note:{% endif %}</strong> {{ message }}</p>{% endfor %}</div>
     {% endif %}
     {% block content %}{% endblock %}
   </main>

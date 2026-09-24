@@ -13,7 +13,7 @@
       <p class="muted">{% if role == 'teacher' %}Send a teacher access request. An administrator reviews it before the account can sign in.{% else %}Create a student access request. An administrator must approve it before you can sign in.{% endif %}</p>
 
       {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
-      <form method="post" action="{% if role == 'teacher' %}{% url 'teacher_signup' %}{% else %}{% url 'student_signup' %}{% endif %}">
+      <form method="post" action="{% if role == 'teacher' %}{% url 'teacher_signup' %}{% else %}{% url 'student_signup' %}{% endif %}" data-busy-label="Submitting request…">
         {% csrf_token %}
         {% for field in form %}
           <div class="form-field{% if field.errors %} has-error{% endif %}">
