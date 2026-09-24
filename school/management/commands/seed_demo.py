@@ -1,74 +1,397 @@
-"""Create only the named fictional records used in the local demonstration."""
+"""Create a balanced, repeatable fictional K–12 school roster for the demo."""
 
-from datetime import timedelta
+import json
+from datetime import date
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.utils import timezone
 
 from school.models import Assignment, Course, Enrollment, ExamResult, StudentRecord
 
 
-TEACHER_EMAIL = "mina.teacher@example.test"
+STUDENT_TARGET = 486
+TEACHER_TARGET = 32
+ADMIN_TARGET = 3
+ACADEMIC_YEAR = "2026-27"
+COURSE_PREFIX = "D26-"
 STUDENT_EMAIL = "ali.student@example.test"
-COURSE_CODE = "SCI-101"
+TEACHER_EMAIL = "mina.teacher@example.test"
+ADMIN_EMAIL = "sara.admin@example.test"
+
+# The three existing demo logins remain the only accounts with demo passwords.
+# Other seeded accounts use Django's unusable-password marker until an
+# administrator deliberately provisions a real demo credential.
+ADMINISTRATORS = (
+    (ADMIN_EMAIL, "Sara Ahmed"),
+    ("demo.admin.01@example.test", "Arthur Pendelton"),
+    ("demo.admin.02@example.test", "Amina Qureshi"),
+)
+
+# The faculty names are taken from the supplied fictional directory. The
+# existing Mina account and one additional fictional teacher bring the total
+# to 32. Teachers are grouped by the core subject they teach in this demo.
+TEACHER_GROUPS = (
+    (
+        "ELA",
+        "English Language Arts",
+        (
+            ("demo.teacher.01@example.test", "Sarah Jenkins"),
+            ("demo.teacher.02@example.test", "David Miller"),
+            ("demo.teacher.03@example.test", "Amanda Higgins"),
+            ("demo.teacher.04@example.test", "Jessica Taylor"),
+            ("demo.teacher.05@example.test", "Layla Siddiqui"),
+            ("demo.teacher.06@example.test", "Catherine Brooks"),
+            ("demo.teacher.07@example.test", "Laura Gallagher"),
+            ("demo.teacher.31@example.test", "Zainab Farooq"),
+        ),
+    ),
+    (
+        "MTH",
+        "Mathematics",
+        (
+            ("demo.teacher.08@example.test", "Robert Vance"),
+            ("demo.teacher.09@example.test", "Elizabeth Ross"),
+            ("demo.teacher.10@example.test", "Rachel Adams"),
+            ("demo.teacher.11@example.test", "Marcus Bennett"),
+            ("demo.teacher.12@example.test", "Edward Mitchell"),
+            ("demo.teacher.13@example.test", "Nicholas Turner"),
+            ("demo.teacher.14@example.test", "Gregory Harrison"),
+            ("demo.teacher.15@example.test", "Oliver Brooks"),
+        ),
+    ),
+    (
+        "SCI",
+        "Science and Computing",
+        (
+            ("demo.teacher.16@example.test", "Christopher Hayes"),
+            ("demo.teacher.17@example.test", "James Patterson"),
+            ("demo.teacher.18@example.test", "Thomas Wright"),
+            ("demo.teacher.19@example.test", "Daniel Cooper"),
+            ("demo.teacher.20@example.test", "Fatima Qureshi"),
+            ("demo.teacher.21@example.test", "Victoria Stone"),
+            ("demo.teacher.22@example.test", "Bilal Ahmed"),
+            ("demo.teacher.23@example.test", "Hamza Malik"),
+            (TEACHER_EMAIL, "Mina Rahman"),
+        ),
+    ),
+    (
+        "SOC",
+        "Social Studies",
+        (
+            ("demo.teacher.24@example.test", "Rebecca Al-Mansoor"),
+            ("demo.teacher.25@example.test", "Tariq Mahmoud"),
+            ("demo.teacher.26@example.test", "Yusuf Al-Hassan"),
+            ("demo.teacher.27@example.test", "Andrew Coleman"),
+            ("demo.teacher.28@example.test", "Maryam Khan"),
+            ("demo.teacher.29@example.test", "Stephanie Myers"),
+            ("demo.teacher.30@example.test", "Jennifer Morgan"),
+        ),
+    ),
+)
+
+GRADE_NAMES = ("Kindergarten",) + tuple(f"Grade {grade}" for grade in range(1, 13))
+GIRL_NAMES = (
+    "Aaliyah", "Abigail", "Amira", "Amelia", "Anna", "Ava", "Bella", "Camila",
+    "Charlotte", "Chloe", "Eleanor", "Ella", "Emily", "Fatima", "Grace", "Hannah",
+    "Isabella", "Layla", "Lily", "Mia", "Nora", "Olivia", "Sophia", "Zainab",
+)
+BOY_NAMES = (
+    "Alexander", "Asher", "Bilal", "Carter", "Daniel", "Elijah", "Ethan", "Hamza",
+    "Henry", "Ibrahim", "Isaac", "James", "Jacob", "Liam", "Lucas", "Noah",
+    "Oliver", "Omar", "Tariq", "Yusuf", "Zayd", "Benjamin", "Ezra", "Logan",
+)
+SURNAMES = (
+    "Adams", "Ahmed", "Allen", "Anderson", "Bailey", "Baker", "Brooks", "Brown",
+    "Carter", "Clark", "Collins", "Cooper", "Davis", "Edwards", "Evans", "Garcia",
+    "Green", "Harris", "Hassan", "Hussain", "Johnson", "Khan", "Lee", "Lewis",
+    "Martin", "Mitchell", "Morgan", "Parker", "Patel", "Rahman", "Roberts", "Rodriguez",
+    "Ross", "Scott", "Smith", "Taylor", "Thomas", "Walker", "White", "Wilson",
+)
+
+
+def generated_student_name(number, gender, used_names):
+    names = GIRL_NAMES if gender == StudentRecord.Gender.GIRL else BOY_NAMES
+    given_index = (number - 1) % len(names)
+    surname_start = ((number - 1) // len(names)) % len(SURNAMES)
+    for offset in range(len(SURNAMES)):
+        surname = SURNAMES[(surname_start + offset) % len(SURNAMES)]
+        candidate = f"{names[given_index]} {surname}"
+        if candidate.casefold() not in used_names:
+            used_names.add(candidate.casefold())
+            return candidate
+    raise CommandError("Could not create a unique fictional student name.")
+
+
+def course_title(subject_code, grade_index):
+    if subject_code == "ELA":
+        return "Early Literacy" if grade_index <= 1 else "English Language Arts"
+    if subject_code == "MTH":
+        if grade_index <= 5:
+            return "Foundations of Mathematics"
+        if grade_index <= 8:
+            return "Middle School Mathematics"
+        return ("Algebra and Functions", "Geometry", "Algebra II", "Pre-Calculus")[min(grade_index - 9, 3)]
+    if subject_code == "SCI":
+        if grade_index <= 5:
+            return "Discovery Science"
+        if grade_index <= 8:
+            return "General Science"
+        return ("Biology", "Chemistry", "Physics", "Computer Science")[min(grade_index - 9, 3)]
+    if grade_index <= 5:
+        return "Community and Social Studies"
+    if grade_index <= 8:
+        return "History and Geography"
+    return "History and Government"
 
 
 class Command(BaseCommand):
-    help = "Create repeatable fictional school data; --reset restores this command's named sample records."
+    help = "Create 486 fictional students, 32 teachers, 3 administrators, and linked academic demo records."
 
     def add_arguments(self, parser):
-        parser.add_argument("--reset", action="store_true", help="Restore only the named demo records and disable their passwords")
+        parser.add_argument(
+            "--reset",
+            action="store_true",
+            help="Delete only this command's generated demo roster, then rebuild it; keeps the three primary demo accounts.",
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
         User = get_user_model()
         if options["reset"]:
-            Assignment.objects.filter(course__code=COURSE_CODE, title="Observation journal").delete()
-            ExamResult.objects.filter(student__email=STUDENT_EMAIL, course__code=COURSE_CODE, exam_name="Sample term exam").delete()
-            Enrollment.objects.filter(student__email=STUDENT_EMAIL, course__code=COURSE_CODE).delete()
-            StudentRecord.objects.filter(student__email=STUDENT_EMAIL, admission_number="AS-0001").delete()
+            Course.objects.filter(code__startswith=COURSE_PREFIX).delete()
+            User.objects.filter(email__startswith="demo.student.", role=User.Role.STUDENT).delete()
+            User.objects.filter(email__startswith="demo.teacher.", role=User.Role.TEACHER).delete()
+            User.objects.filter(email__startswith="demo.admin.", role=User.Role.ADMIN).delete()
 
-        teacher, teacher_created = User.objects.get_or_create(
-            email=TEACHER_EMAIL,
-            defaults={"full_name": "Mina Rahman", "role": User.Role.TEACHER},
+        self._ensure_primary_account(User, STUDENT_EMAIL, "Ali Khan", User.Role.STUDENT)
+        self._ensure_primary_account(User, TEACHER_EMAIL, "Mina Rahman", User.Role.TEACHER)
+        self._ensure_primary_account(User, ADMIN_EMAIL, "Sara Ahmed", User.Role.ADMIN)
+
+        counts = {
+            User.Role.STUDENT: User.objects.filter(role=User.Role.STUDENT).count(),
+            User.Role.TEACHER: User.objects.filter(role=User.Role.TEACHER).count(),
+            User.Role.ADMIN: User.objects.filter(role=User.Role.ADMIN).count(),
+        }
+        targets = {
+            User.Role.STUDENT: STUDENT_TARGET,
+            User.Role.TEACHER: TEACHER_TARGET,
+            User.Role.ADMIN: ADMIN_TARGET,
+        }
+        for role, count in counts.items():
+            if count > targets[role]:
+                raise CommandError(
+                    f"Found {count} {role} accounts, above the demo target of {targets[role]}. "
+                    "The seed command will not delete or demote existing accounts."
+                )
+
+        teacher_users = self._ensure_teachers(User)
+        self._ensure_administrators(User)
+        student_users = self._ensure_students(User, STUDENT_TARGET - counts[User.Role.STUDENT])
+
+        self._seed_academic_records(student_users, teacher_users)
+        self.stdout.write(
+            self.style.SUCCESS(
+                "Ready: 486 fictional students with age/grade profiles, 32 teachers, 3 administrators, "
+                "104 courses, 104 assignments, and 1,944 enrollments and exam results."
+            )
         )
-        student, student_created = User.objects.get_or_create(
-            email=STUDENT_EMAIL,
-            defaults={"full_name": "Ali Khan", "role": User.Role.STUDENT},
+
+    def _ensure_primary_account(self, User, email, name, role):
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={"full_name": name, "role": role},
         )
-        for user, created, name, role in (
-            (teacher, teacher_created, "Mina Rahman", User.Role.TEACHER),
-            (student, student_created, "Ali Khan", User.Role.STUDENT),
-        ):
-            if created or options["reset"]:
-                user.full_name = name
-                user.role = role
+        if user.role != role:
+            raise CommandError(f"The reserved demo account {email} already exists with a different role.")
+        if created:
+            user.full_name = name
+            user.set_unusable_password()
+            user.save(update_fields=["full_name", "password"])
+        if role == User.Role.ADMIN and (not user.is_staff or not user.is_superuser):
+            user.is_staff = True
+            user.is_superuser = True
+            user.save(update_fields=["is_staff", "is_superuser"])
+
+    def _ensure_teachers(self, User):
+        result = []
+        for subject_code, _, teachers in TEACHER_GROUPS:
+            group = []
+            for email, name in teachers:
+                user, created = User.objects.get_or_create(
+                    email=email,
+                    defaults={"full_name": name, "role": User.Role.TEACHER},
+                )
+                if user.role != User.Role.TEACHER:
+                    raise CommandError(f"Reserved fictional teacher email {email} already has another role.")
+                if created:
+                    user.set_unusable_password()
+                    user.save(update_fields=["password"])
+                group.append(user)
+            result.append((subject_code, group))
+        if sum(len(group) for _, group in result) != TEACHER_TARGET:
+            raise CommandError("The configured teacher roster does not match the 32-teacher target.")
+        return result
+
+    def _ensure_administrators(self, User):
+        for email, name in ADMINISTRATORS:
+            user, created = User.objects.get_or_create(
+                email=email,
+                defaults={
+                    "full_name": name,
+                    "role": User.Role.ADMIN,
+                    "is_staff": True,
+                    "is_superuser": True,
+                },
+            )
+            if user.role != User.Role.ADMIN:
+                raise CommandError(f"Reserved fictional administrator email {email} already has another role.")
+            if created:
                 user.set_unusable_password()
-                user.save(update_fields=["full_name", "role", "password"])
+                user.save(update_fields=["password"])
+            if not user.is_staff or not user.is_superuser:
+                user.is_staff = True
+                user.is_superuser = True
+                user.save(update_fields=["is_staff", "is_superuser"])
 
-        StudentRecord.objects.update_or_create(
-            student=student,
-            defaults={"admission_number": "AS-0001", "grade": "Grade 10"},
-        )
-        course, _ = Course.objects.update_or_create(
-            code=COURSE_CODE,
-            defaults={"title": "Foundations of Science", "teacher": teacher},
-        )
-        Enrollment.objects.get_or_create(student=student, course=course)
-        Assignment.objects.update_or_create(
-            course=course,
-            title="Observation journal",
-            defaults={
-                "description": "Record three observations from a fictional lab exercise.",
-                "due_date": timezone.localdate() + timedelta(days=7),
-            },
-        )
-        ExamResult.objects.update_or_create(
-            student=student,
-            course=course,
-            exam_name="Sample term exam",
-            defaults={"score": 84, "max_score": 100},
-        )
-        self.stdout.write(self.style.SUCCESS("Fictional school records are ready. No account passwords were displayed."))
+    def _ensure_students(self, User, missing_count):
+        fixture_path = Path(__file__).resolve().parents[2] / "data" / "demo_students.json"
+        profiles = json.loads(fixture_path.read_text(encoding="utf-8"))
+        used_names = {name.casefold() for name in User.objects.filter(role=User.Role.STUDENT).values_list("full_name", flat=True)}
+        next_number = 1
+        fixture_index = 0
+        created_count = 0
+        while created_count < missing_count:
+            email = f"demo.student.{next_number:04d}@example.test"
+            next_number += 1
+            if User.objects.filter(email=email).exists():
+                continue
+            if fixture_index < len(profiles):
+                profile = profiles[fixture_index]
+                name = profile["full_name"]
+                gender = StudentRecord.Gender.BOY if profile["gender"] == "boy" else StudentRecord.Gender.GIRL
+                if name.casefold() in used_names:
+                    name = generated_student_name(fixture_index + 1, gender, used_names)
+                else:
+                    used_names.add(name.casefold())
+            else:
+                generated_index = fixture_index - len(profiles) + 1
+                gender = StudentRecord.Gender.BOY if generated_index % 2 else StudentRecord.Gender.GIRL
+                name = generated_student_name(generated_index, gender, used_names)
+            user = User.objects.create(email=email, full_name=name, role=User.Role.STUDENT)
+            user.set_unusable_password()
+            user.save(update_fields=["password"])
+            fixture_index += 1
+            created_count += 1
+
+        existing = list(User.objects.filter(role=User.Role.STUDENT).order_by("pk"))
+        existing.sort(key=lambda user: (user.email != STUDENT_EMAIL, user.pk))
+        if len(existing) != STUDENT_TARGET:
+            raise CommandError(f"Expected {STUDENT_TARGET} students after seeding; found {len(existing)}.")
+        return existing
+
+    def _seed_academic_records(self, students, teacher_groups):
+        student_fixture_path = Path(__file__).resolve().parents[2] / "data" / "demo_students.json"
+        source_profiles = json.loads(student_fixture_path.read_text(encoding="utf-8"))
+        grade_slots = []
+        grade_counts = []
+        for grade_index, grade in enumerate(GRADE_NAMES):
+            grade_count = 38 if grade_index < 5 else 37
+            grade_counts.append(grade_count)
+            for section, section_count in (("A", (grade_count + 1) // 2), ("B", grade_count // 2)):
+                for student_in_section in range(section_count):
+                    age = min(5 + grade_index + (1 if (student_in_section + grade_index) % 4 == 0 else 0), 18)
+                    grade_slots.append({"grade_index": grade_index, "grade": grade, "section": section, "age": age})
+
+        # Keep the featured Student login as a Grade 10 example while keeping
+        # every grade between 37 and 38 students.
+        grade_ten_slot = sum(grade_counts[:10])
+        grade_slots[0], grade_slots[grade_ten_slot] = grade_slots[grade_ten_slot], grade_slots[0]
+
+        subjects = []
+        for subject_code, subject_name, teachers in TEACHER_GROUPS:
+            subjects.append((subject_code, subject_name, teachers))
+
+        courses = {}
+        for grade_index, grade in enumerate(GRADE_NAMES):
+            grade_code = "K" if grade_index == 0 else f"G{grade_index}"
+            for section in ("A", "B"):
+                class_index = grade_index * 2 + (section == "B")
+                for subject_index, (subject_code, subject_name, teacher_users) in enumerate(subjects):
+                    teacher_index = min(len(teacher_users) - 1, class_index * len(teacher_users) // 26)
+                    teacher = teacher_users[teacher_index]
+                    is_featured_science = grade_index == 10 and section == "A" and subject_code == "SCI"
+                    course_code = "SCI-101" if is_featured_science else f"{COURSE_PREFIX}{grade_code}-{subject_code}-{section}"
+                    if is_featured_science:
+                        teacher = get_user_model().objects.get(email=TEACHER_EMAIL)
+                    course, _ = Course.objects.update_or_create(
+                        code=course_code,
+                        defaults={
+                            "title": "Foundations of Science" if is_featured_science else f"{grade} {section} · {course_title(subject_code, grade_index)}",
+                            "teacher": teacher,
+                        },
+                    )
+                    assignment_title = "Observation journal" if is_featured_science else f"Term 1 {subject_name} Check-In"
+                    assignment, _ = Assignment.objects.update_or_create(
+                        course=course,
+                        title=assignment_title,
+                        defaults={
+                            "description": (
+                                "Record three observations from a fictional lab exercise."
+                                if is_featured_science
+                                else f"Fictional {ACADEMIC_YEAR} learning check for {grade} students."
+                            ),
+                            "due_date": date(2026, 10, 16),
+                        },
+                    )
+                    courses[(grade_index, section, subject_index)] = course
+
+        if len(grade_slots) != STUDENT_TARGET:
+            raise CommandError("The grade distribution does not add up to 486 students.")
+
+        for student_index, (student, slot) in enumerate(zip(students, grade_slots, strict=True)):
+            if student.email == STUDENT_EMAIL:
+                gender = StudentRecord.Gender.BOY
+            elif student.email.startswith("demo.student."):
+                roster_number = int(student.email.split(".")[2].split("@")[0])
+                profile_index = roster_number - 1
+                if profile_index < len(source_profiles):
+                    gender = (
+                        StudentRecord.Gender.BOY
+                        if source_profiles[profile_index]["gender"] == "boy"
+                        else StudentRecord.Gender.GIRL
+                    )
+                else:
+                    gender = StudentRecord.Gender.BOY if student_index % 2 else StudentRecord.Gender.GIRL
+            else:
+                gender = StudentRecord.Gender.NOT_SPECIFIED
+
+            admission_number = f"AS-{student_index + 1:04d}"
+            conflict = StudentRecord.objects.filter(admission_number=admission_number).exclude(student=student).exists()
+            if conflict:
+                raise CommandError(f"Admission number {admission_number} is already assigned to another student.")
+            StudentRecord.objects.update_or_create(
+                student=student,
+                defaults={
+                    "admission_number": admission_number,
+                    "grade": slot["grade"],
+                    "age": slot["age"],
+                    "gender": gender,
+                },
+            )
+
+            grade_index = slot["grade_index"]
+            section = slot["section"]
+            for subject_index in range(len(subjects)):
+                course = courses[(grade_index, section, subject_index)]
+                Enrollment.objects.get_or_create(student=student, course=course)
+                subject_name = subjects[subject_index][1]
+                score = 65 + ((student_index * 13 + grade_index * 7 + subject_index * 11) % 36)
+                exam_name = "Sample term exam" if course.code == "SCI-101" else f"{ACADEMIC_YEAR} Term 1 {subject_name} Check-In"
+                ExamResult.objects.update_or_create(
+                    student=student,
+                    course=course,
+                    exam_name=exam_name,
+                    defaults={"score": score, "max_score": 100},
+                )

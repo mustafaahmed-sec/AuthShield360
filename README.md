@@ -32,11 +32,11 @@ python -m venv .venv
 
 4. Open `http://127.0.0.1:8000/` for the portal, `http://127.0.0.1:8000/signup/` for Student registration, and `http://127.0.0.1:8000/admin/` for the administrator interface.
 
-The seed command creates one fictional teacher, one fictional student, a course, an enrollment, an assignment, and an exam result. `configure_demo_logins` sets passwords for those two accounts and creates a fictional administrator. The login emails are `ali.student@example.test`, `mina.teacher@example.test`, and `sara.admin@example.test`. Their corresponding passwords are in the ignored local `.env` file under `DEMO_STUDENT_PASSWORD`, `DEMO_TEACHER_PASSWORD`, and `DEMO_ADMIN_PASSWORD`. Open that file locally when you need them; do not put the passwords in screenshots or the submitted report. You can also set a new password interactively with `manage.py changepassword <email>`.
+The seed command creates a balanced fictional roster of 486 students, 32 teachers, and 3 administrators for the 2026–27 school year. Student counts are distributed 37–38 per grade from Kindergarten through Grade 12; ages follow the grade with a small, realistic variation. Every student is enrolled in four grade-appropriate course sections and has a term assignment and exam result in each, so the Teacher dashboard displays a complete class roster and academic records. The source includes 100 fictional student names from the supplied sample directory; the remaining student names are generated deterministically. All generated users receive unusable passwords. The three primary demo login emails remain `ali.student@example.test`, `mina.teacher@example.test`, and `sara.admin@example.test`; their passwords remain in the ignored local `.env` file under `DEMO_STUDENT_PASSWORD`, `DEMO_TEACHER_PASSWORD`, and `DEMO_ADMIN_PASSWORD`. The two additional Administrator accounts are provisioned without passwords until the primary Admin explicitly assigns credentials. Never put passwords in screenshots, reports, or GitHub. You can set a new password interactively with `manage.py changepassword <email>`.
 
 ## Repeatable demo reset
 
-`manage.py seed_demo` can be run again without duplicating the named records. `manage.py seed_demo --reset` restores the named sample records and disables passwords on the Student and Teacher demo accounts. It keeps their account IDs and does not touch the Administrator account. Run `manage.py configure_demo_logins` afterward to restore all three local demo passwords from `.env`. Take a PostgreSQL backup before broader database changes.
+`manage.py seed_demo` can be run again without duplicating the named records. It refuses to delete or demote accounts if a role already exceeds its target. `manage.py seed_demo --reset` deletes only generated `demo.*` accounts and `D26-*` course records, keeps the three primary demo accounts and their passwords, then recreates the roster. The existing `SCI-101` course remains the Grade 10 A science section. Run `manage.py configure_demo_logins` afterward only if the primary demo passwords need to be restored from `.env`.
 
 ## Current architecture
 
@@ -62,7 +62,8 @@ See [the requirement map](docs/REQUIREMENTS.md) for the full SRS checklist and t
 | `accounts/admin.py` | Makes authorized account management available in Django Admin. |
 | `accounts/management/commands/configure_demo_logins.py` | Prepares three fictional role logins from local `.env` values. |
 | `school/models.py`, `school/forms.py`, `school/views.py` | Define school data, role dashboards, and Teacher forms. |
-| `school/management/commands/seed_demo.py` | Creates or restores named fictional demo data. |
+| `school/management/commands/seed_demo.py` | Creates the balanced fictional 486-student, 32-teacher, 3-administrator roster and linked classwork. |
+| `school/data/demo_students.json` | Supplies 100 fictional student names from the provided roster PDF. |
 | `templates/`, `static/css/site.css` | Render and style the portal pages. |
 | `docs/REQUIREMENTS.md` | Tracks SRS obligations, teacher clarifications, and open decisions. |
 

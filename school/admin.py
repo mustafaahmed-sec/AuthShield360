@@ -5,7 +5,7 @@ from .models import Assignment, Course, Enrollment, ExamResult, StudentRecord
 
 @admin.register(StudentRecord)
 class StudentRecordAdmin(admin.ModelAdmin):
-    list_display = ("admission_number", "student", "grade")
+    list_display = ("admission_number", "student", "grade", "age", "gender")
     search_fields = ("admission_number", "student__email", "student__full_name")
 
 

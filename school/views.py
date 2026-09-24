@@ -35,7 +35,7 @@ def dashboard(request):
         context = {
             "courses": Course.objects.filter(teacher=user).order_by("code"),
             "assignments": Assignment.objects.filter(course__teacher=user).select_related("course").order_by("due_date", "id"),
-            "enrollments": Enrollment.objects.filter(course__teacher=user).select_related("student", "course").order_by("course__code", "student__full_name"),
+            "enrollments": Enrollment.objects.filter(course__teacher=user).select_related("student", "student__student_record", "course").order_by("course__code", "student__full_name"),
             "results": ExamResult.objects.filter(course__teacher=user).select_related("student", "course").order_by("course__code", "student__full_name"),
         }
         return render(request, "school/teacher_dashboard.html", context)
@@ -43,6 +43,7 @@ def dashboard(request):
         context = {
             "student_count": StudentRecord.objects.count(),
             "teacher_count": User.objects.filter(role=User.Role.TEACHER).count(),
+            "admin_count": User.objects.filter(role=User.Role.ADMIN).count(),
             "course_count": Course.objects.count(),
             "assignment_count": Assignment.objects.count(),
         }

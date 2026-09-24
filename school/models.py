@@ -4,9 +4,16 @@ from django.db import models
 
 
 class StudentRecord(models.Model):
+    class Gender(models.TextChoices):
+        BOY = "boy", "Boy"
+        GIRL = "girl", "Girl"
+        NOT_SPECIFIED = "not_specified", "Not specified"
+
     student = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="student_record")
     admission_number = models.CharField(max_length=24, unique=True)
     grade = models.CharField(max_length=32)
+    age = models.PositiveSmallIntegerField(null=True, blank=True)
+    gender = models.CharField(max_length=16, choices=Gender.choices, blank=True, default="")
 
     def clean(self):
         if self.student_id and self.student.role != "student":
