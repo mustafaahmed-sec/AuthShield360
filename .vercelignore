@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+.vercel
+.git
+.venv
+__pycache__
+**/__pycache__
+.agents
+.agents/**
+staticfiles
+media
+.vercel-deploy-credentials.txt
+.agents
+.agents/**

@@ -13,3 +13,5 @@ staticfiles/
 media/
 .idea/
 .vscode/
+.agents/
+.vercel-deploy-credentials.txt
