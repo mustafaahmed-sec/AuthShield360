@@ -215,57 +215,74 @@ class Command(BaseCommand):
             user.save(update_fields=["is_staff", "is_superuser"])
 
     def _ensure_teachers(self, User):
+        specs = [item for _, _, group in TEACHER_GROUPS for item in group]
+        existing = {
+            user.email: user
+            for user in User.objects.filter(email__in=[email for email, _ in specs])
+        }
+        created = []
+        for email, name in specs:
+            user = existing.get(email)
+            if user and user.role != User.Role.TEACHER:
+                raise CommandError(f"Reserved fictional teacher email {email} already has another role.")
+            if not user:
+                user = User(email=email, full_name=name, role=User.Role.TEACHER)
+                user.set_unusable_password()
+                created.append(user)
+                existing[email] = user
+        if created:
+            User.objects.bulk_create(created, batch_size=500)
+
         result = []
-        for subject_code, _, teachers in TEACHER_GROUPS:
-            group = []
-            for email, name in teachers:
-                user, created = User.objects.get_or_create(
-                    email=email,
-                    defaults={"full_name": name, "role": User.Role.TEACHER},
-                )
-                if user.role != User.Role.TEACHER:
-                    raise CommandError(f"Reserved fictional teacher email {email} already has another role.")
-                if created:
-                    user.set_unusable_password()
-                    user.save(update_fields=["password"])
-                group.append(user)
-            result.append((subject_code, group))
+        for subject_code, _, group_specs in TEACHER_GROUPS:
+            result.append((subject_code, [existing[email] for email, _ in group_specs]))
         if sum(len(group) for _, group in result) != TEACHER_TARGET:
             raise CommandError("The configured teacher roster does not match the 32-teacher target.")
         return result
 
     def _ensure_administrators(self, User):
+        existing = {
+            user.email: user
+            for user in User.objects.filter(email__in=[email for email, _ in ADMINISTRATORS])
+        }
+        created = []
+        changed = []
         for email, name in ADMINISTRATORS:
-            user, created = User.objects.get_or_create(
-                email=email,
-                defaults={
-                    "full_name": name,
-                    "role": User.Role.ADMIN,
-                    "is_staff": True,
-                    "is_superuser": True,
-                },
-            )
-            if user.role != User.Role.ADMIN:
+            user = existing.get(email)
+            if user and user.role != User.Role.ADMIN:
                 raise CommandError(f"Reserved fictional administrator email {email} already has another role.")
-            if created:
+            if not user:
+                user = User(
+                    email=email,
+                    full_name=name,
+                    role=User.Role.ADMIN,
+                    is_staff=True,
+                    is_superuser=True,
+                )
                 user.set_unusable_password()
-                user.save(update_fields=["password"])
+                created.append(user)
+                existing[email] = user
             if not user.is_staff or not user.is_superuser:
                 user.is_staff = True
                 user.is_superuser = True
-                user.save(update_fields=["is_staff", "is_superuser"])
+                changed.append(user)
+        if created:
+            User.objects.bulk_create(created, batch_size=500)
+        if changed:
+            User.objects.bulk_update(changed, ["is_staff", "is_superuser"], batch_size=500)
 
     def _ensure_students(self, User, missing_count):
         fixture_path = Path(__file__).resolve().parents[2] / "data" / "demo_students.json"
         profiles = json.loads(fixture_path.read_text(encoding="utf-8"))
         used_names = {name.casefold() for name in User.objects.filter(role=User.Role.STUDENT).values_list("full_name", flat=True)}
+        reserved_emails = set(User.objects.filter(email__startswith="demo.student.").values_list("email", flat=True))
         next_number = 1
         fixture_index = 0
-        created_count = 0
-        while created_count < missing_count:
+        created = []
+        while len(created) < missing_count:
             email = f"demo.student.{next_number:04d}@example.test"
             next_number += 1
-            if User.objects.filter(email=email).exists():
+            if email in reserved_emails:
                 continue
             if fixture_index < len(profiles):
                 profile = profiles[fixture_index]
@@ -279,11 +296,13 @@ class Command(BaseCommand):
                 generated_index = fixture_index - len(profiles) + 1
                 gender = StudentRecord.Gender.BOY if generated_index % 2 else StudentRecord.Gender.GIRL
                 name = generated_student_name(generated_index, gender, used_names)
-            user = User.objects.create(email=email, full_name=name, role=User.Role.STUDENT)
+            user = User(email=email, full_name=name, role=User.Role.STUDENT)
             user.set_unusable_password()
-            user.save(update_fields=["password"])
+            created.append(user)
+            reserved_emails.add(email)
             fixture_index += 1
-            created_count += 1
+        if created:
+            User.objects.bulk_create(created, batch_size=500)
 
         existing = list(User.objects.filter(role=User.Role.STUDENT).order_by("pk"))
         existing.sort(key=lambda user: (user.email != STUDENT_EMAIL, user.pk))
@@ -294,6 +313,7 @@ class Command(BaseCommand):
     def _seed_academic_records(self, students, teacher_groups):
         student_fixture_path = Path(__file__).resolve().parents[2] / "data" / "demo_students.json"
         source_profiles = json.loads(student_fixture_path.read_text(encoding="utf-8"))
+
         grade_slots = []
         grade_counts = []
         for grade_index, grade in enumerate(GRADE_NAMES):
@@ -309,46 +329,101 @@ class Command(BaseCommand):
         grade_ten_slot = sum(grade_counts[:10])
         grade_slots[0], grade_slots[grade_ten_slot] = grade_slots[grade_ten_slot], grade_slots[0]
 
-        subjects = []
-        for subject_code, subject_name, teachers in TEACHER_GROUPS:
-            subjects.append((subject_code, subject_name, teachers))
-
-        courses = {}
+        teacher_groups_by_code = dict(teacher_groups)
+        subjects = [
+            (subject_code, subject_name, teacher_groups_by_code[subject_code])
+            for subject_code, subject_name, _ in TEACHER_GROUPS
+        ]
+        teacher_by_email = {teacher.email: teacher for _, group in teacher_groups for teacher in group}
+        course_specs = []
         for grade_index, grade in enumerate(GRADE_NAMES):
             grade_code = "K" if grade_index == 0 else f"G{grade_index}"
             for section in ("A", "B"):
                 class_index = grade_index * 2 + (section == "B")
-                for subject_index, (subject_code, subject_name, teacher_users) in enumerate(subjects):
+                for subject_index, (subject_code, _, teacher_users) in enumerate(subjects):
                     teacher_index = min(len(teacher_users) - 1, class_index * len(teacher_users) // 26)
                     teacher = teacher_users[teacher_index]
                     is_featured_science = grade_index == 10 and section == "A" and subject_code == "SCI"
                     course_code = "SCI-101" if is_featured_science else f"{COURSE_PREFIX}{grade_code}-{subject_code}-{section}"
                     if is_featured_science:
-                        teacher = get_user_model().objects.get(email=TEACHER_EMAIL)
-                    course, _ = Course.objects.update_or_create(
-                        code=course_code,
-                        defaults={
-                            "title": "Foundations of Science" if is_featured_science else f"{grade} {section} · {course_title(subject_code, grade_index)}",
-                            "teacher": teacher,
-                        },
+                        teacher = teacher_by_email[TEACHER_EMAIL]
+                    title = "Foundations of Science" if is_featured_science else f"{grade} {section} · {course_title(subject_code, grade_index)}"
+                    course_specs.append(
+                        ((grade_index, section, subject_index), course_code, title, teacher, is_featured_science)
                     )
-                    assignment_title = "Observation journal" if is_featured_science else f"Term 1 {subject_name} Check-In"
-                    assignment, _ = Assignment.objects.update_or_create(
-                        course=course,
-                        title=assignment_title,
-                        defaults={
-                            "description": (
-                                "Record three observations from a fictional lab exercise."
-                                if is_featured_science
-                                else f"Fictional {ACADEMIC_YEAR} learning check for {grade} students."
-                            ),
-                            "due_date": date(2026, 10, 16),
-                        },
-                    )
-                    courses[(grade_index, section, subject_index)] = course
 
         if len(grade_slots) != STUDENT_TARGET:
             raise CommandError("The grade distribution does not add up to 486 students.")
+
+        requested_course_codes = [spec[1] for spec in course_specs]
+        existing_courses = {
+            course.code: course
+            for course in Course.objects.filter(code__in=requested_course_codes)
+        }
+        courses = {}
+        new_courses = []
+        changed_courses = []
+        for key, code, title, teacher, _ in course_specs:
+            course = existing_courses.get(code)
+            if course is None:
+                course = Course(code=code, title=title, teacher=teacher)
+                new_courses.append(course)
+                existing_courses[code] = course
+            elif course.title != title or course.teacher_id != teacher.pk:
+                course.title = title
+                course.teacher = teacher
+                changed_courses.append(course)
+            courses[key] = course
+        if new_courses:
+            Course.objects.bulk_create(new_courses, batch_size=500)
+        if changed_courses:
+            Course.objects.bulk_update(changed_courses, ["title", "teacher"], batch_size=500)
+
+        assignment_specs = []
+        for key, code, _, _, is_featured_science in course_specs:
+            grade_index, _, subject_index = key
+            course = courses[key]
+            subject_name = subjects[subject_index][1]
+            title = "Observation journal" if is_featured_science else f"Term 1 {subject_name} Check-In"
+            description = (
+                "Record three observations from a fictional lab exercise."
+                if is_featured_science
+                else f"Fictional {ACADEMIC_YEAR} learning check for {GRADE_NAMES[grade_index]} students."
+            )
+            assignment_specs.append((course, title, description, date(2026, 10, 16)))
+
+        existing_assignments = {
+            (assignment.course_id, assignment.title): assignment
+            for assignment in Assignment.objects.filter(course__in=list(courses.values()))
+        }
+        new_assignments = []
+        changed_assignments = []
+        for course, title, description, due_date in assignment_specs:
+            assignment = existing_assignments.get((course.pk, title))
+            if assignment is None:
+                assignment = Assignment(course=course, title=title, description=description, due_date=due_date)
+                new_assignments.append(assignment)
+            elif assignment.description != description or assignment.due_date != due_date:
+                assignment.description = description
+                assignment.due_date = due_date
+                changed_assignments.append(assignment)
+        if new_assignments:
+            Assignment.objects.bulk_create(new_assignments, batch_size=500)
+        if changed_assignments:
+            Assignment.objects.bulk_update(changed_assignments, ["description", "due_date"], batch_size=500)
+
+        student_ids = [student.pk for student in students]
+        existing_records = {
+            record.student_id: record
+            for record in StudentRecord.objects.filter(student_id__in=student_ids)
+        }
+        records_by_admission = {
+            record.admission_number: record.student_id
+            for record in StudentRecord.objects.all()
+        }
+        student_details = []
+        new_records = []
+        changed_records = []
 
         for student_index, (student, slot) in enumerate(zip(students, grade_slots, strict=True)):
             if student.email == STUDENT_EMAIL:
@@ -368,30 +443,76 @@ class Command(BaseCommand):
                 gender = StudentRecord.Gender.NOT_SPECIFIED
 
             admission_number = f"AS-{student_index + 1:04d}"
-            conflict = StudentRecord.objects.filter(admission_number=admission_number).exclude(student=student).exists()
-            if conflict:
+            existing_owner = records_by_admission.get(admission_number)
+            if existing_owner is not None and existing_owner != student.pk:
                 raise CommandError(f"Admission number {admission_number} is already assigned to another student.")
-            StudentRecord.objects.update_or_create(
-                student=student,
-                defaults={
-                    "admission_number": admission_number,
-                    "grade": slot["grade"],
-                    "age": slot["age"],
-                    "gender": gender,
-                },
+            record = existing_records.get(student.pk)
+            if record is None:
+                record = StudentRecord(
+                    student=student,
+                    admission_number=admission_number,
+                    grade=slot["grade"],
+                    age=slot["age"],
+                    gender=gender,
+                )
+                new_records.append(record)
+            else:
+                if (
+                    record.admission_number != admission_number
+                    or record.grade != slot["grade"]
+                    or record.age != slot["age"]
+                    or record.gender != gender
+                ):
+                    record.admission_number = admission_number
+                    record.grade = slot["grade"]
+                    record.age = slot["age"]
+                    record.gender = gender
+                    changed_records.append(record)
+            student_details.append((student, slot))
+
+        if new_records:
+            StudentRecord.objects.bulk_create(new_records, batch_size=500)
+        if changed_records:
+            StudentRecord.objects.bulk_update(
+                changed_records,
+                ["admission_number", "grade", "age", "gender"],
+                batch_size=500,
             )
 
+        course_list = list(courses.values())
+        course_ids = [course.pk for course in course_list]
+        existing_enrollments = set(
+            Enrollment.objects.filter(student_id__in=student_ids, course_id__in=course_ids)
+            .values_list("student_id", "course_id")
+        )
+        new_enrollments = []
+        existing_results = {
+            (result.student_id, result.course_id, result.exam_name): result
+            for result in ExamResult.objects.filter(student_id__in=student_ids, course_id__in=course_ids)
+        }
+        new_results = []
+        changed_results = []
+
+        for student_index, (student, slot) in enumerate(student_details):
             grade_index = slot["grade_index"]
             section = slot["section"]
-            for subject_index in range(len(subjects)):
+            for subject_index, (_, subject_name, _) in enumerate(subjects):
                 course = courses[(grade_index, section, subject_index)]
-                Enrollment.objects.get_or_create(student=student, course=course)
-                subject_name = subjects[subject_index][1]
+                if (student.pk, course.pk) not in existing_enrollments:
+                    new_enrollments.append(Enrollment(student=student, course=course))
                 score = 65 + ((student_index * 13 + grade_index * 7 + subject_index * 11) % 36)
                 exam_name = "Sample term exam" if course.code == "SCI-101" else f"{ACADEMIC_YEAR} Term 1 {subject_name} Check-In"
-                ExamResult.objects.update_or_create(
-                    student=student,
-                    course=course,
-                    exam_name=exam_name,
-                    defaults={"score": score, "max_score": 100},
-                )
+                result = existing_results.get((student.pk, course.pk, exam_name))
+                if result is None:
+                    new_results.append(ExamResult(student=student, course=course, exam_name=exam_name, score=score, max_score=100))
+                elif result.score != score or result.max_score != 100:
+                    result.score = score
+                    result.max_score = 100
+                    changed_results.append(result)
+
+        if new_enrollments:
+            Enrollment.objects.bulk_create(new_enrollments, batch_size=500)
+        if new_results:
+            ExamResult.objects.bulk_create(new_results, batch_size=500)
+        if changed_results:
+            ExamResult.objects.bulk_update(changed_results, ["score", "max_score"], batch_size=500)
