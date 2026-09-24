@@ -24,8 +24,8 @@ ADMIN_EMAIL = "sara.admin@example.test"
 # Other seeded accounts use Django's unusable-password marker until an
 # administrator deliberately provisions a real demo credential.
 ADMINISTRATORS = (
-    (ADMIN_EMAIL, "Sara Ahmed"),
-    ("demo.admin.01@example.test", "Arthur Pendelton"),
+    (ADMIN_EMAIL, "Sara Miller"),
+    ("demo.admin.01@example.test", "Grace Thompson"),
     ("demo.admin.02@example.test", "Amina Qureshi"),
 )
 
@@ -92,38 +92,6 @@ TEACHER_GROUPS = (
 )
 
 GRADE_NAMES = ("Kindergarten",) + tuple(f"Grade {grade}" for grade in range(1, 13))
-GIRL_NAMES = (
-    "Aaliyah", "Abigail", "Amira", "Amelia", "Anna", "Ava", "Bella", "Camila",
-    "Charlotte", "Chloe", "Eleanor", "Ella", "Emily", "Fatima", "Grace", "Hannah",
-    "Isabella", "Layla", "Lily", "Mia", "Nora", "Olivia", "Sophia", "Zainab",
-)
-BOY_NAMES = (
-    "Alexander", "Asher", "Bilal", "Carter", "Daniel", "Elijah", "Ethan", "Hamza",
-    "Henry", "Ibrahim", "Isaac", "James", "Jacob", "Liam", "Lucas", "Noah",
-    "Oliver", "Omar", "Tariq", "Yusuf", "Zayd", "Benjamin", "Ezra", "Logan",
-)
-SURNAMES = (
-    "Adams", "Ahmed", "Allen", "Anderson", "Bailey", "Baker", "Brooks", "Brown",
-    "Carter", "Clark", "Collins", "Cooper", "Davis", "Edwards", "Evans", "Garcia",
-    "Green", "Harris", "Hassan", "Hussain", "Johnson", "Khan", "Lee", "Lewis",
-    "Martin", "Mitchell", "Morgan", "Parker", "Patel", "Rahman", "Roberts", "Rodriguez",
-    "Ross", "Scott", "Smith", "Taylor", "Thomas", "Walker", "White", "Wilson",
-)
-
-
-def generated_student_name(number, gender, used_names):
-    names = GIRL_NAMES if gender == StudentRecord.Gender.GIRL else BOY_NAMES
-    given_index = (number - 1) % len(names)
-    surname_start = ((number - 1) // len(names)) % len(SURNAMES)
-    for offset in range(len(SURNAMES)):
-        surname = SURNAMES[(surname_start + offset) % len(SURNAMES)]
-        candidate = f"{names[given_index]} {surname}"
-        if candidate.casefold() not in used_names:
-            used_names.add(candidate.casefold())
-            return candidate
-    raise CommandError("Could not create a unique fictional student name.")
-
-
 def course_title(subject_code, grade_index):
     if subject_code == "ELA":
         return "Early Literacy" if grade_index <= 1 else "English Language Arts"
@@ -167,7 +135,7 @@ class Command(BaseCommand):
 
         self._ensure_primary_account(User, STUDENT_EMAIL, "Ali Khan", User.Role.STUDENT)
         self._ensure_primary_account(User, TEACHER_EMAIL, "Mina Rahman", User.Role.TEACHER)
-        self._ensure_primary_account(User, ADMIN_EMAIL, "Sara Ahmed", User.Role.ADMIN)
+        self._ensure_primary_account(User, ADMIN_EMAIL, "Sara Miller", User.Role.ADMIN)
 
         counts = {
             User.Role.STUDENT: User.objects.filter(role=User.Role.STUDENT).count(),
@@ -209,6 +177,9 @@ class Command(BaseCommand):
             user.full_name = name
             user.set_unusable_password()
             user.save(update_fields=["full_name", "password"])
+        elif user.full_name != name:
+            user.full_name = name
+            user.save(update_fields=["full_name"])
         if role == User.Role.ADMIN and (not user.is_staff or not user.is_superuser):
             user.is_staff = True
             user.is_superuser = True
@@ -247,6 +218,7 @@ class Command(BaseCommand):
         }
         created = []
         changed = []
+        renamed = []
         for email, name in ADMINISTRATORS:
             user = existing.get(email)
             if user and user.role != User.Role.ADMIN:
@@ -266,41 +238,47 @@ class Command(BaseCommand):
                 user.is_staff = True
                 user.is_superuser = True
                 changed.append(user)
+            if user.full_name != name:
+                user.full_name = name
+                renamed.append(user)
         if created:
             User.objects.bulk_create(created, batch_size=500)
         if changed:
             User.objects.bulk_update(changed, ["is_staff", "is_superuser"], batch_size=500)
+        if renamed:
+            User.objects.bulk_update(renamed, ["full_name"], batch_size=500)
 
     def _ensure_students(self, User, missing_count):
         fixture_path = Path(__file__).resolve().parents[2] / "data" / "demo_students.json"
         profiles = json.loads(fixture_path.read_text(encoding="utf-8"))
-        used_names = {name.casefold() for name in User.objects.filter(role=User.Role.STUDENT).values_list("full_name", flat=True)}
-        reserved_emails = set(User.objects.filter(email__startswith="demo.student.").values_list("email", flat=True))
-        next_number = 1
-        fixture_index = 0
+        if len(profiles) != STUDENT_TARGET - 1:
+            raise CommandError("The fictional student-name fixture must contain exactly 485 profiles.")
+        seeded_students = {
+            int(user.email.split(".")[2].split("@")[0]): user
+            for user in User.objects.filter(email__startswith="demo.student.", role=User.Role.STUDENT)
+        }
+        renamed = []
+        for number, user in seeded_students.items():
+            if 1 <= number <= len(profiles):
+                name = profiles[number - 1]["full_name"]
+                if user.full_name != name:
+                    user.full_name = name
+                    renamed.append(user)
+        if renamed:
+            User.objects.bulk_update(renamed, ["full_name"], batch_size=500)
+
         created = []
-        while len(created) < missing_count:
-            email = f"demo.student.{next_number:04d}@example.test"
-            next_number += 1
-            if email in reserved_emails:
+        for number, profile in enumerate(profiles, start=1):
+            if len(created) >= missing_count:
+                break
+            email = f"demo.student.{number:04d}@example.test"
+            if number in seeded_students:
                 continue
-            if fixture_index < len(profiles):
-                profile = profiles[fixture_index]
-                name = profile["full_name"]
-                gender = StudentRecord.Gender.BOY if profile["gender"] == "boy" else StudentRecord.Gender.GIRL
-                if name.casefold() in used_names:
-                    name = generated_student_name(fixture_index + 1, gender, used_names)
-                else:
-                    used_names.add(name.casefold())
-            else:
-                generated_index = fixture_index - len(profiles) + 1
-                gender = StudentRecord.Gender.BOY if generated_index % 2 else StudentRecord.Gender.GIRL
-                name = generated_student_name(generated_index, gender, used_names)
-            user = User(email=email, full_name=name, role=User.Role.STUDENT)
+            if User.objects.filter(email=email).exists():
+                raise CommandError(f"Reserved fictional student email {email} already belongs to another role.")
+            user = User(email=email, full_name=profile["full_name"], role=User.Role.STUDENT)
             user.set_unusable_password()
             created.append(user)
-            reserved_emails.add(email)
-            fixture_index += 1
         if created:
             User.objects.bulk_create(created, batch_size=500)
 
