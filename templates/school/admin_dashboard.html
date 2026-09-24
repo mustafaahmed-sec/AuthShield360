@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Administrator dashboard | AuthShield 360{% endblock %}
+{% block content %}
+  <div class="eyebrow">Administrator portal</div><h1>Welcome, {{ request.user.full_name }}</h1>
+  <p class="intro">Manage fictional accounts and school records through the restricted Django Admin interface.</p>
+  <section class="stats" aria-label="Current school data"><div class="stat"><strong>{{ student_count }}</strong><span>student records</span></div><div class="stat"><strong>{{ teacher_count }}</strong><span>teachers</span></div><div class="stat"><strong>{{ course_count }}</strong><span>courses</span></div><div class="stat"><strong>{{ assignment_count }}</strong><span>assignments</span></div></section>
+  <section class="note"><h2>Administration</h2><p>Create Teacher accounts, assign roles, and manage sample courses and records in Django Admin.</p><a class="button" href="{% url 'admin:index' %}">Open administration</a></section>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} | AuthShield 360{% endblock %}
+{% block content %}
+  <div class="auth-layout">
+    <section class="form-card">
+      <div class="eyebrow">Teacher action</div><h1>{{ title }}</h1>
+      <p class="muted">You can save records only for your assigned courses.</p>
+      {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+      <form method="post" novalidate>{% csrf_token %}
+        {% for field in form %}<div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.errors %}<div class="field-error">{{ field.errors }}</div>{% endif %}</div>{% endfor %}
+        <button class="button full" type="submit">{{ submit_label }}</button>
+      </form>
+      <p class="form-foot"><a href="{% url 'dashboard' %}">Back to dashboard</a></p>
+    </section>
+    <aside class="side-card"><span class="eyebrow">Access rule</span><h2>Your classes only</h2><p>The server checks your role and restricts form choices. Editing a request to include another teacher's course will be rejected.</p></aside>
+  </div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Student sign-up | AuthShield 360{% endblock %}
+{% block content %}
+  <div class="auth-layout">
+    <section class="form-card" aria-labelledby="signup-title">
+      <div class="eyebrow">Student registration</div>
+      <h1 id="signup-title">Create an account</h1>
+      <p class="muted">Public registration creates a Student account. A portal administrator assigns Teacher and Administrator access.</p>
+      {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+      <form method="post" action="{% url 'signup' %}" novalidate>
+        {% csrf_token %}
+        {% for field in form %}
+          <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<div class="help-text">{{ field.help_text|safe }}</div>{% endif %}{% if field.errors %}<div class="field-error">{{ field.errors }}</div>{% endif %}</div>
+        {% endfor %}
+        <button class="button full" type="submit">Create student account</button>
+      </form>
+      <p class="form-foot">Already registered? <a href="{% url 'login' %}">Sign in</a></p>
+    </section>
+    <aside class="side-card"><span class="eyebrow">Data policy</span><h2>Use fictional details</h2><p>This portal is for an authorized educational demonstration. Enter a made-up name, test email address, and test phone number.</p><p>Choose a unique password for this lab account.</p></aside>
+  </div>
+{% endblock %}
