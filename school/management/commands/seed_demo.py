@@ -130,9 +130,30 @@ class Command(BaseCommand):
         if options["reset"]:
             # Preserve courses referenced by roster requests (their FK is
             # protected) and retain historical decisions linked to them.
-            User.objects.filter(email__startswith="demo.student.", role=User.Role.STUDENT).delete()
-            User.objects.filter(email__startswith="demo.teacher.", role=User.Role.TEACHER).delete()
-            User.objects.filter(email__startswith="demo.admin.", role=User.Role.ADMIN).delete()
+            # Remove only seeded accounts, identified by their reserved email
+            # plus Django's unusable-password marker. Public signups always
+            # have a usable password, even if someone chooses a demo.* email.
+            seeded_student_emails = [
+                f"demo.student.{number:04d}@example.test" for number in range(1, STUDENT_TARGET)
+            ]
+            seeded_teacher_emails = [
+                email
+                for _, _, group in TEACHER_GROUPS
+                for email, _ in group
+                if email.startswith("demo.teacher.")
+            ]
+            seeded_admin_emails = [
+                email for email, _ in ADMINISTRATORS if email.startswith("demo.admin.")
+            ]
+            User.objects.filter(
+                email__in=seeded_student_emails, role=User.Role.STUDENT, password__startswith="!"
+            ).delete()
+            User.objects.filter(
+                email__in=seeded_teacher_emails, role=User.Role.TEACHER, password__startswith="!"
+            ).delete()
+            User.objects.filter(
+                email__in=seeded_admin_emails, role=User.Role.ADMIN, password__startswith="!"
+            ).delete()
 
         self._ensure_primary_account(User, STUDENT_EMAIL, "Ali Khan", User.Role.STUDENT, options["reset"])
         self._ensure_primary_account(User, TEACHER_EMAIL, "Mina Rahman", User.Role.TEACHER, options["reset"])

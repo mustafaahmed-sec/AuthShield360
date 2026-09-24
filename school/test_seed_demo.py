@@ -14,7 +14,7 @@ class SeedDemoTests(TestCase):
 
     def test_pending_signup_does_not_change_demo_target_or_reset(self):
         applicant = User.objects.create_user(
-            "new.student@example.test",
+            "demo.student.external@example.test",
             "FictionalDemo!2468",
             full_name="New Applicant",
             role=User.Role.STUDENT,
