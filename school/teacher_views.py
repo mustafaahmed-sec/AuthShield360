@@ -134,10 +134,10 @@ def edit_assigned_student(request, student_id):
     )
     if request.method == "POST" and name_form.is_valid() and record_form.is_valid():
         changed = []
-        if name_form.cleaned_data["full_name"] != student.full_name:
+        if "full_name" in name_form.changed_data:
             changed.append("name")
-        for field in ("grade", "age", "gender"):
-            if record_form.cleaned_data[field] != getattr(record, field):
+        for field in record_form.changed_data:
+            if field in ("grade", "age", "gender"):
                 changed.append(field)
         name_form.save()
         record_form.save()
