@@ -69,7 +69,7 @@ See [the requirement map](docs/REQUIREMENTS.md) for the full SRS checklist and t
 | `school/data/demo_students.json` | Supplies 485 distinct fictional student names and gender values for the demo roster. |
 | `templates/`, `static/css/site.css` | Render and style the portal pages. |
 | `docs/REQUIREMENTS.md` | Tracks SRS obligations, teacher clarifications, and open decisions. |
-| `.github/workflows/checks.yml`, `requirements-dev.txt`, `pyproject.toml` | Run all tests, check migrations, and lint Python on pushes and pull requests. |
+| `.github/workflows/checks.yml`, `requirements-dev.txt`, `ruff.toml` | Run all tests, check migrations, and lint Python on pushes and pull requests. |
 
 The fictional school displays dates in the `America/New_York` time zone. Change `TIME_ZONE` if the demonstrated school is assigned elsewhere. Application audit events are also written to server logs without credentials.
 
