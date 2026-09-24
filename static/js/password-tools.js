@@ -13,6 +13,32 @@
     });
   });
 
+  document.querySelectorAll("form").forEach((form) => {
+    const passwordInput = form.querySelector("#id_password1");
+    const strengthStatus = form.querySelector("[data-password-strength]");
+    if (!passwordInput || !strengthStatus) return;
+
+    passwordInput.addEventListener("input", () => {
+      const password = passwordInput.value;
+      if (!password) {
+        strengthStatus.textContent = "";
+        strengthStatus.removeAttribute("data-strength");
+        return;
+      }
+
+      const meetsRules = password.length >= 22
+        && /[a-z]/.test(password)
+        && /[A-Z]/.test(password)
+        && /[0-9]/.test(password)
+        && /[^A-Za-z0-9\s]/.test(password);
+
+      strengthStatus.dataset.strength = meetsRules ? "meets-rules" : "weak";
+      strengthStatus.textContent = meetsRules
+        ? "Meets the portal's password rules. This demo does not check breach databases."
+        : "Weak password: use at least 22 characters, including lowercase and uppercase letters, a number, and a special character. This demo does not check breach databases. Try the generated suggestion below.";
+    });
+  });
+
   document.querySelectorAll("[data-password-suggest]").forEach((button) => {
     button.addEventListener("click", () => {
       const form = button.closest("form");

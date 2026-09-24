@@ -12,3 +12,4 @@ staticfiles
 media
 .vercel-deploy-credentials.txt
 skills-lock.json
+docs/evidence/

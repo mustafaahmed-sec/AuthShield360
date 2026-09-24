@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Portal sign-in | AuthShield 360{% endblock %}
+{% block title %}Sign in | AuthShield 360{% endblock %}
 {% block content %}
   <div class="auth-layout">
     <section class="form-card" aria-labelledby="login-title">
       <div class="eyebrow">Account access</div>
-      <h1 id="login-title">Portal sign-in</h1>
+      <h1 id="login-title">Sign in</h1>
       <p class="muted">This shared sign-in is for approved students, teachers, and administrators. Your account role takes you to the right dashboard.</p>
       {% if next %}<div class="status-banner status-pending" role="status"><strong>Sign in required</strong><span>Please sign in to continue. Your previous session is not active.</span></div>{% endif %}
       {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
@@ -14,8 +14,9 @@
         {% for field in form %}
           <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.name == 'password' %}<div class="password-input-row">{{ field }}<button class="password-toggle" type="button" data-password-toggle aria-controls="{{ field.id_for_label }}" aria-pressed="false">Show</button></div>{% else %}{{ field }}{% endif %}{% if field.errors %}<div class="field-error">{{ field.errors }}</div>{% endif %}</div>
         {% endfor %}
-        <button class="button full" type="submit">Sign in to portal</button>
+        <button class="button full" type="submit">Sign in</button>
       </form>
+      <p class="form-foot">Waiting for access approval? <a href="{% url 'registration_status' %}">Check your request status</a>.</p>
     </section>
     <aside class="side-card"><span class="eyebrow">Demo baseline</span><h2>One step at a time</h2><p>This stage records how password-only access works. Mobile and email OTP will be added in later stages.</p><p>Never use a real school account or personal password in this demo.</p></aside>
   </div>

@@ -3,7 +3,7 @@ import csv
 from django.contrib import admin
 from django.http import HttpResponse
 
-from .models import Assignment, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
+from .models import Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
 
 
 @admin.register(StudentRecord)
@@ -28,6 +28,15 @@ class EnrollmentAdmin(admin.ModelAdmin):
 class AssignmentAdmin(admin.ModelAdmin):
     list_display = ("title", "course", "due_date")
     list_filter = ("course",)
+
+
+@admin.register(AttendanceRecord)
+class AttendanceRecordAdmin(admin.ModelAdmin):
+    list_display = ("date", "course", "student", "status", "marked_by", "updated_at")
+    list_filter = ("date", "status", "course")
+    search_fields = ("student__full_name", "student__email", "course__code")
+    readonly_fields = ("updated_at",)
+    list_select_related = ("course", "student", "marked_by")
 
 
 @admin.register(ExamResult)

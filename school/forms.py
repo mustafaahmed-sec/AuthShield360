@@ -2,10 +2,37 @@
 
 from django import forms
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from accounts.models import User
 
-from .models import Assignment, Course, Enrollment, EnrollmentChangeRequest, ExamResult, StudentRecord
+from .models import Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, StudentRecord
+
+
+class AttendanceSelectionForm(forms.Form):
+    course = forms.ModelChoiceField(queryset=Course.objects.none(), empty_label=None)
+    date = forms.DateField(widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}))
+
+    def __init__(self, *args, teacher, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["course"].queryset = Course.objects.filter(teacher=teacher).order_by("code")
+
+    def clean_date(self):
+        day = self.cleaned_data["date"]
+        if day > timezone.localdate():
+            raise ValidationError("Attendance cannot be marked for a future date.")
+        return day
+
+
+class AttendanceSheetForm(forms.Form):
+    def __init__(self, *args, students, current, **kwargs):
+        super().__init__(*args, **kwargs)
+        for student in students:
+            self.fields[f"status_{student.pk}"] = forms.ChoiceField(
+                choices=[("", "Not marked"), *AttendanceRecord.Status.choices],
+                required=False,
+                initial=current.get(student.pk).status if student.pk in current else "",
+            )
 
 
 class TeacherAssignmentForm(forms.ModelForm):

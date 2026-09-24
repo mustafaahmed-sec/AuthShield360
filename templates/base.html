@@ -25,10 +25,9 @@
         <span class="review-chip identity-chip">{{ request.user.full_name }} · {{ request.user.get_role_display }}</span>
         <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="nav-button" type="submit">Sign out</button></form>
       {% else %}
-        <a class="nav-enroll" href="{% url 'student_signup' %}">Enroll as student</a>
-        <a class="nav-teacher" href="{% url 'teacher_signup' %}">Join as teacher</a>
-        <a class="nav-status" href="{% url 'registration_status' %}">Check request status</a>
-        <a class="nav-signin" href="{% url 'login' %}">Staff &amp; admin sign-in</a>
+        <a class="nav-signin" href="{% url 'login' %}">Sign in</a>
+        <a class="nav-enroll" href="{% url 'student_signup' %}">Request student access</a>
+        <a class="nav-teacher" href="{% url 'teacher_signup' %}">Request teacher access</a>
       {% endif %}
     </nav>
     {% if auth_mode_label %}<span class="environment" title="Authentication mode">{{ auth_mode_label }}</span>{% endif %}

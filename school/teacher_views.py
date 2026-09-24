@@ -8,6 +8,8 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from accounts.models import User
@@ -15,13 +17,94 @@ from accounts.models import User
 from .access import portal_teacher_view, require_portal_teacher
 from .audit import record_event
 from .forms import (
+    AttendanceSelectionForm,
+    AttendanceSheetForm,
     EnrollmentChangeRequestForm,
     TeacherAssignmentForm,
     TeacherExamResultForm,
     TeacherStudentNameForm,
     TeacherStudentRecordForm,
 )
-from .models import Course, Enrollment, EnrollmentChangeRequest, PortalAuditEvent, StudentRecord
+from .models import AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, PortalAuditEvent, StudentRecord
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@portal_teacher_view
+def teacher_attendance(request):
+    courses = Course.objects.filter(teacher=request.user).order_by("code")
+    first_course = courses.first()
+    initial = {"course": first_course.pk, "date": timezone.localdate()} if first_course else {}
+    selection_form = AttendanceSelectionForm(
+        request.POST if request.method == "POST" else (request.GET if request.GET else None),
+        teacher=request.user,
+        initial=initial,
+    )
+    course = first_course if not selection_form.is_bound else None
+    day = timezone.localdate() if not selection_form.is_bound else None
+    if selection_form.is_bound and selection_form.is_valid():
+        course = selection_form.cleaned_data["course"]
+        day = selection_form.cleaned_data["date"]
+
+    rows = []
+    sheet_form = None
+    if course and day:
+        students = list(
+            User.objects.filter(
+                role=User.Role.STUDENT,
+                is_active=True,
+                approval_status=User.ApprovalStatus.APPROVED,
+                enrollments__course=course,
+            ).order_by("full_name", "pk")
+        )
+        current = {
+            record.student_id: record
+            for record in AttendanceRecord.objects.filter(course=course, date=day, student__in=students)
+        }
+        sheet_form = AttendanceSheetForm(
+            request.POST if request.method == "POST" else None,
+            students=students,
+            current=current,
+        )
+        rows = [(student, sheet_form[f"status_{student.pk}"]) for student in students]
+        if request.method == "POST" and sheet_form.is_valid():
+            changed = 0
+            with transaction.atomic():
+                for student in students:
+                    status = sheet_form.cleaned_data[f"status_{student.pk}"]
+                    previous = current.get(student.pk)
+                    if previous and previous.status == status:
+                        continue
+                    if not status:
+                        if previous:
+                            previous.delete()
+                            changed += 1
+                    else:
+                        AttendanceRecord.objects.update_or_create(
+                            course=course, student=student, date=day,
+                            defaults={"status": status, "marked_by": request.user},
+                        )
+                        changed += 1
+                if changed:
+                    record_event(
+                        request.user, "attendance_saved",
+                        f"Updated {changed} attendance record(s) for {course.code} on {day.isoformat()}.",
+                        target_name=course.code, request=request,
+                    )
+            if changed:
+                messages.success(request, f"Attendance saved for {course.code}: {changed} record(s) updated.")
+            else:
+                messages.info(request, "No attendance changes were needed.")
+            return redirect(reverse("teacher_attendance") + "?" + urlencode({"course": course.pk, "date": day.isoformat()}))
+
+    return render(request, "school/teacher_attendance.html", {
+        "selection_form": selection_form,
+        "sheet_form": sheet_form,
+        "rows": rows,
+        "course": course,
+        "day": day,
+        "has_courses": bool(first_course),
+    })
 
 
 @login_required

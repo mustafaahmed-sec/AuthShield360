@@ -161,6 +161,41 @@ class Enrollment(models.Model):
         return f"{self.student.full_name} in {self.course.code}"
 
 
+class AttendanceRecord(models.Model):
+    class Status(models.TextChoices):
+        PRESENT = "present", "Present"
+        ABSENT = "absent", "Absent"
+        LATE = "late", "Late"
+        EXCUSED = "excused", "Excused"
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="attendance_records")
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="attendance_records")
+    date = models.DateField()
+    status = models.CharField(max_length=8, choices=Status.choices)
+    marked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True,
+        related_name="attendance_markings",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-date", "course__code", "student__full_name")
+        constraints = [
+            models.UniqueConstraint(fields=("course", "student", "date"), name="unique_course_student_attendance_date")
+        ]
+        indexes = [models.Index(fields=("course", "date"), name="attendance_course_day_idx")]
+
+    def clean(self):
+        if self.student_id and self.student.role != User.Role.STUDENT:
+            raise ValidationError({"student": "Attendance requires a Student account."})
+        if self._state.adding and self.student_id and self.course_id:
+            if not Enrollment.objects.filter(student_id=self.student_id, course_id=self.course_id).exists():
+                raise ValidationError({"student": "The student must be enrolled in this course."})
+
+    def __str__(self):
+        return f"{self.course.code}: {self.student.full_name} on {self.date} ({self.get_status_display()})"
+
+
 class Assignment(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="assignments")
     title = models.CharField(max_length=160)

@@ -4,6 +4,7 @@ body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
 a { color: #174a7a; }
 .skip-link { position: absolute; left: -1000px; top: 1rem; background: white; padding: .6rem 1rem; }
 .skip-link:focus { left: 1rem; z-index: 2; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .site-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1.1rem clamp(1rem, 5vw, 5rem); border-bottom: 1px solid #dce4ec; background: #fff; }
 .brand { display: flex; align-items: center; gap: .7rem; color: #172b42; font-size: 1.13rem; font-weight: 650; text-decoration: none; }
 .brand-mark { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: .55rem; background: #124a78; color: #fff; font-size: 1rem; }
@@ -12,6 +13,7 @@ a { color: #174a7a; }
 .eyebrow { color: #087c75; font-size: .82rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
 h1 { max-width: 750px; font-size: clamp(2.5rem, 6vw, 4.4rem); line-height: 1.06; letter-spacing: -.04em; margin: 1rem 0 1.2rem; }
 .intro { max-width: 680px; color: #4c6075; font-size: 1.14rem; line-height: 1.65; }
+.request-status-link { margin: 0; color: #50647b; line-height: 1.55; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin: 3rem 0; }
 .stat { background: #fff; border: 1px solid #dce4ec; border-radius: 1rem; padding: 1.5rem; box-shadow: 0 10px 30px #102d4908; }
 .stat strong { display: block; font-size: 2rem; color: #124a78; }
@@ -26,8 +28,8 @@ button { cursor: pointer; }
 .site-nav form { margin: 0; }
 .nav-button { border: 0; background: transparent; color: #174a7a; font-weight: 650; padding: .5rem 0; }
 .nav-button:hover, .nav-button:focus { text-decoration: underline; }
-.site-nav .nav-enroll, .site-nav .nav-teacher, .site-nav .nav-status { border: 1px solid #b8cadb; border-radius: .5rem; padding: .55rem .75rem; }
-.site-nav .nav-signin { margin-left: auto; border: 1px solid #124a78; border-radius: .5rem; padding: .6rem .9rem; background: #124a78; color: #fff; }
+.site-nav .nav-enroll, .site-nav .nav-teacher { border: 1px solid #b8cadb; border-radius: .5rem; padding: .55rem .75rem; }
+.site-nav .nav-signin { border: 1px solid #124a78; border-radius: .5rem; padding: .6rem .9rem; background: #124a78; color: #fff; }
 .identity-chip { color: #075d59; }
 .message { display: flex; align-items: baseline; gap: .4rem; margin: 0; border-left: 3px solid #087c75; background: #e8f7f3; padding: .8rem 1rem; line-height: 1.5; }
 .message > span[aria-hidden="true"] { font-weight: 800; }
@@ -63,6 +65,8 @@ button { cursor: pointer; }
 .password-suggestion .help-text { flex: 1 1 100%; margin-top: 0; }
 .form-field input[aria-invalid="true"] { border-color: #a62626; }
 .help-text { margin-top: .4rem; color: #50647b; font-size: .85rem; line-height: 1.45; }
+.password-strength[data-strength="weak"] { color: #8e1b1b; font-weight: 650; }
+.password-strength[data-strength="meets-rules"] { color: #236b4a; font-weight: 650; }
 .help-text ul { padding-left: 1.2rem; }
 .field-error, .form-error { color: #8e1b1b; font-size: .9rem; line-height: 1.5; }
 .form-error { border-left: 3px solid #a62626; background: #fff2f2; padding: .7rem 1rem; }
@@ -112,6 +116,7 @@ button { cursor: pointer; }
 .filter-bar { display: flex; flex-wrap: wrap; align-items: end; gap: .8rem; margin: 1rem 0; }
 .filter-bar label { display: grid; gap: .35rem; flex: 1 1 180px; font-size: .9rem; font-weight: 700; }
 .filter-bar input, .filter-bar select { width: 100%; min-height: 2.7rem; border: 1px solid #9db1c4; border-radius: .5rem; padding: .55rem .7rem; background: #fff; color: #172b42; font: inherit; }
+.table-wrap select { min-height: 2.4rem; border: 1px solid #9db1c4; border-radius: .45rem; padding: .4rem .55rem; background: #fff; color: #172b42; font: inherit; }
 .filter-bar :focus-visible { outline: 3px solid #0a8278; outline-offset: 2px; }
 .table-wrap { width: 100%; overflow-x: auto; border: 1px solid #e1e8ef; border-radius: .65rem; }
 table { width: 100%; border-collapse: collapse; background: #fff; font-size: .9rem; }
@@ -131,4 +136,4 @@ tr:last-child td { border-bottom: 0; }
 .edit-student-layout .actions { margin-top: 1rem; }
 @media (max-width: 720px) { .auth-layout, .dashboard-grid { grid-template-columns: 1fr; } .side-card { padding: 1.4rem; } }
 @media (max-width: 760px) { .site-header { align-items: flex-start; flex-direction: column; } .site-nav { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: .6rem; } }
-@media (max-width: 520px) { .guest-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .guest-nav a { display: grid; place-items: center; min-height: 2.7rem; border: 1px solid #b8cadb; border-radius: .5rem; padding: .55rem; text-align: center; } .guest-nav .nav-enroll { grid-column: 1; grid-row: 1; } .guest-nav .nav-signin { grid-column: 2; grid-row: 1; margin-left: 0; } .guest-nav .nav-teacher { grid-column: 1 / -1; grid-row: 2; } .guest-nav .nav-status { grid-column: 1 / -1; grid-row: 3; } .stats { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin: 2rem 0; } .stat { padding: 1.15rem; } .signup-heading-row, .admin-summary, .panel-heading { align-items: flex-start; flex-direction: column; } .review-chip { white-space: normal; } .filter-bar label { flex-basis: 100%; } .pagination { flex-wrap: wrap; } .table-wrap { margin-left: -.25rem; width: calc(100% + .5rem); } }
+@media (max-width: 520px) { .guest-nav { display: grid; grid-template-columns: 1fr; } .guest-nav a { display: grid; place-items: center; min-height: 2.7rem; border: 1px solid #b8cadb; border-radius: .5rem; padding: .55rem; text-align: center; } .stats { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin: 2rem 0; } .stat { padding: 1.15rem; } .signup-heading-row, .admin-summary, .panel-heading { align-items: flex-start; flex-direction: column; } .review-chip { white-space: normal; } .filter-bar label { flex-basis: 100%; } .pagination { flex-wrap: wrap; } .table-wrap { margin-left: -.25rem; width: calc(100% + .5rem); } }

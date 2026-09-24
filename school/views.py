@@ -5,14 +5,14 @@ from datetime import timedelta
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
-from django.db.models import Avg, ExpressionWrapper, F, FloatField, Q
+from django.db.models import Avg, Count, ExpressionWrapper, F, FloatField, Q
 from django.shortcuts import render
 from django.utils import timezone
 
 from accounts.models import User
 
 from .audit import record_role_denial
-from .models import Assignment, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
+from .models import Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
 
 
 def home(request):
@@ -29,6 +29,20 @@ def dashboard(request):
     user = request.user
     if user.is_portal_student:
         today = timezone.localdate()
+        attendance_summary = []
+        for item in (
+            AttendanceRecord.objects.filter(student=user)
+            .values("course__code", "course__title")
+            .annotate(
+                present=Count("pk", filter=Q(status=AttendanceRecord.Status.PRESENT)),
+                absent=Count("pk", filter=Q(status=AttendanceRecord.Status.ABSENT)),
+                late=Count("pk", filter=Q(status=AttendanceRecord.Status.LATE)),
+                excused=Count("pk", filter=Q(status=AttendanceRecord.Status.EXCUSED)),
+            ).order_by("course__code")
+        ):
+            counted = item["present"] + item["absent"] + item["late"]
+            item["attended_percent"] = round(100 * (item["present"] + item["late"]) / counted, 1) if counted else None
+            attendance_summary.append(item)
         courses = (
             Course.objects.filter(enrollments__student=user)
             .select_related("teacher")
@@ -45,6 +59,9 @@ def dashboard(request):
         )
         context = {
             "record": StudentRecord.objects.filter(student=user).first(),
+            "attendance_summary": attendance_summary,
+            "recent_attendance": AttendanceRecord.objects.filter(student=user)
+            .select_related("course").order_by("-date", "course__code")[:12],
             "courses": courses,
             "due_soon": Assignment.objects.filter(
                 course__enrollments__student=user,
@@ -79,6 +96,7 @@ def dashboard(request):
         return render(request, "school/teacher_dashboard.html", context)
     if user.is_portal_admin:
         context = {
+            "attendance_count": AttendanceRecord.objects.count(),
             "student_count": StudentRecord.objects.count(),
             "teacher_count": User.objects.filter(role=User.Role.TEACHER).count(),
             "admin_count": User.objects.filter(role=User.Role.ADMIN).count(),

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Take attendance | AuthShield 360{% endblock %}
+{% block content %}
+  <div class="eyebrow">Teacher portal</div>
+  <h1>Take attendance</h1>
+  <p class="intro">Choose one of your courses and a class date. Mark only the students enrolled in that course. Unmarked students are not counted as absent.</p>
+  <p><a href="{% url 'dashboard' %}">Back to dashboard</a></p>
+
+  {% if has_courses %}
+    <section class="panel management-section" aria-labelledby="attendance-select-title">
+      <h2 id="attendance-select-title">Class and date</h2>
+      <form method="get" class="filter-bar">
+        <label>Course {{ selection_form.course }}{{ selection_form.course.errors }}</label>
+        <label>Date {{ selection_form.date }}{{ selection_form.date.errors }}</label>
+        <button class="button compact" type="submit">Open class</button>
+      </form>
+    </section>
+
+    {% if course and day %}
+      <section class="panel management-section" aria-labelledby="attendance-sheet-title">
+        <h2 id="attendance-sheet-title">{{ course.code }} · {{ course.title }} — {{ day|date:"j M Y" }}</h2>
+        {% if rows %}
+          <p class="muted">Choose a status for each student you want to mark. “Not marked” clears a previous mark for that student.</p>
+          <form method="post" action="{% url 'teacher_attendance' %}">
+            {% csrf_token %}
+            <input type="hidden" name="course" value="{{ course.pk }}">
+            <input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
+            <p><button class="button secondary compact" type="button" data-fill-present>Fill unmarked as present</button></p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th scope="col">Student</th><th scope="col">Attendance</th></tr></thead>
+                <tbody>
+                  {% for student, field in rows %}
+                    <tr>
+                      <td>{{ student.full_name }}</td>
+                      <td><label class="visually-hidden" for="{{ field.id_for_label }}">Attendance for {{ student.full_name }}</label>{{ field }}{{ field.errors }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% if sheet_form.non_field_errors %}<div class="form-error" role="alert">{{ sheet_form.non_field_errors }}</div>{% endif %}
+            <p><button class="button" type="submit">Save attendance</button></p>
+          </form>
+        {% else %}<p class="empty">No approved students are enrolled in this course yet.</p>{% endif %}
+      </section>
+    {% endif %}
+  {% else %}
+    <section class="panel management-section"><p class="empty">No courses are assigned to your account yet.</p></section>
+  {% endif %}
+  <script src="{% static 'js/attendance.js' %}" defer></script>
+{% endblock %}

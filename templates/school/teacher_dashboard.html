@@ -5,6 +5,7 @@
   <h1>Welcome, {{ request.user.full_name }}</h1>
   <p class="intro">Only classes assigned to you and their related records appear here.</p>
   <div class="actions">
+    <a class="button" href="{% url 'teacher_attendance' %}">Take attendance</a>
     <a class="button" href="{% url 'teacher_students' %}">Search students</a>
     <a class="button secondary" href="{% url 'request_enrollment_change' %}">Request a class roster change</a>
     <a class="button secondary" href="{% url 'create_assignment' %}">Create assignment</a>

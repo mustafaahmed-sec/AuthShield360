@@ -14,6 +14,7 @@ from school.teacher_views import (
     create_exam_result,
     edit_assigned_student,
     request_enrollment_change,
+    teacher_attendance,
     teacher_students,
 )
 from school.views import dashboard, home
@@ -31,6 +32,7 @@ urlpatterns = [
     path("teacher/assignments/new/", create_assignment, name="create_assignment"),
     path("teacher/results/new/", create_exam_result, name="create_exam_result"),
     path("teacher/students/", teacher_students, name="teacher_students"),
+    path("teacher/attendance/", teacher_attendance, name="teacher_attendance"),
     path("teacher/students/<int:student_id>/edit/", edit_assigned_student, name="edit_assigned_student"),
     path("teacher/enrollment-requests/new/", request_enrollment_change, name="request_enrollment_change"),
     path("administrator/management/", admin_management, name="admin_management"),

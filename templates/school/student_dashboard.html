@@ -6,6 +6,28 @@
   <div class="dashboard-grid">
     <section class="panel"><h2>My record</h2>{% if record %}<dl class="details"><dt>Admission number</dt><dd>{{ record.admission_number }}</dd><dt>Grade</dt><dd>{{ record.grade }}</dd>{% if record.age %}<dt>Age</dt><dd>{{ record.age }}</dd>{% endif %}{% if record.gender %}<dt>Gender</dt><dd>{{ record.get_gender_display }}</dd>{% endif %}</dl>{% else %}<p class="empty">Your school record has not been assigned yet.</p>{% endif %}</section>
     <section class="panel"><h2>My courses</h2>{% if courses %}<ul class="item-list">{% for course in courses %}<li><strong>{{ course.code }} · {{ course.title }}</strong><span>Teacher: {{ course.teacher.full_name }}</span></li>{% endfor %}</ul>{% else %}<p class="empty">No courses assigned yet.</p>{% endif %}</section>
+    <section class="panel" aria-labelledby="attendance-title">
+      <h2 id="attendance-title">My attendance</h2>
+      {% if attendance_summary %}
+        <ul class="item-list">
+          {% for item in attendance_summary %}
+            <li>
+              <strong>{{ item.course__code }} · {{ item.course__title }}</strong>
+              <span>{{ item.present }} present · {{ item.late }} late · {{ item.absent }} absent · {{ item.excused }} excused</span>
+              <span>{% if item.attended_percent is not None %}Attended {{ item.attended_percent|floatformat:1 }}% of marked, non-excused class days{% else %}No class days counted toward a percentage yet{% endif %}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}<p class="empty">No attendance has been recorded for you yet.</p>{% endif %}
+      {% if recent_attendance %}
+        <h3>Recent records</h3>
+        <ul class="item-list">
+          {% for entry in recent_attendance %}
+            <li><strong>{{ entry.course.code }} · {{ entry.get_status_display }}</strong><span>{{ entry.date|date:"j M Y" }}</span></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
     <section class="panel" aria-labelledby="progress-title">
       <h2 id="progress-title">My progress</h2>
       {% if courses %}
