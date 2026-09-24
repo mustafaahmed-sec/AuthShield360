@@ -13,14 +13,14 @@ from django.views.decorators.http import require_POST
 
 from accounts.models import User
 
-from .access import require_portal_admin
+from .access import portal_admin_view, require_portal_admin
 from .audit import record_event
 from .models import Enrollment, EnrollmentChangeRequest, PortalAuditEvent, StudentRecord
 
 
 @login_required
 def admin_management(request):
-    require_portal_admin(request.user)
+    require_portal_admin(request.user, request)
     search = request.GET.get("q", "").strip()
     role = request.GET.get("role", "")
     status = request.GET.get("status", "")
@@ -65,9 +65,9 @@ def admin_management(request):
 
 @login_required
 @require_POST
+@portal_admin_view
 @transaction.atomic
 def review_account_request(request, user_id):
-    require_portal_admin(request.user)
     account = get_object_or_404(
         User.objects.select_for_update(),
         pk=user_id,
@@ -96,16 +96,16 @@ def review_account_request(request, user_id):
     account.reviewed_at = timezone.now()
     account.reviewed_by = request.user
     account.save(update_fields=("approval_status", "is_active", "reviewed_at", "reviewed_by"))
-    record_event(request.user, f"account_request_{status_label}", summary, target_name=account.full_name)
+    record_event(request.user, f"account_request_{status_label}", summary, target_name=account.full_name, request=request)
     messages.success(request, f"{account.get_role_display()} request for {account.full_name} was {status_label}.")
     return redirect("admin_management")
 
 
 @login_required
 @require_POST
+@portal_admin_view
 @transaction.atomic
 def change_account_access(request, user_id):
-    require_portal_admin(request.user)
     account = get_object_or_404(
         User.objects.select_for_update(),
         pk=user_id,
@@ -125,16 +125,16 @@ def change_account_access(request, user_id):
         messages.error(request, "Choose deactivate or reactivate.")
         return redirect("admin_management")
     account.save(update_fields=("is_active",))
-    record_event(request.user, f"account_{status_label}", summary, target_name=account.full_name)
+    record_event(request.user, f"account_{status_label}", summary, target_name=account.full_name, request=request)
     messages.success(request, f"Access for {account.full_name} was {status_label}.")
     return redirect("admin_management")
 
 
 @login_required
 @require_POST
+@portal_admin_view
 @transaction.atomic
 def delete_school_account(request, user_id):
-    require_portal_admin(request.user)
     account = get_object_or_404(
         User.objects.select_for_update(),
         pk=user_id,
@@ -148,6 +148,7 @@ def delete_school_account(request, user_id):
         "school_account_deleted",
         f"Deleted the {role_label} account {email}; linked academic records follow their configured retention rules.",
         target_name=label,
+        request=request,
     )
     account.delete()
     messages.success(request, f"The account for {label} was deleted.")
@@ -156,9 +157,9 @@ def delete_school_account(request, user_id):
 
 @login_required
 @require_POST
+@portal_admin_view
 @transaction.atomic
 def review_enrollment_request(request, request_id):
-    require_portal_admin(request.user)
     change = get_object_or_404(
         EnrollmentChangeRequest.objects.select_for_update().select_related("student", "course"),
         pk=request_id,
@@ -187,6 +188,6 @@ def review_enrollment_request(request, request_id):
     change.reviewed_at = timezone.now()
     change.review_note = request.POST.get("review_note", "").strip()[:300]
     change.save(update_fields=("status", "reviewed_by", "reviewed_at", "review_note"))
-    record_event(request.user, f"enrollment_request_{status_label}", summary, target_name=change.student_name)
+    record_event(request.user, f"enrollment_request_{status_label}", summary, target_name=change.student_name, request=request)
     messages.success(request, summary)
     return redirect("admin_management")

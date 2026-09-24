@@ -3,7 +3,9 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.core.validators import RegexValidator
+from django.utils import timezone
 
+from .lockout import account_lockout_until, ip_throttle_until, retry_minutes
 from .models import User
 
 
@@ -95,8 +97,30 @@ class EmailAuthenticationForm(AuthenticationForm):
         super().__init__(*args, **kwargs)
         self.fields["password"].widget.attrs.update({"autocomplete": "current-password"})
 
+    def clean(self):
+        email = self.data.get(self.add_prefix(self.username_field), "").strip().lower()
+        now = timezone.now()
+        ip_until = ip_throttle_until(self.request, now)
+        if ip_until:
+            raise forms.ValidationError(
+                f"Too many attempts. Try again in {retry_minutes(ip_until, now)} minutes.",
+                code="ip_rate_limited",
+            )
+        lock_until = account_lockout_until(email, now)
+        if lock_until:
+            raise forms.ValidationError(
+                f"Too many attempts. Try again in {retry_minutes(lock_until, now)} minutes.",
+                code="account_locked",
+            )
+        return super().clean()
+
     def confirm_login_allowed(self, user):
         super().confirm_login_allowed(user)
+        if user.locked_until and user.locked_until > timezone.now():
+            raise forms.ValidationError(
+                f"Too many attempts. Try again in {retry_minutes(user.locked_until)} minutes.",
+                code="account_locked",
+            )
         if user.approval_status != User.ApprovalStatus.APPROVED:
             raise forms.ValidationError(
                 self.error_messages["invalid_login"],

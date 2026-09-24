@@ -1,4 +1,7 @@
+import csv
+
 from django.contrib import admin
+from django.http import HttpResponse
 
 from .models import Assignment, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
 
@@ -43,10 +46,11 @@ class EnrollmentChangeRequestAdmin(admin.ModelAdmin):
 
 @admin.register(PortalAuditEvent)
 class PortalAuditEventAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "actor_name", "actor_role", "action", "target_name")
-    list_filter = ("actor_role", "action", "created_at")
+    list_display = ("created_at", "actor_name", "actor_role", "auth_mode", "factor", "outcome", "action", "target_name")
+    list_filter = ("actor_role", "created_at", "factor", "outcome", "auth_mode")
     search_fields = ("actor_name", "actor_email", "target_name", "description")
     readonly_fields = tuple(field.name for field in PortalAuditEvent._meta.fields)
+    actions = ("export_selected_as_csv",)
 
     def has_view_permission(self, request, obj=None):
         return request.user.is_authenticated and request.user.is_portal_admin
@@ -55,7 +59,28 @@ class PortalAuditEventAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
-        return False
+        return obj is None and request.user.is_authenticated and request.user.is_portal_admin
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    @admin.action(description="Export selected as CSV")
+    def export_selected_as_csv(self, request, queryset):
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="authshield-audit-events.csv"'
+        writer = csv.writer(response)
+        fields = (
+            "created_at", "actor_email", "actor_role", "auth_mode", "factor", "outcome",
+            "ip_address", "session_hint", "duration_ms", "action", "target_name", "description",
+        )
+        writer.writerow(fields)
+        for event in queryset.order_by("created_at", "pk"):
+            row = []
+            for field in fields:
+                value = getattr(event, field, "")
+                value = value.isoformat() if hasattr(value, "isoformat") else str(value or "")
+                if value.startswith(("=", "+", "-", "@", "\t", "\r")):
+                    value = "'" + value
+                row.append(value)
+            writer.writerow(row)
+        return response

@@ -152,7 +152,11 @@
         {% for event in recent_events %}
           <li>
             <strong>{{ event.action|cut:"_" }}</strong>
-            <span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.actor_name }} ({{ event.actor_role }}) · {{ event.target_name }}</span>
+            <span>
+              {{ event.created_at|date:"j M Y, H:i" }} · {{ event.actor_email }} ({{ event.actor_role }})
+              · {{ event.get_auth_mode_display }} · {{ event.get_factor_display }} · {{ event.get_outcome_display }}
+              · IP {{ event.ip_address|default:"not available" }}{% if event.session_hint %} · session {{ event.session_hint }}{% endif %}
+            </span>
             <p>{{ event.description }}</p>
           </li>
         {% endfor %}

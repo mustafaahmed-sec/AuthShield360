@@ -33,6 +33,14 @@ python -m venv .venv
 4. Open `http://127.0.0.1:8000/` for the portal, `/signup/student/` for Student registration, and `/signup/teacher/` for a Teacher access request. New requests remain inactive until an Administrator approves them. Applicants can check their status at `/signup/status/` with the same email and password, then sign in after approval.
 5. Run all repeatable tests with `python manage.py test --settings=config.test_settings`. The test settings use an isolated in-memory SQLite database and do not change the local PostgreSQL database. For linting and migration checks, install `requirements-dev.txt`, then run `python -m ruff check .` and `python manage.py makemigrations --check --dry-run --settings=config.test_settings`.
 
+## Password-only login protection and audit trail
+
+The password-only comparison stage uses configurable limits, shown in `.env.example`: five failed login or request-status password checks for an account within 15 minutes trigger a 15-minute account lock. A successful sign-in or administrator unlock clears the account's failure count. As a separate source-level throttle, 30 failures from one observed IP in 15 minutes pause new attempts from that IP for one minute. The IP limit is deliberately higher because multiple legitimate users can share a network address. Administrators can unlock selected accounts from Django Admin's account list; the lock timestamp is read-only there, so unlocking is audit-logged.
+
+Authenticated sessions use a rolling 15-minute idle timeout. A POST to Sign out invalidates the session; replaying its old cookie must not restore access. The audit trail records event time, account email and role, action, authentication mode, factor, success or failure, the IP address seen by Django, a short SHA-256 session hint, and elapsed authentication time where measured. It never stores passwords, OTP values, or raw session cookies. The Admin portal shows recent events; Django Admin provides filters and a selected-event CSV export. Audit rows are read-only.
+
+The IP field records `REMOTE_ADDR` as observed by Django and deliberately does not trust a caller-supplied forwarded header. On a deployment behind a reverse proxy this may identify the proxy rather than the visitor until a trusted proxy configuration is verified. Localhost tests record `127.0.0.1`. See [the safe local reset and restart procedure](docs/RESTART_AND_RESET.md) before demonstrating persistence; it does not reset or migrate the live Vercel database.
+
 ## Troubleshooting
 
 - If Django cannot connect to PostgreSQL, confirm the PostgreSQL service is running and that `DB_HOST`, `DB_PORT`, `DB_NAME`, and `DB_USER` in the local `.env` match the database setup.
@@ -82,9 +90,9 @@ The fictional school displays dates in the `America/New_York` time zone. Change 
 
 ## Next milestones
 
-1. Mobile OTP and required email OTP with expiry, reuse prevention, and test delivery.
-2. Failed-login protection, security event logging, comparison runs, and authorized browser/Kali checks.
-3. Identity Security Test Matrix, evidence, report, presentation, MP4 video, and ZIP submission.
+1. Record the required password-only comparison runs and complete authorized browser/Kali checks.
+2. Implement mobile OTP followed by required email OTP, with expiry, reuse prevention, and test delivery.
+3. Complete the Identity Security Test Matrix, evidence, report, presentation, MP4 demo, and ZIP submission.
 
 ## Vercel deployment preparation
 

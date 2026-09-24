@@ -18,7 +18,7 @@ class AuthShieldAdminSite(AdminSite):
         if user.is_authenticated and not allowed:
             from school.audit import record_role_denial
 
-            record_role_denial(user, "Django administrator")
+            record_role_denial(user, "Django administrator", request)
         return allowed
 
     @method_decorator(never_cache)

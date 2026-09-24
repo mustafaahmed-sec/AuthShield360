@@ -93,5 +93,5 @@ def dashboard(request):
             ).count(),
         }
         return render(request, "school/admin_dashboard.html", context)
-    record_role_denial(user, "role dashboard")
+    record_role_denial(user, "role dashboard", request)
     raise PermissionDenied("This account has no portal role access.")

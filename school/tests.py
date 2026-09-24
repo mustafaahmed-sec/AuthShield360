@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from unittest.mock import patch
 
+from django.conf import settings
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -54,8 +55,62 @@ class AccountApprovalFlowTests(TestCase):
 
     def test_administrator_can_view_but_not_edit_audit_events(self):
         self.client.force_login(self.admin)
-        response = self.client.get(reverse("admin:school_portalauditevent_changelist"))
+        event = PortalAuditEvent.objects.create(
+            actor=self.admin,
+            actor_name=self.admin.full_name,
+            actor_email=self.admin.email,
+            actor_role=self.admin.role,
+            action="login_success",
+            target_name='=HYPERLINK("https://example.test")',
+            description="Test event",
+            ip_address="192.0.2.15",
+            session_hint="a1b2c3d4",
+            factor=PortalAuditEvent.Factor.PASSWORD,
+            outcome=PortalAuditEvent.Outcome.SUCCESS,
+        )
+        changelist_url = reverse("admin:school_portalauditevent_changelist")
+        response = self.client.get(changelist_url)
         self.assertEqual(response.status_code, 200)
+        export = self.client.post(changelist_url, {
+            "action": "export_selected_as_csv",
+            "_selected_action": [str(event.pk)],
+            "index": "0",
+        })
+        self.assertEqual(export.status_code, 200)
+        self.assertIn("text/csv", export["Content-Type"])
+        self.assertIn(self.admin.email, export.content.decode())
+        self.assertIn("192.0.2.15", export.content.decode())
+        self.assertIn("'=HYPERLINK", export.content.decode())
+        detail_url = reverse("admin:school_portalauditevent_change", args=[event.pk])
+        self.assertEqual(self.client.get(detail_url).status_code, 200)
+        denied_update = self.client.post(detail_url, {"description": "Tampered event"})
+        self.assertIn(denied_update.status_code, (200, 403))
+        event.refresh_from_db()
+        self.assertNotEqual(event.description, "Tampered event")
+
+    def test_administrator_activity_feed_shows_audit_context(self):
+        PortalAuditEvent.objects.create(
+            actor=self.admin,
+            actor_name=self.admin.full_name,
+            actor_email=self.admin.email,
+            actor_role=self.admin.role,
+            action="login_success",
+            description="Successful password-only sign-in.",
+            auth_mode=PortalAuditEvent.AuthMode.PASSWORD,
+            factor=PortalAuditEvent.Factor.PASSWORD,
+            outcome=PortalAuditEvent.Outcome.SUCCESS,
+            ip_address="192.0.2.25",
+            session_hint="c0ffee12",
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("admin_management"))
+
+        self.assertContains(response, self.admin.email)
+        self.assertContains(response, "Password only")
+        self.assertContains(response, "Success")
+        self.assertContains(response, "192.0.2.25")
+        self.assertContains(response, "c0ffee12")
 
     @override_settings(AUTHSHIELD_BASELINE_LOGIN_ENABLED=True)
     def test_pending_account_cannot_sign_in_and_admin_approval_enables_it(self):
@@ -221,11 +276,13 @@ class TeacherRosterPermissionTests(TestCase):
         self.client.force_login(self.teacher)
         response = self.client.get(reverse("admin_management"))
         self.assertEqual(response.status_code, 403)
-        self.assertTrue(PortalAuditEvent.objects.filter(
+        denials = PortalAuditEvent.objects.filter(
             actor=self.teacher,
             action="role_access_denied",
             target_name="administrator management",
-        ).exists())
+        )
+        self.assertEqual(denials.count(), 1)
+        self.assertEqual(denials.first().ip_address, "127.0.0.1")
 
     def test_teacher_dashboard_students_are_paginated(self):
         for number in range(20):
@@ -287,13 +344,19 @@ class StudentRoleBoundaryTests(TestCase):
 
         for path_name in protected_paths:
             with self.subTest(path=path_name):
+                before = PortalAuditEvent.objects.filter(
+                    actor=self.student, action="role_access_denied"
+                ).count()
                 response = self.client.get(reverse(path_name))
                 self.assertEqual(response.status_code, 403)
+                after = PortalAuditEvent.objects.filter(
+                    actor=self.student, action="role_access_denied"
+                ).count()
+                self.assertEqual(after, before + 1, f"{path_name} should record one denial.")
 
-        self.assertGreaterEqual(
-            PortalAuditEvent.objects.filter(actor=self.student, action="role_access_denied").count(),
-            3,
-        )
+        denials = PortalAuditEvent.objects.filter(actor=self.student, action="role_access_denied")
+        self.assertEqual(denials.count(), len(protected_paths))
+        self.assertTrue(all(event.ip_address == "127.0.0.1" for event in denials))
 
 
 class StudentDashboardProgressTests(TestCase):
@@ -385,6 +448,7 @@ class DjangoAdminRoleBoundaryTests(TestCase):
             actor=teacher,
             action="role_access_denied",
             target_name="Django administrator",
+            ip_address="127.0.0.1",
         ).exists())
 
     @override_settings(AUTHSHIELD_BASELINE_LOGIN_ENABLED=False)
@@ -411,7 +475,7 @@ class PortalNavigationAndFeedbackTests(TestCase):
 
     def test_guest_navigation_has_specific_request_and_sign_in_links(self):
         response = self.client.get(reverse("home"))
-        self.assertContains(response, "Sign in")
+        self.assertContains(response, "Staff &amp; admin sign-in")
         self.assertContains(response, "Enroll as student")
         self.assertContains(response, "Join as teacher")
         self.assertContains(response, "Check request status")
@@ -479,10 +543,30 @@ class PortalNavigationAndFeedbackTests(TestCase):
 
     def test_logout_confirms_session_ended_and_login_next_explains_required_sign_in(self):
         self.client.force_login(self.student)
+        self.client.get(reverse("dashboard"))
+        old_session_cookie = self.client.cookies[settings.SESSION_COOKIE_NAME].value
         logout = self.client.post(reverse("logout"), follow=True)
         self.assertContains(logout, "You have signed out. This session can no longer be used.")
+        logout_event = PortalAuditEvent.objects.get(action="logout_success")
+        self.assertEqual(logout_event.ip_address, "127.0.0.1")
+        self.assertEqual(logout_event.factor, PortalAuditEvent.Factor.SESSION)
+        self.assertEqual(logout_event.outcome, PortalAuditEvent.Outcome.SUCCESS)
+        self.assertTrue(logout_event.session_hint)
+
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = old_session_cookie
+        stale_session = self.client.get(reverse("dashboard"))
+        self.assertEqual(stale_session.status_code, 302)
+        self.assertIn(reverse("login"), stale_session["Location"])
+        self.assertNotIn("_auth_user_id", self.client.session)
+
         login = self.client.get(reverse("login") + "?next=/dashboard/")
         self.assertContains(login, "Please sign in to continue. Your previous session is not active.")
+
+    def test_session_configuration_uses_a_fifteen_minute_rolling_timeout(self):
+        self.assertEqual(settings.SESSION_COOKIE_AGE, 900)
+        self.assertTrue(settings.SESSION_SAVE_EVERY_REQUEST)
+        self.assertTrue(settings.SESSION_COOKIE_HTTPONLY)
+        self.assertEqual(settings.SESSION_COOKIE_SAMESITE, "Lax")
 
     @override_settings(DEBUG=False)
     def test_forbidden_and_missing_pages_use_custom_templates(self):

@@ -12,7 +12,7 @@ from django.views.decorators.http import require_http_methods
 
 from accounts.models import User
 
-from .access import require_portal_teacher
+from .access import portal_teacher_view, require_portal_teacher
 from .audit import record_event
 from .forms import (
     EnrollmentChangeRequestForm,
@@ -27,7 +27,7 @@ from .models import Course, Enrollment, EnrollmentChangeRequest, PortalAuditEven
 @login_required
 @require_http_methods(["GET", "POST"])
 def create_assignment(request):
-    require_portal_teacher(request.user)
+    require_portal_teacher(request.user, request)
     form = TeacherAssignmentForm(request.POST or None, teacher=request.user)
     if request.method == "POST" and form.is_valid():
         assignment = form.save()
@@ -36,6 +36,7 @@ def create_assignment(request):
             "assignment_created",
             f"Created assignment {assignment.title} for {assignment.course.code}.",
             target_name=assignment.title,
+            request=request,
         )
         messages.success(request, "Assignment saved for your course.")
         return redirect("dashboard")
@@ -45,7 +46,7 @@ def create_assignment(request):
 @login_required
 @require_http_methods(["GET", "POST"])
 def create_exam_result(request):
-    require_portal_teacher(request.user)
+    require_portal_teacher(request.user, request)
     form = TeacherExamResultForm(request.POST or None, teacher=request.user)
     if request.method == "POST" and form.is_valid():
         result = form.save()
@@ -54,6 +55,7 @@ def create_exam_result(request):
             "exam_result_recorded",
             f"Recorded a result for {result.exam_name} in {result.course.code}.",
             target_name=result.student.full_name,
+            request=request,
         )
         messages.success(request, "Exam result saved for an enrolled student.")
         return redirect("dashboard")
@@ -62,7 +64,7 @@ def create_exam_result(request):
 
 @login_required
 def teacher_students(request):
-    require_portal_teacher(request.user)
+    require_portal_teacher(request.user, request)
     teacher_courses = Course.objects.filter(teacher=request.user, teacher__is_active=True)
     roster = User.objects.filter(
         role=User.Role.STUDENT,
@@ -111,9 +113,9 @@ def teacher_students(request):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@portal_teacher_view
 @transaction.atomic
 def edit_assigned_student(request, student_id):
-    require_portal_teacher(request.user)
     student = get_object_or_404(
         User.objects.filter(
             role=User.Role.STUDENT,
@@ -147,6 +149,7 @@ def edit_assigned_student(request, student_id):
                 "student_school_record_updated",
                 "Updated authorized student school-record fields: " + ", ".join(changed) + ".",
                 target_name=student.full_name,
+                request=request,
             )
             messages.success(request, "Student school record updated and recorded in your activity history.")
         else:
@@ -161,9 +164,9 @@ def edit_assigned_student(request, student_id):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@portal_teacher_view
 @transaction.atomic
 def request_enrollment_change(request):
-    require_portal_teacher(request.user)
     form = EnrollmentChangeRequestForm(request.POST or None, teacher=request.user)
     if request.method == "POST" and form.is_valid():
         change = form.save(commit=False)
@@ -185,6 +188,7 @@ def request_enrollment_change(request):
                 "enrollment_change_requested",
                 f"Requested to {change.get_action_display().lower()} for {change.course.code}.",
                 target_name=change.student_name,
+                request=request,
             )
             messages.success(request, "Request sent to an administrator. Your class roster was not changed.")
             return redirect("teacher_students")

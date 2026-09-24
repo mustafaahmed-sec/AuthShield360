@@ -55,6 +55,7 @@ class User(AbstractUser):
         on_delete=models.SET_NULL,
         related_name="reviewed_accounts",
     )
+    locked_until = models.DateTimeField(blank=True, null=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["full_name"]

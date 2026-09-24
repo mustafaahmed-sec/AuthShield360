@@ -120,6 +120,31 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "home"
+SESSION_COOKIE_AGE = 900
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+
+
+def _positive_integer_setting(name, default):
+    raw_value = os.environ.get(name, "").strip()
+    if not raw_value:
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError as error:
+        raise ImproperlyConfigured(f"{name} must be a positive integer.") from error
+    if value <= 0:
+        raise ImproperlyConfigured(f"{name} must be a positive integer.")
+    return value
+
+
+AUTHSHIELD_LOCKOUT_ATTEMPTS = _positive_integer_setting("AUTHSHIELD_LOCKOUT_ATTEMPTS", 5)
+AUTHSHIELD_LOCKOUT_WINDOW_MINUTES = _positive_integer_setting("AUTHSHIELD_LOCKOUT_WINDOW_MINUTES", 15)
+AUTHSHIELD_LOCKOUT_MINUTES = _positive_integer_setting("AUTHSHIELD_LOCKOUT_MINUTES", 15)
+AUTHSHIELD_IP_FAILURE_LIMIT = _positive_integer_setting("AUTHSHIELD_IP_FAILURE_LIMIT", 30)
+AUTHSHIELD_IP_WINDOW_MINUTES = _positive_integer_setting("AUTHSHIELD_IP_WINDOW_MINUTES", 15)
+AUTHSHIELD_IP_THROTTLE_MINUTES = _positive_integer_setting("AUTHSHIELD_IP_THROTTLE_MINUTES", 1)
 
 # Password-only access remains a controlled lab stage. For a Vercel demo it
 # requires a separately configured protected deployment; ordinary users never

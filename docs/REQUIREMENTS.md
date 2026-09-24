@@ -11,16 +11,16 @@ Progress marks: `pending`, `in progress`, `done`. The last row is an optional en
 | OTP MFA with valid, invalid, expired and missing factor cases | Pending | SRS 1.2 scenario 2, 1.6(v-vi) |
 | Mobile OTP followed by time-limited email OTP | Pending | SRS 1.2 scenario 3; teacher requires email OTP |
 | Server-enforced role access | In progress | Admin/Teacher/Student scopes are enforced; tests cover approval, assigned-student boundaries, and Admin-only roster changes. Broader matrix testing remains. SRS 1.6(vii) |
-| Failed-login protection and session validation | Pending | SRS 1.6(viii-ix) |
-| Authentication logging and monitoring | Pending | SRS 1.6(x) |
+| Failed-login protection and session validation | In progress | Five account failures in 15 minutes trigger a 15-minute lock; a separate 30-failure IP threshold adds a one-minute throttle. Request-status checks share account limits. Automated checks cover administrator unlock, 15-minute rolling sessions, logout, and stale-cookie reuse. Live-browser comparison evidence remains. SRS 1.6(viii-ix) |
+| Authentication logging and monitoring | In progress | Events record timestamp, account/role, action, auth mode, factor, outcome, observed peer IP, short session hint, and measured duration. Admin can review and export read-only CSV; OTP events and live monitoring evidence remain. SRS 1.6(x) |
 | Authorized DevTools and ZAP or Burp testing | Pending | SRS 1.6(xi); Kali VM available |
 | Identity Security Test Matrix and evidence | Pending | SRS 1.6(xii), 1.9 |
-| Repeatable reset and controlled restart persistence | In progress | Reset command works; restart evidence remains. SRS 1.6(xiii), 1.7 |
+| Repeatable reset and controlled restart persistence | In progress | Seed reset and repeatability have isolated-database tests; a safe local-only procedure is documented. The project's actual local restart and persistence evidence remains to be recorded. SRS 1.6(xiii), 1.7 |
 | Three-run login-time averages and event visibility within five seconds | Pending | SRS 1.7 |
 | Report, presentation, MP4 demo, ZIP and README | Pending | SRS 1.9 |
 | Student and Teacher requests, Admin approval, teacher roster search, scoped record edits, admin-reviewed roster requests, activity history | Optional enhancement implemented | Consistent with the fictional three-role portal and server-side role controls in SRS 1.4 and 1.6(ii, vii); OTP and AI remain excluded from this phase |
 | Student course progress averages and 14-day due-soon dashboard | Optional enhancement implemented | Averages use the current student's results; seeded assignments are scheduled one week after a demo reset |
-| Automated tests for approval, scope, admin-reviewed roster changes, seed roster invariants, and student progress | Optional enhancement implemented | Run all tests with `python manage.py test --settings=config.test_settings`; tests use a temporary in-memory SQLite database |
+| Automated tests for approval, scope, admin-reviewed roster changes, seed roster invariants, student progress, failed-login lockout, logout/session reuse, and audit export | Optional enhancement implemented | Run all tests with `python manage.py test --settings=config.test_settings`; tests use a temporary in-memory SQLite database |
 
 ## Clarifications and assumptions
 

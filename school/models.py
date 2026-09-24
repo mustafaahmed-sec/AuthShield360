@@ -46,6 +46,22 @@ class Course(models.Model):
 
 
 class PortalAuditEvent(models.Model):
+    class AuthMode(models.TextChoices):
+        PASSWORD = "password", "Password only"
+        OTP = "otp", "Password + OTP"
+        OTP_EMAIL = "otp_email", "Password + OTP + email OTP"
+
+    class Factor(models.TextChoices):
+        PASSWORD = "password", "Password"
+        MOBILE_OTP = "mobile_otp", "Mobile OTP"
+        EMAIL_OTP = "email_otp", "Email OTP"
+        SESSION = "session", "Session"
+        ACCESS = "access", "Access control"
+
+    class Outcome(models.TextChoices):
+        SUCCESS = "success", "Success"
+        FAILURE = "failure", "Failure"
+
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         blank=True,
@@ -60,6 +76,12 @@ class PortalAuditEvent(models.Model):
     target_name = models.CharField(max_length=150, blank=True)
     description = models.CharField(max_length=300)
     created_at = models.DateTimeField(auto_now_add=True)
+    auth_mode = models.CharField(max_length=16, choices=AuthMode.choices, default=AuthMode.PASSWORD)
+    factor = models.CharField(max_length=16, choices=Factor.choices, default=Factor.ACCESS)
+    outcome = models.CharField(max_length=8, choices=Outcome.choices, default=Outcome.SUCCESS)
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    session_hint = models.CharField(max_length=8, blank=True)
+    duration_ms = models.PositiveIntegerField(blank=True, null=True)
 
     class Meta:
         ordering = ("-created_at", "-pk")
