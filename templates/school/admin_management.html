@@ -169,20 +169,51 @@
 
   <section class="panel management-section">
     <h2>Recent security and account activity</h2>
-    {% if recent_events %}
-      <ul class="item-list">
-        {% for event in recent_events %}
-          <li>
-            <strong>{{ event.action|cut:"_" }}</strong>
-            <span>
-              {{ event.created_at|date:"j M Y, H:i" }} · {{ event.actor_email }} ({{ event.actor_role }})
-              · {{ event.get_auth_mode_display }} · {{ event.get_factor_display }} · {{ event.get_outcome_display }}
-              · IP {{ event.ip_address|default:"not available" }}{% if event.session_hint %} · session {{ event.session_hint }}{% endif %}
-            </span>
-            <p>{{ event.description }}</p>
-          </li>
-        {% endfor %}
-      </ul>
+    {% if student_events or teacher_events or admin_events %}
+      <div class="security-log-grid">
+        <div class="security-log-column">
+          <h3>Student activity</h3>
+          {% if student_events %}
+            <ul class="item-list">
+              {% for event in student_events %}
+                <li>
+                  <strong>{{ event.action|cut:"_" }}</strong>
+                  <span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.actor_email }} · {{ event.get_auth_mode_display }} · {{ event.get_factor_display }} · {{ event.get_outcome_display }} · IP {{ event.ip_address|default:"not available" }}{% if event.session_hint %} · session {{ event.session_hint }}{% endif %}</span>
+                  <p>{{ event.description }}</p>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}<p class="empty">No student activity.</p>{% endif %}
+        </div>
+        <div class="security-log-column">
+          <h3>Teacher activity</h3>
+          {% if teacher_events %}
+            <ul class="item-list">
+              {% for event in teacher_events %}
+                <li>
+                  <strong>{{ event.action|cut:"_" }}</strong>
+                  <span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.actor_email }} · {{ event.get_auth_mode_display }} · {{ event.get_factor_display }} · {{ event.get_outcome_display }} · IP {{ event.ip_address|default:"not available" }}{% if event.session_hint %} · session {{ event.session_hint }}{% endif %}</span>
+                  <p>{{ event.description }}</p>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}<p class="empty">No teacher activity.</p>{% endif %}
+        </div>
+        <div class="security-log-column">
+          <h3>Administrator activity</h3>
+          {% if admin_events %}
+            <ul class="item-list">
+              {% for event in admin_events %}
+                <li>
+                  <strong>{{ event.action|cut:"_" }}</strong>
+                  <span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.actor_email }} · {{ event.get_auth_mode_display }} · {{ event.get_factor_display }} · {{ event.get_outcome_display }} · IP {{ event.ip_address|default:"not available" }}{% if event.session_hint %} · session {{ event.session_hint }}{% endif %}</span>
+                  <p>{{ event.description }}</p>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}<p class="empty">No administrator activity.</p>{% endif %}
+        </div>
+      </div>
     {% else %}
       <p class="empty">No activity has been recorded yet.</p>
     {% endif %}
