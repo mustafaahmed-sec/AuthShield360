@@ -9,6 +9,7 @@ from accounts.views import (
     registration_status,
     signup,
     signup_options,
+    password_change,
 )
 from school.admin_views import (
     admin_management,
@@ -16,6 +17,7 @@ from school.admin_views import (
     admin_attendance,
     change_account_access,
     delete_school_account,
+    reset_school_account_password,
     preview_school_portal,
     review_account_request,
     review_enrollment_request,
@@ -37,6 +39,7 @@ urlpatterns = [
     path("signup/student/", signup, {"role": "student"}, name="student_signup"),
     path("signup/teacher/", signup, {"role": "teacher"}, name="teacher_signup"),
     path("signup/status/", registration_status, name="registration_status"),
+    path("password/change/", password_change, name="password_change"),
     path("login/", BaselineLoginView.as_view(), name="login"),
     path("login/verify/", otp_verify, name="otp_verify"),
     path("login/verify/resend/", otp_resend, name="otp_resend"),
@@ -55,6 +58,9 @@ urlpatterns = [
     path("administrator/accounts/<int:user_id>/review/", review_account_request, name="review_account_request"),
     path("administrator/accounts/<int:user_id>/access/", change_account_access, name="change_account_access"),
     path("administrator/accounts/<int:user_id>/delete/", delete_school_account, name="delete_school_account"),
+    path("administrator/accounts/<int:user_id>/reset-password/", reset_school_account_password, name="reset_school_account_password"),
     path("administrator/enrollment-requests/<int:request_id>/review/", review_enrollment_request, name="review_enrollment_request"),
     path("admin/", admin.site.urls),
 ]
+
+

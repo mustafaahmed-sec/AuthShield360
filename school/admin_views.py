@@ -9,6 +9,7 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 from django.views.decorators.http import require_http_methods, require_POST
 
 from accounts.models import User
@@ -253,6 +254,21 @@ def change_account_access(request, user_id):
 @require_POST
 @portal_admin_view
 @transaction.atomic
+
+@login_required
+@require_POST
+@portal_admin_view
+@transaction.atomic
+def reset_school_account_password(request, user_id):
+    account = get_object_or_404(User.objects.select_for_update(), pk=user_id, role__in=(User.Role.STUDENT, User.Role.TEACHER), approval_status=User.ApprovalStatus.APPROVED, is_active=True)
+    temporary_password = get_random_string(20, allowed_chars="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789") + "!"
+    account.set_password(temporary_password)
+    account.must_change_password = True
+    account.save(update_fields=("password", "must_change_password"))
+    record_event(request.user, "account_password_reset", "Generated a one-time temporary password; the account holder must replace it at next sign-in.", target_name=account.full_name, request=request, factor="password", outcome="success")
+    messages.success(request, f"Temporary password for {account.full_name} ({account.email}): {temporary_password}. Share it privately; it will be replaced at first sign-in.")
+    return redirect("admin_management")
+
 def delete_school_account(request, user_id):
     account = get_object_or_404(
         User.objects.select_for_update(),

@@ -2,7 +2,7 @@ import time
 
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import login
+from django.contrib.auth import login, update_session_auth_hash
 from django.contrib.auth import get_user_model
 from django.contrib.auth.views import LoginView, LogoutView
 from django.core.exceptions import ImproperlyConfigured, NON_FIELD_ERRORS, PermissionDenied
@@ -11,6 +11,7 @@ from django.urls import reverse_lazy
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
+from django.contrib.auth.decorators import login_required
 
 from .lockout import (
     account_lockout_until,
@@ -23,6 +24,7 @@ from .lockout import (
 )
 
 from .forms import EmailAuthenticationForm, RegistrationStatusForm, StudentSignupForm, TeacherSignupForm
+from django.contrib.auth.forms import SetPasswordForm
 from .otp import OTPProviderError, TwilioVerify, delivery_target
 from school.audit import record_auth_event
 
@@ -232,6 +234,8 @@ class BaselineLoginView(LoginView):
             outcome="success",
             duration_ms=self._duration_ms(),
         )
+        if user.must_change_password:
+            return redirect("password_change")
         return response
 
     def get_context_data(self, **kwargs):
@@ -368,6 +372,8 @@ def otp_verify(request):
             auth_mode=auth_mode,
             duration_ms=duration_ms,
         )
+        if user.must_change_password:
+            return redirect("password_change")
         return redirect(next_url)
 
     return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase))
@@ -427,3 +433,22 @@ class BaselineLogoutView(LogoutView):
             )
             messages.success(request, "You have signed out. This session can no longer be used.")
         return super().post(request, *args, **kwargs)
+@login_required
+@require_http_methods(["GET", "POST"])
+def password_change(request):
+    if not request.user.must_change_password:
+        return redirect("dashboard")
+    form = SetPasswordForm(request.user, request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        user = form.save(commit=False)
+        user.must_change_password = False
+        user.save(update_fields=("password", "must_change_password"))
+        update_session_auth_hash(request, user)
+        record_auth_event(
+            "password_reset_completed", email=user.email, actor=user,
+            description="A temporary administrator password was replaced by the account holder.",
+            request=request, factor="password", outcome="success",
+        )
+        messages.success(request, "Your password has been changed. You can now use the portal.")
+        return redirect("dashboard")
+    return render(request, "accounts/password_change.html", {"form": form})

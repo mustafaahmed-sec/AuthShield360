@@ -62,6 +62,7 @@ class User(AbstractUser):
         related_name="reviewed_accounts",
     )
     locked_until = models.DateTimeField(blank=True, null=True)
+    must_change_password = models.BooleanField(default=False)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["full_name"]
