@@ -124,9 +124,19 @@ class Command(BaseCommand):
             action="store_true",
             help="Rebuild generated demo accounts and restore the seeded school records; keeps the three primary demo accounts and course history.",
         )
+        parser.add_argument(
+            "--assignments-only",
+            action="store_true",
+            help="Add missing term assignments to seeded demo courses without changing accounts or student records.",
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
+        if options["assignments_only"]:
+            created, total = self._seed_additional_assignments()
+            self.stdout.write(self.style.SUCCESS(f"Ready: added {created} assignments; {total} seeded course assignments total."))
+            return
+
         User = get_user_model()
         if options["reset"]:
             # Preserve courses referenced by roster requests (their FK is
@@ -288,6 +298,36 @@ class Command(BaseCommand):
             raise CommandError("The reserved fictional student roster is incomplete.")
         return students
 
+    def _seed_additional_assignments(self):
+        subject_names = {code: name for code, name, _ in TEACHER_GROUPS}
+        courses = Course.objects.filter(code__startswith=COURSE_PREFIX) | Course.objects.filter(code="SCI-101")
+        created = 0
+        today = timezone.localdate()
+        for course in courses.order_by("code"):
+            if course.code == "SCI-101":
+                specs = (
+                    ("Lab Safety Check", "Review the fictional lab safety guide and complete the short knowledge check."),
+                    ("Science Project Reflection", "Summarize what your fictional experiment showed and what you would investigate next."),
+                )
+            else:
+                subject_code = course.code.split("-")[2]
+                subject = subject_names.get(subject_code, "Course")
+                specs = (
+                    (f"Term 1 {subject} Practice Set", f"Practice core {subject.lower()} skills using fictional examples."),
+                    (f"Term 1 {subject} Project Checkpoint", f"Submit a short progress update for the fictional {subject.lower()} term project."),
+                )
+            for index, (title, description) in enumerate(specs, start=1):
+                _, was_created = Assignment.objects.get_or_create(
+                    course=course,
+                    title=title,
+                    defaults={
+                        "description": description,
+                        "due_date": today + timedelta(days=7 + index * 14),
+                    },
+                )
+                created += int(was_created)
+        return created, Assignment.objects.filter(course__in=courses).count()
+
     def _seed_academic_records(self, students, teacher_groups, reset_existing=False):
         student_fixture_path = Path(__file__).resolve().parents[2] / "data" / "demo_students.json"
         source_profiles = json.loads(student_fixture_path.read_text(encoding="utf-8"))
@@ -359,18 +399,35 @@ class Command(BaseCommand):
             Course.objects.bulk_update(changed_courses, ["title", "teacher"], batch_size=500)
 
         assignment_specs = []
-        due_date = timezone.localdate() + timedelta(days=7)
+        today = timezone.localdate()
         for key, code, _, _, is_featured_science in course_specs:
             grade_index, _, subject_index = key
             course = courses[key]
             subject_name = subjects[subject_index][1]
-            title = "Observation journal" if is_featured_science else f"Term 1 {subject_name} Check-In"
-            description = (
-                "Record three observations from a fictional lab exercise."
-                if is_featured_science
-                else f"Fictional {ACADEMIC_YEAR} learning check for {GRADE_NAMES[grade_index]} students."
-            )
-            assignment_specs.append((course, title, description, due_date))
+            if is_featured_science:
+                titles = (
+                    ("Observation journal", "Lab Safety Check", "Science Project Reflection"),
+                    (
+                        "Record three observations from a fictional lab exercise.",
+                        "Review the fictional lab safety guide and complete the short knowledge check.",
+                        "Summarize what your fictional experiment showed and what you would investigate next.",
+                    ),
+                )
+            else:
+                titles = (
+                    (
+                        f"Term 1 {subject_name} Check-In",
+                        f"Term 1 {subject_name} Practice Set",
+                        f"Term 1 {subject_name} Project Checkpoint",
+                    ),
+                    (
+                        f"Fictional {ACADEMIC_YEAR} learning check for {GRADE_NAMES[grade_index]} students.",
+                        f"Practice core {subject_name.lower()} skills taught this term using fictional examples.",
+                        f"Submit a short progress update for the fictional {subject_name.lower()} term project.",
+                    ),
+                )
+            for index, (title, description) in enumerate(zip(*titles, strict=True)):
+                assignment_specs.append((course, title, description, today + timedelta(days=7 + index * 14)))
 
         existing_assignments = {
             (assignment.course_id, assignment.title): assignment
