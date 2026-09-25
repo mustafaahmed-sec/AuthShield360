@@ -10,6 +10,7 @@ from accounts.models import User
 from .audit import record_event
 from .models import (
     Assignment,
+    AdministratorPortalAuditEvent,
     AttendanceRecord,
     Course,
     Enrollment,
@@ -250,3 +251,9 @@ class StudentPortalAuditEventAdmin(PortalAuditEventAdmin):
 class TeacherPortalAuditEventAdmin(PortalAuditEventAdmin):
     def get_queryset(self, request):
         return super().get_queryset(request).filter(actor_role=User.Role.TEACHER)
+
+
+@admin.register(AdministratorPortalAuditEvent)
+class AdministratorPortalAuditEventAdmin(PortalAuditEventAdmin):
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(actor_role=User.Role.ADMIN)

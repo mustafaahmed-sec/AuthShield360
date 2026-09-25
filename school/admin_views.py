@@ -65,9 +65,6 @@ def admin_management(request):
             20,
         ).get_page(request.GET.get("change_page")),
         "admin_accounts": User.objects.filter(role=User.Role.ADMIN).order_by("designation", "full_name"),
-        # Keep the security log readable by role.  Administrators often need to
-        # compare student and teacher activity without scanning one mixed feed.
-        "recent_events": PortalAuditEvent.objects.all()[:20],
         "student_events": PortalAuditEvent.objects.filter(actor_role=User.Role.STUDENT)[:20],
         "teacher_events": PortalAuditEvent.objects.filter(actor_role=User.Role.TEACHER)[:20],
         "admin_events": PortalAuditEvent.objects.filter(actor_role=User.Role.ADMIN)[:20],

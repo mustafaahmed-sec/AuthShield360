@@ -104,6 +104,13 @@ class TeacherPortalAuditEvent(PortalAuditEvent):
         verbose_name_plural = "teacher audit events"
 
 
+class AdministratorPortalAuditEvent(PortalAuditEvent):
+    class Meta:
+        proxy = True
+        verbose_name = "administrator audit event"
+        verbose_name_plural = "administrator audit events"
+
+
 class EnrollmentChangeRequest(models.Model):
     class Action(models.TextChoices):
         ADD = "add", "Request enrollment"
