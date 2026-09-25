@@ -60,6 +60,7 @@
                 <td>
                   {% if can_manage_all_students or student.enrollments.all %}
                     <a class="button compact secondary" href="{% url 'edit_assigned_student' student.pk %}">Edit record</a>
+                    <form method="post" action="{% url 'reset_assigned_student_password' student.pk %}">{% csrf_token %}<button class="button compact secondary" type="submit">Reset password</button></form>
                   {% else %}
                     <span class="muted">View only</span>
                   {% endif %}

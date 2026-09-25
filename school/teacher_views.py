@@ -10,7 +10,8 @@ from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.views.decorators.http import require_http_methods
+from django.utils.crypto import get_random_string
+from django.views.decorators.http import require_http_methods, require_POST
 
 from accounts.models import User
 
@@ -206,6 +207,24 @@ def teacher_students(request):
 @require_http_methods(["GET", "POST"])
 @portal_teacher_view
 @transaction.atomic
+
+@login_required
+@require_POST
+@portal_teacher_view
+@transaction.atomic
+def reset_assigned_student_password(request, student_id):
+    students = User.objects.filter(role=User.Role.STUDENT, is_active=True, student_record__isnull=False)
+    if not request.user.can_manage_all_students:
+        students = students.filter(enrollments__course__teacher=request.user).distinct()
+    student = get_object_or_404(students, pk=student_id)
+    temporary_password = get_random_string(20, allowed_chars="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789") + "!"
+    student.set_password(temporary_password)
+    student.must_change_password = True
+    student.save(update_fields=("password", "must_change_password"))
+    record_event(request.user, "student_password_reset", "Generated a one-time temporary password; the student must replace it at next sign-in.", target_name=student.full_name, request=request, factor="password", outcome="success")
+    messages.success(request, f"Temporary password for {student.full_name} ({student.email}): {temporary_password}. Share it privately; it will be replaced at first sign-in.")
+    return redirect("teacher_students")
+
 def edit_assigned_student(request, student_id):
     students = User.objects.filter(
         role=User.Role.STUDENT,
@@ -290,3 +309,4 @@ def request_enrollment_change(request):
         "school/teacher_form.html",
         {"form": form, "title": "Request a roster change", "submit_label": "Send request"},
     )
+
