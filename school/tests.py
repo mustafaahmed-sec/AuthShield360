@@ -185,6 +185,39 @@ class TeacherRosterPermissionTests(TestCase):
         )
         self.assertIn("name, grade, age, gender", event.description)
 
+    def test_sara_can_view_and_manage_a_new_student_outside_any_course(self):
+        sara = User.objects.create_user(
+            "sara.ahmed.authshield@gmail.com", "sara-password", full_name="Sara Ahmed",
+            role=User.Role.TEACHER,
+        )
+        new_student = User.objects.create_user(
+            "new.student@example.test", "student-password", full_name="Newly Approved Student",
+            role=User.Role.STUDENT,
+        )
+        StudentRecord.objects.create(
+            student=new_student,
+            admission_number="NEW-0001",
+            grade="Unassigned",
+        )
+
+        self.client.force_login(sara)
+        dashboard_response = self.client.get(reverse("dashboard"))
+        self.assertContains(dashboard_response, "Schoolwide student records")
+        response = self.client.get(reverse("teacher_students"))
+        self.assertContains(response, "Newly Approved Student")
+        self.assertContains(response, "All students")
+        response = self.client.post(reverse("edit_assigned_student", args=[new_student.pk]), {
+            "name-full_name": "New Student Updated",
+            "record-grade": "Grade 8",
+            "record-age": "13",
+            "record-gender": "not_specified",
+        })
+
+        self.assertRedirects(response, reverse("teacher_students"))
+        new_student.refresh_from_db()
+        self.assertEqual(new_student.full_name, "New Student Updated")
+        self.assertEqual(new_student.student_record.grade, "Grade 8")
+
     def test_teacher_edit_rejects_grade_outside_offered_choices(self):
         self.client.force_login(self.teacher)
         response = self.client.post(reverse("edit_assigned_student", args=[self.student.pk]), {

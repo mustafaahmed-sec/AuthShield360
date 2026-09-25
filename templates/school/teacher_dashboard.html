@@ -3,15 +3,32 @@
 {% block content %}
   <div class="eyebrow">Teacher portal</div>
   <h1>Welcome, {{ request.user.full_name }}</h1>
-  <p class="intro">Only classes assigned to you and their related records appear here.</p>
+  <p class="intro">
+    {% if request.user.can_manage_all_students %}
+      You can view and manage student records across the school. Course work and attendance below remain limited to your assigned classes.
+    {% else %}
+      Only classes assigned to you and their related records appear here.
+    {% endif %}
+  </p>
   {% include "school/partials/announcements.html" %}
   <div class="actions">
     <a class="button" href="{% url 'teacher_attendance' %}">Take attendance</a>
-    <a class="button" href="{% url 'teacher_students' %}">Search students</a>
+    <a class="button" href="{% url 'teacher_students' %}">{% if request.user.can_manage_all_students %}All student records{% else %}Search students{% endif %}</a>
     <a class="button secondary" href="{% url 'request_enrollment_change' %}">Request a class roster change</a>
     <a class="button secondary" href="{% url 'create_assignment' %}">Create assignment</a>
     <a class="button secondary" href="{% url 'create_exam_result' %}">Record exam result</a>
   </div>
+  {% if request.user.can_manage_all_students %}
+    <section class="panel management-section">
+      <div class="panel-heading">
+        <div>
+          <h2>Schoolwide student records</h2>
+          <p class="muted">{{ schoolwide_student_count }} active student record{{ schoolwide_student_count|pluralize }} across all classes.</p>
+        </div>
+        <a class="button compact" href="{% url 'teacher_students' %}">Open all student records</a>
+      </div>
+    </section>
+  {% endif %}
   <div class="dashboard-grid">
     <section class="panel">
       <h2>My courses</h2>

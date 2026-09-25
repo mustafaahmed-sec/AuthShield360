@@ -115,6 +115,11 @@ def dashboard(request):
     if user.is_portal_teacher:
         context = {
             "announcements": active_announcements_for(user),
+            "schoolwide_student_count": StudentRecord.objects.filter(
+                student__role=User.Role.STUDENT,
+                student__is_active=True,
+                student__approval_status=User.ApprovalStatus.APPROVED,
+            ).count() if user.can_manage_all_students else None,
             "courses": Course.objects.filter(teacher=user).order_by("code"),
             "assignments": Paginator(
                 Assignment.objects.filter(course__teacher=user).select_related("course").order_by("due_date", "id"), 20

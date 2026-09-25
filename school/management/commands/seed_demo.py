@@ -193,7 +193,6 @@ class Command(BaseCommand):
         seeded_courses = Course.objects.filter(code__in=course_codes)
         seeded_enrollments = Enrollment.objects.filter(student__in=student_users, course__in=seeded_courses)
         seeded_results = ExamResult.objects.filter(student__in=student_users, course__in=seeded_courses)
-        seeded_attendance = AttendanceRecord.objects.filter(student__in=student_users, course__in=seeded_courses)
         self.stdout.write(
             self.style.SUCCESS(
                 f"Ready: {len(student_users)} seeded students, "
