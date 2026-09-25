@@ -26,7 +26,7 @@
         return;
       }
 
-      const meetsRules = password.length >= 22
+      const meetsRules = password.length >= 12 && password.length <= 50
         && /[a-z]/.test(password)
         && /[A-Z]/.test(password)
         && /[0-9]/.test(password)
@@ -35,7 +35,7 @@
       strengthStatus.dataset.strength = meetsRules ? "meets-rules" : "weak";
       strengthStatus.textContent = meetsRules
         ? "Meets the portal's password rules. This demo does not check breach databases."
-        : "Weak password: use at least 22 characters, including lowercase and uppercase letters, a number, and a special character. This demo does not check breach databases. Try the generated suggestion below.";
+        : "Use 12–50 characters, including lowercase and uppercase letters, a number, and a special character. This demo does not check breach databases. Try the generated suggestion below.";
     });
   });
 
@@ -67,7 +67,7 @@
       }
 
       const password = chars.join("");
-      const meetsPolicy = password.length >= 22
+      const meetsPolicy = password.length >= 12 && password.length <= 50
         && /[a-z]/.test(password)
         && /[A-Z]/.test(password)
         && /[0-9]/.test(password)

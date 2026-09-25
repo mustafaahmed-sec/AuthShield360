@@ -45,16 +45,18 @@ class AccountSignupForm(UserCreationForm):
         self.fields["email"].required = True
         self.fields["password1"].widget.attrs.update({
             "autocomplete": "new-password",
-            "minlength": "22",
+            "minlength": "12",
+            "maxlength": "50",
             "aria-describedby": "password-policy",
         })
         self.fields["password1"].help_text = (
-            "Use at least 22 characters, including a lowercase letter, uppercase letter, "
+            "Use 12–50 characters, including a lowercase letter, uppercase letter, "
             "number, and special character. A suggested password is available below."
         )
         self.fields["password2"].widget.attrs.update({
             "autocomplete": "new-password",
-            "minlength": "22",
+            "minlength": "12",
+            "maxlength": "50",
         })
 
     def clean_email(self):

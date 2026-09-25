@@ -39,13 +39,13 @@ class AdminStudentCreationForm(UserCreationForm):
         self.fields["full_name"].label = "Student name"
         self.fields["email"].label = "Student email"
         self.fields["password1"].widget.attrs.update({
-            "autocomplete": "new-password", "minlength": "22", "aria-describedby": "password-policy",
+            "autocomplete": "new-password", "minlength": "12", "maxlength": "50", "aria-describedby": "password-policy",
         })
         self.fields["password1"].help_text = (
-            "Use at least 22 characters, including lowercase and uppercase letters, a number, and a special character."
+            "Use 12–50 characters, including lowercase and uppercase letters, a number, and a special character."
         )
         self.fields["password2"].label = "Confirm password"
-        self.fields["password2"].widget.attrs.update({"autocomplete": "new-password", "minlength": "22"})
+        self.fields["password2"].widget.attrs.update({"autocomplete": "new-password", "minlength": "12", "maxlength": "50"})
 
     def clean_email(self):
         return self.cleaned_data["email"].strip().lower()

@@ -1,14 +1,26 @@
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
+from django.contrib.auth.forms import UserCreationForm
 
 from school.audit import record_event
 
 from .models import User
 
 
+class PortalUserCreationForm(UserCreationForm):
+    """Make the selected role available to role-aware password validators."""
+
+    def clean_password2(self):
+        selected_role = self.data.get("role")
+        if selected_role:
+            self.instance.role = selected_role
+        return super().clean_password2()
+
+
 @admin.register(User)
 class AuthShieldUserAdmin(UserAdmin):
     model = User
+    add_form = PortalUserCreationForm
     list_display = ("email", "full_name", "role", "approval_status", "is_active", "locked_until", "is_staff")
     list_filter = ("role", "approval_status", "is_active", "is_staff")
     search_fields = ("email", "full_name")

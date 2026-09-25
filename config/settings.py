@@ -100,10 +100,11 @@ else:
 AUTH_USER_MODEL = "accounts.User"
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 22}},
+    {"NAME": "accounts.validators.RoleBasedPasswordMinimumLengthValidator", "OPTIONS": {"min_length": 12, "admin_min_length": 25}},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
     {"NAME": "accounts.validators.PasswordCharacterSetValidator"},
+    {"NAME": "accounts.validators.PasswordMaximumLengthValidator", "OPTIONS": {"max_length": 50}},
 ]
 
 LANGUAGE_CODE = "en-us"
