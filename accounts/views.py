@@ -109,6 +109,12 @@ def signup(request, role="student"):
     return render(request, "accounts/signup.html", {"form": form, "role": role, "role_label": role_label})
 
 
+def signup_options(request):
+    if request.user.is_authenticated:
+        return redirect("dashboard")
+    return render(request, "accounts/signup_options.html")
+
+
 def registration_status(request):
     form = RegistrationStatusForm(request.POST or None)
     result = None

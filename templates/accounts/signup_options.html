@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Choose account type | AuthShield 360{% endblock %}
+{% block content %}
+  <section class="form-card signup-choice-card" aria-labelledby="signup-choice-title">
+    <div class="eyebrow">Account request</div>
+    <h1 id="signup-choice-title">Choose your account type</h1>
+    <p class="intro">Select the account you need. A school administrator reviews each request before the account can sign in.</p>
+
+    <div class="signup-choice-grid">
+      <a class="panel signup-choice" href="{% url 'student_signup' %}">
+        <span class="eyebrow">Student</span>
+        <h2>Request a student account</h2>
+        <p>For a student who needs access to courses, assignments, results, and attendance.</p>
+        <strong>Continue with student request →</strong>
+      </a>
+      <a class="panel signup-choice" href="{% url 'teacher_signup' %}">
+        <span class="eyebrow">Teacher</span>
+        <h2>Request a teacher account</h2>
+        <p>For a teacher who needs access to assigned courses, class rosters, and attendance.</p>
+        <strong>Continue with teacher request →</strong>
+      </a>
+    </div>
+
+    <p class="form-foot">Administrator accounts are created by the school. Already have an approved account? <a href="{% url 'login' %}">Sign in</a>.</p>
+  </section>
+{% endblock %}

@@ -1,7 +1,15 @@
 from django.contrib import admin
 from django.urls import path
 
-from accounts.views import BaselineLoginView, BaselineLogoutView, otp_resend, otp_verify, registration_status, signup
+from accounts.views import (
+    BaselineLoginView,
+    BaselineLogoutView,
+    otp_resend,
+    otp_verify,
+    registration_status,
+    signup,
+    signup_options,
+)
 from school.admin_views import (
     admin_management,
     add_student,
@@ -25,7 +33,7 @@ from school.views import dashboard, home
 
 urlpatterns = [
     path("", home, name="home"),
-    path("signup/", signup, {"role": "student"}, name="signup"),
+    path("signup/", signup_options, name="signup"),
     path("signup/student/", signup, {"role": "student"}, name="student_signup"),
     path("signup/teacher/", signup, {"role": "teacher"}, name="teacher_signup"),
     path("signup/status/", registration_status, name="registration_status"),

@@ -28,7 +28,7 @@ button { cursor: pointer; }
 .site-nav form { margin: 0; }
 .nav-button { border: 0; background: transparent; color: #174a7a; font-weight: 650; padding: .5rem 0; }
 .nav-button:hover, .nav-button:focus { text-decoration: underline; }
-.site-nav .nav-enroll, .site-nav .nav-teacher { border: 1px solid #b8cadb; border-radius: .5rem; padding: .55rem .75rem; }
+.site-nav .nav-enroll { border: 1px solid #b8cadb; border-radius: .5rem; padding: .55rem .75rem; }
 .site-nav .nav-signin { border: 1px solid #124a78; border-radius: .5rem; padding: .6rem .9rem; background: #124a78; color: #fff; }
 .identity-chip { color: #075d59; }
 .message { display: flex; align-items: baseline; gap: .4rem; margin: 0; border-left: 3px solid #087c75; background: #e8f7f3; padding: .8rem 1rem; line-height: 1.5; }
@@ -90,6 +90,14 @@ button { cursor: pointer; }
 .item-list span { margin-top: .2rem; color: #50647b; }
 .item-list p { margin: .55rem 0 0; line-height: 1.5; }
 .signup-card { border-color: #d3e0e9; }
+.signup-choice-card { max-width: 760px; margin: auto; }
+.signup-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+.signup-choice { display: flex; flex-direction: column; align-items: flex-start; gap: .65rem; min-width: 0; padding: 1.4rem; color: #172b42; text-decoration: none; transition: border-color .15s ease, transform .15s ease; }
+.signup-choice:hover { border-color: #0a8278; transform: translateY(-2px); }
+.signup-choice:focus-visible { outline: 3px solid #0a8278; outline-offset: 3px; }
+.signup-choice h2, .signup-choice p { margin: 0; }
+.signup-choice p { color: #50647b; line-height: 1.55; }
+.signup-choice strong { margin-top: .35rem; color: #174a7a; }
 .signup-heading-row, .panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
 .signup-heading-row h1 { margin-bottom: .35rem; }
 .review-chip, .count-chip, .course-tag { display: inline-flex; align-items: center; border: 1px solid #b9d7d4; border-radius: 999px; background: #f0faf8; color: #075d59; padding: .36rem .68rem; font-size: .78rem; font-weight: 700; white-space: nowrap; }
@@ -140,7 +148,7 @@ tr:last-child td { border-bottom: 0; }
   .site-header { align-items: stretch; flex-direction: column; padding: .9rem 1rem; }
   .site-nav { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: .5rem; }
   .site-nav a, .site-nav .nav-button { min-height: 2.75rem; display: inline-flex; align-items: center; }
-  .site-nav .nav-enroll, .site-nav .nav-teacher, .site-nav .nav-signin { padding: .6rem .75rem; }
+  .site-nav .nav-enroll, .site-nav .nav-signin { padding: .6rem .75rem; }
   .identity-chip { max-width: 100%; white-space: normal; }
   .main-content { margin: 2rem auto; }
   .side-card { padding: 1.4rem; }
@@ -153,9 +161,10 @@ tr:last-child td { border-bottom: 0; }
   h1 { font-size: clamp(2rem, 10vw, 2.8rem); }
   .form-card h1 { font-size: clamp(2rem, 9vw, 2.6rem); }
   .guest-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .guest-nav .nav-signin { grid-column: 1 / -1; }
+  .guest-nav .nav-signin, .guest-nav .nav-enroll { grid-column: 1 / -1; }
   .guest-nav a { display: grid; place-items: center; min-height: 2.75rem; border: 1px solid #b8cadb; border-radius: .5rem; padding: .55rem; text-align: center; }
   .stats { grid-template-columns: minmax(0, 1fr); margin: 2rem 0; }
+  .signup-choice-grid { grid-template-columns: minmax(0, 1fr); }
   .stat, .panel { padding: 1rem; }
   .note { padding: 1rem; }
   .signup-heading-row, .admin-summary, .panel-heading { align-items: flex-start; flex-direction: column; }

@@ -473,11 +473,12 @@ class PortalNavigationAndFeedbackTests(TestCase):
             "student@example.test", "student-password", full_name="Portal Student", role=User.Role.STUDENT,
         )
 
-    def test_guest_navigation_has_specific_request_and_sign_in_links(self):
+    def test_guest_navigation_has_sign_in_and_one_account_creation_link(self):
         response = self.client.get(reverse("home"))
         self.assertContains(response, "Sign in")
-        self.assertContains(response, "Request student access")
-        self.assertContains(response, "Request teacher access")
+        self.assertContains(response, "Create account")
+        self.assertNotContains(response, "Request student access")
+        self.assertNotContains(response, "Request teacher access")
         self.assertContains(response, "Check its status")
         self.assertNotContains(response, "Staff &amp; admin sign-in")
         self.assertNotContains(response, "Security log")
