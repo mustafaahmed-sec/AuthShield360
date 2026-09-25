@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from django.db.models.functions import Lower
@@ -86,6 +87,13 @@ class User(AbstractUser):
             self.is_active
             and self.role == self.Role.TEACHER
             and self.approval_status == self.ApprovalStatus.APPROVED
+        )
+
+    @property
+    def can_manage_all_students(self):
+        return (
+            self.is_portal_teacher
+            and self.email.lower() == settings.AUTHSHIELD_SCHOOLWIDE_TEACHER_EMAIL
         )
 
     @property

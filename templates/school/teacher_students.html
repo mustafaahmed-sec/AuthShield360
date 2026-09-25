@@ -1,9 +1,15 @@
 {% extends "base.html" %}
-{% block title %}My students | AuthShield 360{% endblock %}
+{% block title %}{% if can_manage_all_students %}All students{% else %}My students{% endif %} | AuthShield 360{% endblock %}
 {% block content %}
   <div class="eyebrow">Teacher portal</div>
-  <h1>All students</h1>
-  <p class="intro">Search all active students in the school. You can update limited school-record fields for students in your classes; class roster changes require administrator approval.</p>
+  <h1>{% if can_manage_all_students %}All students{% else %}My students{% endif %}</h1>
+  <p class="intro">
+    {% if can_manage_all_students %}
+      Search and manage all active student records across the school. Class roster changes still require administrator approval.
+    {% else %}
+      Search students enrolled in your assigned classes. You can update limited school-record fields; class roster changes require administrator approval.
+    {% endif %}
+  </p>
   <div class="actions">
     <a class="button secondary" href="{% url 'dashboard' %}">Back to dashboard</a>
     <a class="button" href="{% url 'request_enrollment_change' %}">Request a roster change</a>
@@ -21,14 +27,16 @@
           {% endfor %}
         </select>
       </label>
-      <label>Course
-        <select name="course">
-          <option value="">All my courses</option>
-          {% for course in courses %}
-            <option value="{{ course.pk }}"{% if course_filter == course.pk|stringformat:"s" %} selected{% endif %}>{{ course.code }}</option>
-          {% endfor %}
-        </select>
-      </label>
+      {% if not can_manage_all_students %}
+        <label>Course
+          <select name="course">
+            <option value="">All my courses</option>
+            {% for course in courses %}
+              <option value="{{ course.pk }}"{% if course_filter == course.pk|stringformat:"s" %} selected{% endif %}>{{ course.code }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% endif %}
       <button class="button compact" type="submit">Search</button>
       <a class="button compact secondary" href="{% url 'teacher_students' %}">Clear</a>
     </form>
@@ -46,11 +54,11 @@
                 <td>{{ student.student_record.age|default:"—" }}</td>
                 <td>
                   {% for enrollment in student.enrollments.all %}
-                    {% if enrollment.course.teacher_id == request.user.id %}<span class="course-tag">{{ enrollment.course.code }}</span>{% endif %}
+                    {% if can_manage_all_students or enrollment.course.teacher_id == request.user.id %}<span class="course-tag">{{ enrollment.course.code }}</span>{% endif %}
                   {% endfor %}
                 </td>
                 <td>
-                  {% if student.enrollments.all %}
+                  {% if can_manage_all_students or student.enrollments.all %}
                     <a class="button compact secondary" href="{% url 'edit_assigned_student' student.pk %}">Edit record</a>
                   {% else %}
                     <span class="muted">View only</span>

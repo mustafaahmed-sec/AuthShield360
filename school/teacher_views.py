@@ -153,11 +153,14 @@ def teacher_students(request):
         role=User.Role.STUDENT,
         is_active=True,
         student_record__isnull=False,
-    ).select_related("student_record").prefetch_related(
-        Prefetch(
-            "enrollments",
-            queryset=Enrollment.objects.filter(course__teacher=request.user).select_related("course"),
-        )
+    )
+    if not request.user.can_manage_all_students:
+        roster = roster.filter(enrollments__course__in=teacher_courses).distinct()
+    visible_enrollments = Enrollment.objects.select_related("course")
+    if not request.user.can_manage_all_students:
+        visible_enrollments = visible_enrollments.filter(course__teacher=request.user)
+    roster = roster.select_related("student_record").prefetch_related(
+        Prefetch("enrollments", queryset=visible_enrollments)
     )
     grades = list(
         StudentRecord.objects.filter(student__in=roster)
@@ -168,7 +171,7 @@ def teacher_students(request):
     students = roster
     search = request.GET.get("q", "").strip()
     grade = request.GET.get("grade", "").strip()
-    course_id = request.GET.get("course", "").strip()
+    course_id = "" if request.user.can_manage_all_students else request.GET.get("course", "").strip()
     if search:
         students = students.filter(
             Q(full_name__icontains=search)
@@ -190,6 +193,7 @@ def teacher_students(request):
         "search": search,
         "grade_filter": grade,
         "course_filter": course_id,
+        "can_manage_all_students": request.user.can_manage_all_students,
         "student_page_url": "?" + urlencode({"q": search, "grade": grade, "course": course_id}) + "&page=",
         "requests": EnrollmentChangeRequest.objects.filter(requester=request.user)
         .select_related("course", "student")[:12],
@@ -203,13 +207,15 @@ def teacher_students(request):
 @portal_teacher_view
 @transaction.atomic
 def edit_assigned_student(request, student_id):
+    students = User.objects.filter(
+        role=User.Role.STUDENT,
+        is_active=True,
+        student_record__isnull=False,
+    )
+    if not request.user.can_manage_all_students:
+        students = students.filter(enrollments__course__teacher=request.user).distinct()
     student = get_object_or_404(
-        User.objects.filter(
-            role=User.Role.STUDENT,
-            is_active=True,
-            enrollments__course__teacher=request.user,
-            student_record__isnull=False,
-        ).distinct(),
+        students,
         pk=student_id,
     )
     record = student.student_record

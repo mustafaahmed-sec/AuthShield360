@@ -15,6 +15,9 @@ load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
 ALLOWED_HOSTS = [host.strip() for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if host.strip()]
+AUTHSHIELD_SCHOOLWIDE_TEACHER_EMAIL = os.environ.get(
+    "AUTHSHIELD_SCHOOLWIDE_TEACHER_EMAIL", "sara.ahmed.authshield@gmail.com"
+).strip().lower()
 for vercel_host in (os.environ.get("VERCEL_URL"), os.environ.get("VERCEL_PROJECT_PRODUCTION_URL")):
     if vercel_host and vercel_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(vercel_host)
