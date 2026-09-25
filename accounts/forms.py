@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from .lockout import account_lockout_until, ip_throttle_until, retry_minutes
 from .models import User
+from .otp import mobile_otp_available
 
 
 class AccountSignupForm(UserCreationForm):
@@ -105,6 +106,8 @@ class EmailAuthenticationForm(AuthenticationForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if not mobile_otp_available():
+            self.fields["otp_channel"].choices = (("email", "Email"),)
         self.fields["password"].widget.attrs.update({"autocomplete": "current-password"})
 
     def clean(self):

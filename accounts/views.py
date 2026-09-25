@@ -25,7 +25,7 @@ from .lockout import (
 
 from .forms import EmailAuthenticationForm, RegistrationStatusForm, StudentSignupForm, TeacherSignupForm
 from django.contrib.auth.forms import SetPasswordForm
-from .otp import OTPProviderError, check_otp, delivery_target, start_otp
+from .otp import OTPProviderError, check_otp, delivery_target, mobile_otp_available, start_otp
 from school.audit import record_auth_event
 
 
@@ -193,11 +193,12 @@ class BaselineLoginView(LoginView):
     def form_valid(self, form):
         user = form.get_user()
         if settings.AUTHSHIELD_OTP_ENABLED:
-            channel = (
-                "whatsapp"
-                if settings.AUTHSHIELD_EMAIL_STEP_UP
-                else (form.cleaned_data.get("otp_channel") or "whatsapp")
-            )
+            if settings.AUTHSHIELD_EMAIL_STEP_UP:
+                channel = "whatsapp"
+            elif mobile_otp_available():
+                channel = form.cleaned_data.get("otp_channel") or "email"
+            else:
+                channel = "email"
             try:
                 _start_otp(self.request, user, channel)
             except (OTPProviderError, ImproperlyConfigured):
@@ -242,6 +243,7 @@ class BaselineLoginView(LoginView):
         context = super().get_context_data(**kwargs)
         context["otp_enabled"] = settings.AUTHSHIELD_OTP_ENABLED
         context["email_step_up"] = settings.AUTHSHIELD_EMAIL_STEP_UP
+        context["mobile_otp_enabled"] = mobile_otp_available()
         return context
 
     def form_invalid(self, form):

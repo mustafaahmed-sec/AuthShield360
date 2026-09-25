@@ -19,6 +19,15 @@ class OTPProviderError(Exception):
     """A provider request failed without exposing provider details to the user."""
 
 
+def mobile_otp_available():
+    """Return whether a mobile OTP provider is configured for this deployment."""
+    return all((
+        settings.TWILIO_API_KEY_SID,
+        settings.TWILIO_API_KEY_SECRET,
+        settings.TWILIO_VERIFY_SERVICE_SID,
+    ))
+
+
 class GmailEmailOTP:
     """Send email codes through Gmail SMTP and verify them against the session."""
 
