@@ -20,7 +20,7 @@
           <a href="{% url 'admin_management' %}">Accounts &amp; requests</a>
           <a href="{% url 'admin:school_portalauditevent_changelist' %}">Security log</a>
         {% elif request.user.is_portal_teacher %}
-          <a href="{% url 'teacher_students' %}">My students</a>
+          <a href="{% url 'teacher_students' %}">{% if request.user.can_manage_all_students %}All students{% else %}My students{% endif %}</a>
         {% endif %}
         <span class="review-chip identity-chip">{{ request.user.full_name }} · {{ request.user.get_role_display }}{% if request.user.is_portal_admin and request.user.designation %} · {{ request.user.get_designation_display }}{% endif %}</span>
         <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="nav-button" type="submit">Sign out</button></form>
