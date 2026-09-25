@@ -134,7 +134,7 @@
                 <td>
                   <div class="inline-actions">
                     <a class="button compact secondary" href="{% url 'preview_school_portal' account.pk %}">View {% if account.role == 'student' %}student{% else %}teacher{% endif %} portal</a>
-                    {% if account.approval_status == 'approved' and account.is_active %}<form method="post" action="{% url 'reset_school_account_password' account.pk %}">{% csrf_token %}<button class="button compact secondary" type="submit" onclick="return confirm('Generate a temporary password for this account?');">Reset password</button></form>{% endif %}
+                    {% if account.is_active %}<form method="post" action="{% url 'reset_school_account_password' account.pk %}">{% csrf_token %}<button class="button compact secondary" type="submit" onclick="return confirm('Generate a temporary password for this account?');">Reset password</button></form>{% endif %}
                     {% if account.approval_status == 'approved' %}
                       <form method="post" action="{% url 'change_account_access' account.pk %}">
                         {% csrf_token %}
@@ -188,6 +188,7 @@
     {% endif %}
   </section>
 {% endblock %}
+
 
 
 

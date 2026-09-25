@@ -260,7 +260,7 @@ def change_account_access(request, user_id):
 @portal_admin_view
 @transaction.atomic
 def reset_school_account_password(request, user_id):
-    account = get_object_or_404(User.objects.select_for_update(), pk=user_id, role__in=(User.Role.STUDENT, User.Role.TEACHER), approval_status=User.ApprovalStatus.APPROVED, is_active=True)
+    account = get_object_or_404(User.objects.select_for_update(), pk=user_id, role__in=(User.Role.STUDENT, User.Role.TEACHER), is_active=True)
     temporary_password = get_random_string(20, allowed_chars="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789") + "!"
     account.set_password(temporary_password)
     account.must_change_password = True
@@ -326,5 +326,7 @@ def review_enrollment_request(request, request_id):
     record_event(request.user, f"enrollment_request_{status_label}", summary, target_name=change.student_name, request=request)
     messages.success(request, summary)
     return redirect("admin_management")
+
+
 
 
