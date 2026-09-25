@@ -274,7 +274,7 @@ def delete_school_account(request, user_id):
 @transaction.atomic
 def review_enrollment_request(request, request_id):
     change = get_object_or_404(
-        EnrollmentChangeRequest.objects.select_for_update().select_related("student", "course"),
+        EnrollmentChangeRequest.objects.select_for_update(of=("self",)).select_related("student", "course"),
         pk=request_id,
         status=EnrollmentChangeRequest.Status.PENDING,
     )
