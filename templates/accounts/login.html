@@ -12,12 +12,14 @@
         {% csrf_token %}
         {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
         {% for field in form %}
+          {% if field.name != 'otp_channel' or otp_enabled and not email_step_up %}
           <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.name == 'password' %}<div class="password-input-row">{{ field }}<button class="password-toggle" type="button" data-password-toggle aria-controls="{{ field.id_for_label }}" aria-pressed="false">Show</button></div>{% else %}{{ field }}{% endif %}{% if field.errors %}<div class="field-error">{{ field.errors }}</div>{% endif %}</div>
+          {% endif %}
         {% endfor %}
-        <button class="button full" type="submit">Sign in</button>
+        <button class="button full" type="submit">{% if otp_enabled %}Continue to verification{% else %}Sign in{% endif %}</button>
       </form>
       <p class="form-foot">Waiting for access approval? <a href="{% url 'registration_status' %}">Check your request status</a>.</p>
     </section>
-    <aside class="side-card"><span class="eyebrow">Demo baseline</span><h2>One step at a time</h2><p>This stage records how password-only access works. Mobile and email OTP will be added in later stages.</p><p>Never use a real school account or personal password in this demo.</p></aside>
+    <aside class="side-card"><span class="eyebrow">{% if otp_enabled %}Two-step sign-in{% else %}Demo baseline{% endif %}</span><h2>{% if otp_enabled %}Verify it’s you{% else %}One step at a time{% endif %}</h2><p>{% if otp_enabled %}{% if email_step_up %}After your password, verify through WhatsApp and then confirm with a second code sent to your email.{% else %}After your password is accepted, we’ll send a one-time code using your selected method.{% endif %} You will not be signed in until verification succeeds.{% else %}This stage records how password-only access works. Mobile and email OTP will be added in a later stage.{% endif %}</p><p>Use fictional school records and test contact details for this demonstration.</p></aside>
   </div>
 {% endblock %}

@@ -92,6 +92,12 @@ class RegistrationStatusForm(forms.Form):
 
 class EmailAuthenticationForm(AuthenticationForm):
     username = forms.EmailField(label="Email address", widget=forms.EmailInput(attrs={"autocomplete": "username"}))
+    otp_channel = forms.ChoiceField(
+        label="Send the sign-in code by",
+        choices=(("whatsapp", "WhatsApp"), ("email", "Email")),
+        initial="whatsapp",
+        required=False,
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

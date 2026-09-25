@@ -145,6 +145,7 @@ AUTHSHIELD_LOCKOUT_MINUTES = _positive_integer_setting("AUTHSHIELD_LOCKOUT_MINUT
 AUTHSHIELD_IP_FAILURE_LIMIT = _positive_integer_setting("AUTHSHIELD_IP_FAILURE_LIMIT", 30)
 AUTHSHIELD_IP_WINDOW_MINUTES = _positive_integer_setting("AUTHSHIELD_IP_WINDOW_MINUTES", 15)
 AUTHSHIELD_IP_THROTTLE_MINUTES = _positive_integer_setting("AUTHSHIELD_IP_THROTTLE_MINUTES", 1)
+AUTHSHIELD_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_OTP_TTL_SECONDS", 600)
 
 # Password-only access remains a controlled lab stage. For a Vercel demo it
 # requires a separately configured protected deployment; ordinary users never
@@ -154,6 +155,15 @@ AUTHSHIELD_BASELINE_LOGIN_ENABLED = (
     os.environ.get("AUTHSHIELD_BASELINE_LOGIN", "false").lower() == "true"
     and (DEBUG or AUTHSHIELD_PROTECTED_DEMO)
 )
+AUTHSHIELD_OTP_ENABLED = os.environ.get("AUTHSHIELD_OTP_ENABLED", "false").lower() == "true"
+AUTHSHIELD_LOGIN_ENABLED = (
+    (AUTHSHIELD_BASELINE_LOGIN_ENABLED or AUTHSHIELD_OTP_ENABLED)
+    and (DEBUG or AUTHSHIELD_PROTECTED_DEMO)
+)
+AUTHSHIELD_EMAIL_STEP_UP = os.environ.get("AUTHSHIELD_EMAIL_STEP_UP", "true").lower() == "true"
+TWILIO_API_KEY_SID = os.environ.get("TWILIO_API_KEY_SID", "")
+TWILIO_API_KEY_SECRET = os.environ.get("TWILIO_API_KEY_SECRET", "")
+TWILIO_VERIFY_SERVICE_SID = os.environ.get("TWILIO_VERIFY_SERVICE_SID", "")
 
 LOGGING = {
     "version": 1,

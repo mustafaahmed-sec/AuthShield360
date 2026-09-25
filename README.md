@@ -1,6 +1,6 @@
 # AuthShield 360
 
-A fictional school portal for the Aptech TechWiz 7 identity-security demonstration. It has PostgreSQL-backed accounts and school records, separate Student and Teacher access requests, administrator approval, a controlled password-only login stage, role dashboards, student progress and due-soon summaries, a teacher student search and grade filter, recorded school-record edits, and administrator-managed roster changes. Mobile and email OTP remain deferred to the next authentication stage.
+A fictional school portal for the Aptech TechWiz 7 identity-security demonstration. It has PostgreSQL-backed accounts and school records, separate Student and Teacher access requests, administrator approval, a configurable password-plus-OTP sign-in flow, role dashboards, attendance, student progress and due-soon summaries, a teacher student search and grade filter, recorded school-record edits, and administrator-managed roster changes. OTP delivery uses Twilio Verify for WhatsApp and email; provider credentials and approved sender setup are required before enabling it.
 
 ## What each tool does
 
@@ -92,8 +92,14 @@ The fictional school displays dates in the `America/New_York` time zone. Change 
 ## Next milestones
 
 1. Record the required password-only comparison runs and complete authorized browser/Kali checks.
-2. Implement mobile OTP followed by required email OTP, with expiry, reuse prevention, and test delivery.
+2. Configure Twilio Verify and SendGrid, then test WhatsApp OTP and email step-up with team-controlled contact details.
 3. Complete the Identity Security Test Matrix, evidence, report, presentation, MP4 demo, and ZIP submission.
+
+## OTP sign-in configuration
+
+The login can demonstrate both SRS MFA modes: password + mobile OTP, then password + mobile OTP + email step-up. WhatsApp is the selected mobile channel. With `AUTHSHIELD_EMAIL_STEP_UP=true` (the default), a valid WhatsApp code is followed by a required email code; sign-in completes only after both succeed. Set it to `false` only when demonstrating the one-OTP comparison mode. The code is sent and checked by Twilio Verify; the application does not store OTP values. Challenges expire after `AUTHSHIELD_OTP_TTL_SECONDS` (600 seconds by default), and the portal limits code attempts and resends. Set `AUTHSHIELD_OTP_ENABLED=true` only after all credentials and channels are configured.
+
+Configure a Twilio Verify Service with a WhatsApp Business sender and approved authentication template. For email delivery, configure the Verify email channel with SendGrid. Store these server-side environment variables in the Vercel project and local ignored `.env`, as appropriate: `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, and `TWILIO_VERIFY_SERVICE_SID`. Set `AUTHSHIELD_OTP_ENABLED=true` after both delivery channels are configured. Keep `AUTHSHIELD_EMAIL_STEP_UP=true` for the required final flow; set it false only for the intermediate single-OTP comparison. Keep the Twilio Verify code validity at or below `AUTHSHIELD_OTP_TTL_SECONDS`. Never expose these values in frontend code or commit them. Phone destinations must be in international E.164 format. The fictional `example.test` addresses and generated phone numbers cannot receive real codes; use contact details controlled by the project team for delivery tests.
 
 ## Vercel deployment preparation
 
@@ -103,4 +109,4 @@ Use a new `DJANGO_SECRET_KEY` for Vercel, set `DJANGO_DEBUG=false`, and set `AUT
 
 The demo is deployed from the public `mustafaahmed-sec/AuthShield360` repository. The public [authshield360.vercel.app](https://authshield360.vercel.app/) alias redirects to the current protected deployment URL when `AUTHSHIELD_PROTECTED_DEMO=true`; viewers need access through the Vercel account/team. If the deployment URL is unavailable, the alias fails closed. The app uses the hosted Neon PostgreSQL database through Vercel's `DATABASE_URL` environment variable.
 
-This online build is for fictional data and controlled demonstration while mobile and email OTP are unfinished. Do not use real school credentials or records. Password-only sign-in is enabled only for this protected demo stage. Deployment secrets are stored in Vercel; the generated fictional demo-account passwords are kept in the ignored local file `.vercel-deploy-credentials.txt` and must never be committed or shared publicly.
+This online build is for fictional school data and controlled demonstration. Do not use real school credentials or records. Password-only sign-in remains the configured mode until OTP settings are added and `AUTHSHIELD_OTP_ENABLED` is enabled. Deployment secrets are stored in Vercel; the generated fictional demo-account passwords are kept in the ignored local file `.vercel-deploy-credentials.txt` and must never be committed or shared publicly.

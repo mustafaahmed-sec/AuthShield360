@@ -13,7 +13,7 @@ from school.audit import record_auth_event, request_ip
 from school.models import PortalAuditEvent
 
 
-FAILURE_ACTIONS = ("login_failure", "registration_status_failure")
+FAILURE_ACTIONS = ("login_failure", "registration_status_failure", "otp_failure")
 SUCCESS_ACTIONS = ("login_success", "registration_status_success")
 
 
@@ -77,7 +77,7 @@ def _failure_count_for_account(email, now):
     return failures.count()
 
 
-def record_failed_authentication(email, action, request, duration_ms=None):
+def record_failed_authentication(email, action, request, duration_ms=None, factor="password", description=None):
     """Log a failed attempt and start a temporary lock after the configured threshold."""
     email = normalized_email(email)
     now = timezone.now()
@@ -86,9 +86,11 @@ def record_failed_authentication(email, action, request, duration_ms=None):
         record_auth_event(
             action,
             email=email,
-            description="Failed password authentication.",
+            description=description or (
+                "Failed one-time-code verification." if action == "otp_failure" else "Failed password authentication."
+            ),
             request=request,
-            factor="password",
+            factor=factor,
             outcome="failure",
             duration_ms=duration_ms,
         )
@@ -103,7 +105,7 @@ def record_failed_authentication(email, action, request, duration_ms=None):
             email=email,
             description="Temporary account lock activated after repeated failed attempts.",
             request=request,
-            factor="password",
+            factor=factor,
             outcome="failure",
             duration_ms=duration_ms,
         )

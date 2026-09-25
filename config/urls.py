@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path
 
-from accounts.views import BaselineLoginView, BaselineLogoutView, registration_status, signup
+from accounts.views import BaselineLoginView, BaselineLogoutView, otp_resend, otp_verify, registration_status, signup
 from school.admin_views import (
     admin_management,
     change_account_access,
@@ -27,6 +27,8 @@ urlpatterns = [
     path("signup/teacher/", signup, {"role": "teacher"}, name="teacher_signup"),
     path("signup/status/", registration_status, name="registration_status"),
     path("login/", BaselineLoginView.as_view(), name="login"),
+    path("login/verify/", otp_verify, name="otp_verify"),
+    path("login/verify/resend/", otp_resend, name="otp_resend"),
     path("logout/", BaselineLogoutView.as_view(), name="logout"),
     path("dashboard/", dashboard, name="dashboard"),
     path("teacher/assignments/new/", create_assignment, name="create_assignment"),

@@ -13,6 +13,7 @@ logger = logging.getLogger("authshield.audit")
 
 FAILURE_ACTIONS = {
     "login_failure",
+    "otp_failure",
     "registration_status_failure",
     "locked_out",
     "ip_rate_limited",

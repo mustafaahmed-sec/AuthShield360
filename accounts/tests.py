@@ -1,6 +1,7 @@
 import hashlib
 
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.conf import settings
 from django.test import TestCase, override_settings
@@ -109,6 +110,135 @@ class AuthenticationAuditTests(TestCase):
         self.assertEqual(event.outcome, "failure")
         self.assertEqual(event.factor, "password")
         self.assertEqual(event.ip_address, "127.0.0.1")
+
+
+@override_settings(
+    AUTHSHIELD_BASELINE_LOGIN_ENABLED=True,
+    AUTHSHIELD_OTP_ENABLED=True,
+    AUTHSHIELD_EMAIL_STEP_UP=False,
+    TWILIO_API_KEY_SID="SK" + "a" * 32,
+    TWILIO_API_KEY_SECRET="test-secret",
+    TWILIO_VERIFY_SERVICE_SID="VA" + "b" * 32,
+)
+class OTPLoginTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            "otp-student@example.test",
+            "FictionalDemo!2468",
+            full_name="OTP Student",
+            role=User.Role.STUDENT,
+            phone_number="+15550100123",
+        )
+        self.provider_patch = patch("accounts.views.TwilioVerify")
+        self.provider_class = self.provider_patch.start()
+        self.addCleanup(self.provider_patch.stop)
+        self.provider = self.provider_class.return_value
+        self.provider.check.return_value = True
+
+    def submit_password(self, channel="whatsapp"):
+        return self.client.post(reverse("login"), {
+            "username": self.user.email,
+            "password": "FictionalDemo!2468",
+            "otp_channel": channel,
+        })
+
+    def test_valid_password_starts_whatsapp_challenge_without_authenticating(self):
+        response = self.submit_password()
+
+        self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(self.client.session["authshield_otp_channel"], "whatsapp")
+        self.provider.start.assert_called_once_with("+15550100123", "whatsapp")
+
+    def test_password_alone_does_not_grant_dashboard_access(self):
+        self.submit_password()
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertRedirects(
+            response,
+            f"{reverse('login')}?next={reverse('dashboard')}",
+            fetch_redirect_response=False,
+        )
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_user_is_authenticated_only_after_provider_approves_code(self):
+        self.submit_password(channel="email")
+        response = self.client.post(reverse("otp_verify"), {"code": "123456"})
+
+        self.assertRedirects(response, reverse("dashboard"), fetch_redirect_response=False)
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.user.pk)
+        event = PortalAuditEvent.objects.get(action="login_success")
+        self.assertEqual(event.auth_mode, PortalAuditEvent.AuthMode.OTP)
+        self.assertEqual(event.factor, PortalAuditEvent.Factor.EMAIL_OTP)
+        self.assertIsNotNone(event.duration_ms)
+        self.assertTrue(PortalAuditEvent.objects.filter(action="otp_success", factor="email_otp").exists())
+
+    def test_invalid_code_is_logged_and_does_not_authenticate(self):
+        self.provider.check.return_value = False
+        self.submit_password(channel="email")
+
+        response = self.client.post(reverse("otp_verify"), {"code": "000000"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        failure = PortalAuditEvent.objects.get(action="otp_failure")
+        self.assertEqual(failure.factor, PortalAuditEvent.Factor.EMAIL_OTP)
+        self.assertEqual(failure.outcome, PortalAuditEvent.Outcome.FAILURE)
+
+    def test_expired_challenge_is_denied_and_audited(self):
+        self.submit_password()
+        session = self.client.session
+        session["authshield_otp_expires_at"] = timezone.now().timestamp() - 1
+        session.save()
+
+        response = self.client.post(reverse("otp_verify"), {"code": "123456"})
+
+        self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        event = PortalAuditEvent.objects.get(action="otp_failure")
+        self.assertIn("expired", event.description)
+        self.assertEqual(event.factor, PortalAuditEvent.Factor.MOBILE_OTP)
+        self.assertIsNotNone(event.duration_ms)
+        self.provider.check.assert_not_called()
+
+    @override_settings(AUTHSHIELD_EMAIL_STEP_UP=True)
+    def test_email_step_up_requires_a_second_code_after_whatsapp(self):
+        self.submit_password()
+        first = self.client.post(reverse("otp_verify"), {"code": "123456"})
+
+        self.assertRedirects(first, reverse("otp_verify"), fetch_redirect_response=False)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(self.client.session["authshield_otp_channel"], "email")
+        self.assertEqual(self.client.session["authshield_otp_phase"], "email_step_up")
+        self.provider.start.assert_any_call(self.user.email, "email")
+
+        second = self.client.post(reverse("otp_verify"), {"code": "654321"})
+
+        self.assertRedirects(second, reverse("dashboard"), fetch_redirect_response=False)
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.user.pk)
+        login_event = PortalAuditEvent.objects.get(action="login_success")
+        self.assertEqual(login_event.auth_mode, PortalAuditEvent.AuthMode.OTP_EMAIL)
+        self.assertEqual(login_event.factor, PortalAuditEvent.Factor.EMAIL_OTP)
+        self.assertEqual(PortalAuditEvent.objects.filter(action="otp_success").count(), 2)
+
+    @override_settings(AUTHSHIELD_EMAIL_STEP_UP=True)
+    def test_email_step_up_cannot_be_skipped_by_selecting_email_as_primary(self):
+        response = self.submit_password(channel="email")
+
+        self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
+        self.assertEqual(self.client.session["authshield_otp_channel"], "whatsapp")
+        self.provider.start.assert_called_once_with("+15550100123", "whatsapp")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_completed_challenge_cannot_be_replayed_without_pending_challenge(self):
+        self.submit_password(channel="email")
+        self.client.post(reverse("otp_verify"), {"code": "123456"})
+
+        replay = self.client.post(reverse("otp_verify"), {"code": "123456"})
+
+        self.assertRedirects(replay, reverse("login"), fetch_redirect_response=False)
+        self.provider.check.assert_called_once()
 
 
 @override_settings(
