@@ -14,7 +14,7 @@
   });
 
   document.querySelectorAll("form").forEach((form) => {
-    const passwordInput = form.querySelector("#id_password1");
+    const passwordInput = form.querySelector("#id_password1, #id_new_password1");
     const strengthStatus = form.querySelector("[data-password-strength]");
     if (!passwordInput || !strengthStatus) return;
 
@@ -42,8 +42,8 @@
   document.querySelectorAll("[data-password-suggest]").forEach((button) => {
     button.addEventListener("click", () => {
       const form = button.closest("form");
-      const firstInput = form?.querySelector("#id_password1");
-      const confirmInput = form?.querySelector("#id_password2");
+      const firstInput = form?.querySelector("#id_password1, #id_new_password1");
+      const confirmInput = form?.querySelector("#id_password2, #id_new_password2");
       const status = form?.querySelector("[data-password-suggestion-status]");
       if (!firstInput || !confirmInput || !status) return;
 
@@ -113,3 +113,4 @@
     return sample[0] % max;
   }
 })();
+
