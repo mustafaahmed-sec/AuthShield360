@@ -152,9 +152,13 @@ def teacher_students(request):
     roster = User.objects.filter(
         role=User.Role.STUDENT,
         is_active=True,
-        enrollments__course__in=teacher_courses,
         student_record__isnull=False,
-    ).select_related("student_record").prefetch_related(Prefetch("enrollments", queryset=Enrollment.objects.filter(course__teacher=request.user).select_related("course"))).distinct()
+    ).select_related("student_record").prefetch_related(
+        Prefetch(
+            "enrollments",
+            queryset=Enrollment.objects.filter(course__teacher=request.user).select_related("course"),
+        )
+    )
     grades = list(
         StudentRecord.objects.filter(student__in=roster)
         .values_list("grade", flat=True)

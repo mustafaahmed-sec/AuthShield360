@@ -2,8 +2,8 @@
 {% block title %}My students | AuthShield 360{% endblock %}
 {% block content %}
   <div class="eyebrow">Teacher portal</div>
-  <h1>My students</h1>
-  <p class="intro">Search students enrolled in your assigned classes. You can update limited school-record fields; class roster changes require administrator approval.</p>
+  <h1>All students</h1>
+  <p class="intro">Search all active students in the school. You can update limited school-record fields for students in your classes; class roster changes require administrator approval.</p>
   <div class="actions">
     <a class="button secondary" href="{% url 'dashboard' %}">Back to dashboard</a>
     <a class="button" href="{% url 'request_enrollment_change' %}">Request a roster change</a>
@@ -49,7 +49,13 @@
                     {% if enrollment.course.teacher_id == request.user.id %}<span class="course-tag">{{ enrollment.course.code }}</span>{% endif %}
                   {% endfor %}
                 </td>
-                <td><a class="button compact secondary" href="{% url 'edit_assigned_student' student.pk %}">Edit record</a></td>
+                <td>
+                  {% if student.enrollments.all %}
+                    <a class="button compact secondary" href="{% url 'edit_assigned_student' student.pk %}">Edit record</a>
+                  {% else %}
+                    <span class="muted">View only</span>
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -57,7 +63,7 @@
       </div>
       {% include "school/partials/pagination.html" with page_obj=students page_url=student_page_url label="Student pages" %}
     {% else %}
-      <p class="empty">No assigned students match those filters.</p>
+      <p class="empty">No students match those filters.</p>
     {% endif %}
   </section>
   <div class="dashboard-grid">
