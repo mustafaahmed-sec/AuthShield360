@@ -5,6 +5,7 @@ from accounts.views import BaselineLoginView, BaselineLogoutView, otp_resend, ot
 from school.admin_views import (
     admin_management,
     add_student,
+    admin_attendance,
     change_account_access,
     delete_school_account,
     review_account_request,
@@ -39,6 +40,7 @@ urlpatterns = [
     path("teacher/students/<int:student_id>/edit/", edit_assigned_student, name="edit_assigned_student"),
     path("teacher/enrollment-requests/new/", request_enrollment_change, name="request_enrollment_change"),
     path("administrator/management/", admin_management, name="admin_management"),
+    path("administrator/attendance/", admin_attendance, name="admin_attendance"),
     path("administrator/students/new/", add_student, name="add_student"),
     path("administrator/accounts/<int:user_id>/review/", review_account_request, name="review_account_request"),
     path("administrator/accounts/<int:user_id>/access/", change_account_access, name="change_account_access"),

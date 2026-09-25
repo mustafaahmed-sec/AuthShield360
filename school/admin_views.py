@@ -15,8 +15,8 @@ from accounts.models import User
 
 from .access import portal_admin_view, require_portal_admin
 from .audit import record_event
-from .forms import AdminStudentCreationForm
-from .models import Enrollment, EnrollmentChangeRequest, PortalAuditEvent, StudentRecord
+from .forms import AdminAttendanceFilterForm, AdminStudentCreationForm
+from .models import AttendanceRecord, Enrollment, EnrollmentChangeRequest, PortalAuditEvent, StudentRecord
 
 
 @login_required
@@ -62,6 +62,38 @@ def admin_management(request):
         "teacher_count": User.objects.filter(role=User.Role.TEACHER).count(),
     }
     return render(request, "school/admin_management.html", context)
+
+
+@login_required
+@portal_admin_view
+def admin_attendance(request):
+    form = AdminAttendanceFilterForm(request.GET or None)
+    records = AttendanceRecord.objects.select_related("course", "student", "marked_by")
+    if form.is_valid():
+        search = form.cleaned_data["search"]
+        if search:
+            records = records.filter(
+                Q(student__full_name__icontains=search)
+                | Q(student__email__icontains=search)
+                | Q(course__code__icontains=search)
+                | Q(course__title__icontains=search)
+            )
+        if form.cleaned_data["course"]:
+            records = records.filter(course=form.cleaned_data["course"])
+        if form.cleaned_data["date"]:
+            records = records.filter(date=form.cleaned_data["date"])
+        if form.cleaned_data["status"]:
+            records = records.filter(status=form.cleaned_data["status"])
+    records = records.order_by("-date", "course__code", "student__full_name")
+    filters = {key: value for key, value in request.GET.items() if key in {"search", "course", "date", "status"}}
+    context = {
+        "form": form,
+        "records": Paginator(records, 30).get_page(request.GET.get("page")),
+        "record_count": records.count(),
+        "page_url": "?" + urlencode(filters) + ("&" if filters else "") + "page=",
+        "advanced_attendance_url": "admin:school_attendancerecord_changelist",
+    }
+    return render(request, "school/admin_attendance.html", context)
 
 
 @login_required

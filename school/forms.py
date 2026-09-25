@@ -63,6 +63,20 @@ class AdminStudentCreationForm(UserCreationForm):
         return student
 
 
+class AdminAttendanceFilterForm(forms.Form):
+    search = forms.CharField(label="Student or course", required=False, max_length=120)
+    course = forms.ModelChoiceField(label="Class", queryset=Course.objects.none(), required=False, empty_label="All classes")
+    date = forms.DateField(label="Date", required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    status = forms.ChoiceField(
+        label="Attendance", required=False,
+        choices=[("", "All statuses"), *AttendanceRecord.Status.choices],
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["course"].queryset = Course.objects.order_by("code")
+
+
 class AttendanceSelectionForm(forms.Form):
     course = forms.ModelChoiceField(queryset=Course.objects.none(), empty_label=None)
     date = forms.DateField(widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}))

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Attendance records | AuthShield 360{% endblock %}
+{% block content %}
+  <div class="eyebrow">Administrator portal</div>
+  <h1>Attendance records</h1>
+  <p class="intro">Find attendance by student, class, date, or status. You can correct a record from the advanced administration page.</p>
+
+  <div class="actions">
+    <a class="button secondary" href="{% url 'admin_management' %}">Back to accounts and requests</a>
+    <a class="button" href="{% url advanced_attendance_url %}">Edit attendance records</a>
+  </div>
+
+  <section class="panel management-section" aria-labelledby="attendance-filter-title">
+    <h2 id="attendance-filter-title">Find a record</h2>
+    <form method="get" class="filter-bar" role="search">
+      {% for field in form %}
+        <label for="{{ field.id_for_label }}">{{ field.label }}{{ field }}</label>
+      {% endfor %}
+      <button class="button compact" type="submit">Search</button>
+      <a class="button compact secondary" href="{% url 'admin_attendance' %}">Clear</a>
+    </form>
+  </section>
+
+  <section class="panel management-section" aria-labelledby="attendance-list-title">
+    <div class="panel-heading">
+      <h2 id="attendance-list-title">Records</h2>
+      <span class="muted">{{ record_count }} matching record{{ record_count|pluralize }}</span>
+    </div>
+    {% if records %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Date</th><th scope="col">Student</th><th scope="col">Class</th><th scope="col">Status</th><th scope="col">Marked by</th><th scope="col">Last updated</th></tr></thead>
+          <tbody>
+            {% for record in records %}
+              <tr>
+                <td>{{ record.date|date:"j M Y" }}</td>
+                <td>{{ record.student.full_name }}<br><span class="muted">{{ record.student.email }}</span></td>
+                <td>{{ record.course.code }} · {{ record.course.title }}</td>
+                <td>{{ record.get_status_display }}</td>
+                <td>{{ record.marked_by.full_name|default:"Not recorded" }}</td>
+                <td>{{ record.updated_at|date:"j M Y, H:i" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% include "school/partials/pagination.html" with page_obj=records page_url=page_url label="Attendance record pages" %}
+    {% else %}
+      <p class="empty">No attendance records match these filters.</p>
+    {% endif %}
+  </section>
+{% endblock %}
