@@ -17,15 +17,15 @@ TEACHER_TARGET = 32
 ADMIN_TARGET = 3
 ACADEMIC_YEAR = "2026-27"
 COURSE_PREFIX = "D26-"
-STUDENT_EMAIL = "ali.student@example.test"
-TEACHER_EMAIL = "mina.teacher@example.test"
-ADMIN_EMAIL = "sara.admin@example.test"
+STUDENT_EMAIL = "ali.khan.authshield@gmail.com"
+TEACHER_EMAIL = "sara.ahmed.authshield@gmail.com"
+ADMIN_EMAIL = "mina.rahman.authshield@gmail.com"
 
 # The three existing demo logins remain the only accounts with demo passwords.
 # Other seeded accounts use Django's unusable-password marker until an
 # administrator deliberately provisions a real demo credential.
 ADMINISTRATORS = (
-    (ADMIN_EMAIL, "Sara Miller"),
+    (ADMIN_EMAIL, "Mina Rahman"),
     ("demo.admin.01@example.test", "Grace Thompson"),
     ("demo.admin.02@example.test", "Amina Qureshi"),
 )
@@ -74,7 +74,7 @@ TEACHER_GROUPS = (
             ("demo.teacher.21@example.test", "Victoria Stone"),
             ("demo.teacher.22@example.test", "Bilal Ahmed"),
             ("demo.teacher.23@example.test", "Hamza Malik"),
-            (TEACHER_EMAIL, "Mina Rahman"),
+            (TEACHER_EMAIL, "Sara Ahmed"),
         ),
     ),
     (
@@ -167,8 +167,8 @@ class Command(BaseCommand):
             ).delete()
 
         self._ensure_primary_account(User, STUDENT_EMAIL, "Ali Khan", User.Role.STUDENT, options["reset"])
-        self._ensure_primary_account(User, TEACHER_EMAIL, "Mina Rahman", User.Role.TEACHER, options["reset"])
-        self._ensure_primary_account(User, ADMIN_EMAIL, "Sara Miller", User.Role.ADMIN, options["reset"])
+        self._ensure_primary_account(User, TEACHER_EMAIL, "Sara Ahmed", User.Role.TEACHER, options["reset"])
+        self._ensure_primary_account(User, ADMIN_EMAIL, "Mina Rahman", User.Role.ADMIN, options["reset"])
 
         teacher_users = self._ensure_teachers(User)
         self._ensure_administrators(User)

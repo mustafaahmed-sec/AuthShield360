@@ -24,20 +24,26 @@ class Command(BaseCommand):
             "DEMO_ADMIN_PASSWORD",
         )
         passwords = {name: os.environ.get(name, "") for name in names}
+        User = get_user_model()
+        role_by_name = {
+            "DEMO_STUDENT_PASSWORD": User.Role.STUDENT,
+            "DEMO_TEACHER_PASSWORD": User.Role.TEACHER,
+            "DEMO_ADMIN_PASSWORD": User.Role.ADMIN,
+        }
         try:
-            for value in passwords.values():
-                validate_password(value)
+            for name, value in passwords.items():
+                validate_password(value, user=User(role=role_by_name[name]))
         except ValidationError as error:
             raise CommandError(
-                "Each DEMO_*_PASSWORD in the ignored .env file must be at least 22 characters "
-                "and include lowercase, uppercase, a number, and a special character."
+                "Each DEMO_*_PASSWORD in the ignored .env file must be 12–50 characters "
+                "(at least 25 for the Administrator) and include lowercase, uppercase, "
+                "a number, and a special character."
             ) from error
 
-        User = get_user_model()
         accounts = (
-            ("ali.student@example.test", "Ali Khan", User.Role.STUDENT, "DEMO_STUDENT_PASSWORD"),
-            ("mina.teacher@example.test", "Mina Rahman", User.Role.TEACHER, "DEMO_TEACHER_PASSWORD"),
-            ("sara.admin@example.test", "Sara Ahmed", User.Role.ADMIN, "DEMO_ADMIN_PASSWORD"),
+            ("ali.khan.authshield@gmail.com", "Ali Khan", User.Role.STUDENT, "DEMO_STUDENT_PASSWORD"),
+            ("sara.ahmed.authshield@gmail.com", "Sara Ahmed", User.Role.TEACHER, "DEMO_TEACHER_PASSWORD"),
+            ("mina.rahman.authshield@gmail.com", "Mina Rahman", User.Role.ADMIN, "DEMO_ADMIN_PASSWORD"),
         )
         for email, full_name, role, password_name in accounts:
             user, _ = User.objects.get_or_create(email=email)

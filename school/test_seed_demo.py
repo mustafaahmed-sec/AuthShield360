@@ -62,7 +62,7 @@ class SeedDemoTests(TestCase):
         course = Course.objects.get(code="SCI-101")
         course.teacher = replacement
         course.save(update_fields=["teacher"])
-        student = User.objects.get(email="ali.student@example.test")
+        student = User.objects.get(email="ali.khan.authshield@gmail.com")
         record = StudentRecord.objects.get(student=student)
         record.grade = "Grade 11"
         record.save(update_fields=["grade"])
@@ -89,7 +89,7 @@ class SeedDemoTests(TestCase):
     def test_reset_preserves_course_referenced_by_roster_history(self):
         course = Course.objects.filter(code__startswith="D26-").first()
         teacher = course.teacher
-        student = User.objects.get(email="ali.student@example.test")
+        student = User.objects.get(email="ali.khan.authshield@gmail.com")
         change = EnrollmentChangeRequest.objects.create(
             requester=teacher,
             requester_name=teacher.full_name,
