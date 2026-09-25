@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Add a student | AuthShield 360{% endblock %}
+{% block content %}
+  <div class="auth-layout signup-layout">
+    <section class="form-card signup-card" aria-labelledby="add-student-title">
+      <div class="signup-heading-row">
+        <div>
+          <div class="eyebrow">Administrator controls</div>
+          <h1 id="add-student-title">Add a student</h1>
+        </div>
+        <span class="review-chip">Admin approval</span>
+      </div>
+      <p class="muted">Create an approved student account and school record. The student can sign in after you finish.</p>
+
+      {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+      <form method="post" action="{% url 'add_student' %}" data-busy-label="Creating student…">
+        {% csrf_token %}
+        {% for field in form %}
+          <div class="form-field{% if field.errors %} has-error{% endif %}">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {% if field.name == 'password1' or field.name == 'password2' %}
+              <div class="password-input-row">{{ field }}<button class="password-toggle" type="button" data-password-toggle aria-controls="{{ field.id_for_label }}" aria-pressed="false">Show</button></div>
+            {% else %}
+              {{ field }}
+            {% endif %}
+            {% if field.name == 'password1' %}
+              <div id="password-policy" class="help-text">{{ field.help_text }}</div>
+              <p class="help-text password-strength" data-password-strength aria-live="polite"></p>
+              <div class="password-suggestion">
+                <button class="password-suggest-button" type="button" data-password-suggest>Generate a strong password</button>
+                <span class="help-text" data-password-suggestion-status aria-live="polite">Save the password privately before leaving this page. It is not emailed.</span>
+              </div>
+            {% elif field.help_text %}
+              <div class="help-text">{{ field.help_text }}</div>
+            {% endif %}
+            {% if field.errors %}<div class="field-error" role="alert">{{ field.errors }}</div>{% endif %}
+          </div>
+        {% endfor %}
+        <div class="actions">
+          <button class="button" type="submit">Create student account</button>
+          <a class="button secondary" href="{% url 'admin_management' %}">Cancel</a>
+        </div>
+      </form>
+    </section>
+
+    <aside class="side-card signup-aside" aria-labelledby="add-student-info-title">
+      <span class="eyebrow">What happens next</span>
+      <h2 id="add-student-info-title">Ready to sign in</h2>
+      <ol class="signup-steps">
+        <li><span class="step-number">1</span><div><strong>Enter fictional details</strong><p>Name, email, grade, and optional contact details create the student’s school record.</p></div></li>
+        <li><span class="step-number">2</span><div><strong>Set a unique password</strong><p>Give it to the student privately. Never reuse a real password or send it in this portal.</p></div></li>
+        <li><span class="step-number">3</span><div><strong>Student signs in</strong><p>The account is approved immediately. Class enrollment can be managed separately.</p></div></li>
+      </ol>
+      <div class="privacy-note"><strong>Fictional data only</strong><p>Use test contact details controlled by your project team.</p></div>
+    </aside>
+  </div>
+{% endblock %}

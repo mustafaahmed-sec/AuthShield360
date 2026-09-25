@@ -9,12 +9,13 @@ from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods, require_POST
 
 from accounts.models import User
 
 from .access import portal_admin_view, require_portal_admin
 from .audit import record_event
+from .forms import AdminStudentCreationForm
 from .models import Enrollment, EnrollmentChangeRequest, PortalAuditEvent, StudentRecord
 
 
@@ -61,6 +62,32 @@ def admin_management(request):
         "teacher_count": User.objects.filter(role=User.Role.TEACHER).count(),
     }
     return render(request, "school/admin_management.html", context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@portal_admin_view
+def add_student(request):
+    form = AdminStudentCreationForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        with transaction.atomic():
+            student = form.save(reviewed_by=request.user)
+            StudentRecord.objects.create(
+                student=student,
+                admission_number=f"AS-A{student.pk:06d}",
+                grade=form.cleaned_data["grade"],
+                age=form.cleaned_data["age"],
+            )
+            record_event(
+                request.user,
+                "student_account_created",
+                "Created an approved Student account and school record.",
+                target_name=student.full_name,
+                request=request,
+            )
+        messages.success(request, f"Student account created for {student.full_name}. They can now sign in.")
+        return redirect("admin_management")
+    return render(request, "school/admin_add_student.html", {"form": form})
 
 
 @login_required
