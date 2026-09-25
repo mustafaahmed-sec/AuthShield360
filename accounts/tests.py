@@ -149,6 +149,7 @@ class OTPLoginTests(TestCase):
         self.email_provider_patch = patch("accounts.otp.GmailEmailOTP")
         self.email_provider_class = self.email_provider_patch.start()
         self.addCleanup(self.email_provider_patch.stop)
+        self.email_provider_class.EMAIL_CHANNEL = "email"
         self.email_provider = self.email_provider_class.return_value
         self.email_provider.check.return_value = True
 
