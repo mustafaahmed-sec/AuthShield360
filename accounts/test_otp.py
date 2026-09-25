@@ -73,4 +73,4 @@ class TwilioVerifyAdapterTests(SimpleTestCase):
         self.provider_response({"status": "failed"})
 
         with self.assertRaises(OTPProviderError):
-            TwilioVerify().start("person@example.test", "email")
+            TwilioVerify().start("+15550100123", "whatsapp")

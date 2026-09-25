@@ -1,24 +1,78 @@
-"""Twilio Verify adapter for WhatsApp and email one-time codes."""
+"""Delivery adapters for email and mobile one-time codes."""
 
 import base64
 import json
+import secrets
 import re
+import smtplib
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from django.conf import settings
+from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ImproperlyConfigured
+from django.core.mail import send_mail
 
 
 class OTPProviderError(Exception):
     """A provider request failed without exposing provider details to the user."""
 
 
-class TwilioVerify:
-    API_ROOT = "https://verify.twilio.com/v2/Services"
+class GmailEmailOTP:
+    """Send email codes through Gmail SMTP and verify them against the session."""
+
+    SESSION_KEY = "authshield_email_otp_hash"
     EMAIL_CHANNEL = "email"
+
+    def __init__(self):
+        self.address = settings.AUTHSHIELD_GMAIL_ADDRESS
+        self.app_password = settings.AUTHSHIELD_GMAIL_APP_PASSWORD
+        if not self.address or not self.app_password:
+            raise ImproperlyConfigured(
+                "Gmail email verification is enabled but its server-side settings are incomplete."
+            )
+
+    def start(self, destination, session):
+        if not destination or "@" not in destination:
+            raise OTPProviderError("The account has no usable email address.")
+        session.pop(self.SESSION_KEY, None)
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        minutes = max(1, settings.AUTHSHIELD_OTP_TTL_SECONDS // 60)
+        message = (
+            f"Your AuthShield 360 sign-in code is {code}.\n\n"
+            f"It expires in {minutes} minutes. If you did not request this code, ignore this email."
+        )
+        try:
+            sent = send_mail(
+                subject="Your AuthShield 360 sign-in code",
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[destination],
+                fail_silently=False,
+            )
+        except (OSError, smtplib.SMTPException, TimeoutError) as error:
+            raise OTPProviderError("Gmail could not send the verification email.") from error
+        if sent != 1:
+            raise OTPProviderError("Gmail did not accept the verification email.")
+        session[self.SESSION_KEY] = make_password(code)
+
+    def check(self, code, session):
+        if not re.fullmatch(r"[0-9]{6}", code or ""):
+            return False
+        code_hash = session.get(self.SESSION_KEY)
+        if not code_hash or not check_password(code, code_hash):
+            return False
+        session.pop(self.SESSION_KEY, None)
+        return True
+
+
+class TwilioVerify:
+    """Twilio Verify adapter reserved for mobile channels such as WhatsApp or SMS."""
+
+    API_ROOT = "https://verify.twilio.com/v2/Services"
     WHATSAPP_CHANNEL = "whatsapp"
+    SMS_CHANNEL = "sms"
 
     def __init__(self):
         self.key_sid = settings.TWILIO_API_KEY_SID
@@ -32,10 +86,10 @@ class TwilioVerify:
             raise ImproperlyConfigured("TWILIO_API_KEY_SID must be an API Key SID.")
 
     def start(self, destination, channel):
-        if channel not in (self.EMAIL_CHANNEL, self.WHATSAPP_CHANNEL):
+        if channel not in (self.WHATSAPP_CHANNEL, self.SMS_CHANNEL):
             raise OTPProviderError("Unsupported verification channel.")
-        if channel == self.WHATSAPP_CHANNEL and not re.fullmatch(r"\+[1-9][0-9]{7,14}", destination or ""):
-            raise OTPProviderError("The account has no usable WhatsApp phone number.")
+        if not re.fullmatch(r"\+[1-9][0-9]{7,14}", destination or ""):
+            raise OTPProviderError("The account has no usable phone number.")
         result = self._post("Verifications", {"To": destination, "Channel": channel})
         if result.get("status") != "pending":
             raise OTPProviderError("The verification request was not accepted.")
@@ -73,6 +127,19 @@ class TwilioVerify:
 
 
 def delivery_target(user, channel):
-    if channel == TwilioVerify.EMAIL_CHANNEL:
+    if channel == GmailEmailOTP.EMAIL_CHANNEL:
         return user.email
     return re.sub(r"[^0-9+]", "", user.phone_number)
+
+
+def start_otp(destination, channel, session):
+    if channel == GmailEmailOTP.EMAIL_CHANNEL:
+        GmailEmailOTP().start(destination, session)
+        return
+    TwilioVerify().start(destination, channel)
+
+
+def check_otp(destination, channel, code, session):
+    if channel == GmailEmailOTP.EMAIL_CHANNEL:
+        return GmailEmailOTP().check(code, session)
+    return TwilioVerify().check(destination, code)

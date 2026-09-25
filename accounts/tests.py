@@ -129,11 +129,16 @@ class OTPLoginTests(TestCase):
             role=User.Role.STUDENT,
             phone_number="+15550100123",
         )
-        self.provider_patch = patch("accounts.views.TwilioVerify")
+        self.provider_patch = patch("accounts.otp.TwilioVerify")
         self.provider_class = self.provider_patch.start()
         self.addCleanup(self.provider_patch.stop)
         self.provider = self.provider_class.return_value
         self.provider.check.return_value = True
+        self.email_provider_patch = patch("accounts.otp.GmailEmailOTP")
+        self.email_provider_class = self.email_provider_patch.start()
+        self.addCleanup(self.email_provider_patch.stop)
+        self.email_provider = self.email_provider_class.return_value
+        self.email_provider.check.return_value = True
 
     def submit_password(self, channel="whatsapp"):
         return self.client.post(reverse("login"), {
@@ -175,7 +180,7 @@ class OTPLoginTests(TestCase):
         self.assertTrue(PortalAuditEvent.objects.filter(action="otp_success", factor="email_otp").exists())
 
     def test_invalid_code_is_logged_and_does_not_authenticate(self):
-        self.provider.check.return_value = False
+        self.email_provider.check.return_value = False
         self.submit_password(channel="email")
 
         response = self.client.post(reverse("otp_verify"), {"code": "000000"})
@@ -211,7 +216,8 @@ class OTPLoginTests(TestCase):
         self.assertNotIn("_auth_user_id", self.client.session)
         self.assertEqual(self.client.session["authshield_otp_channel"], "email")
         self.assertEqual(self.client.session["authshield_otp_phase"], "email_step_up")
-        self.provider.start.assert_any_call(self.user.email, "email")
+        self.email_provider.start.assert_called_once()
+        self.assertEqual(self.email_provider.start.call_args.args[0], self.user.email)
 
         second = self.client.post(reverse("otp_verify"), {"code": "654321"})
 
@@ -238,7 +244,7 @@ class OTPLoginTests(TestCase):
         replay = self.client.post(reverse("otp_verify"), {"code": "123456"})
 
         self.assertRedirects(replay, reverse("login"), fetch_redirect_response=False)
-        self.provider.check.assert_called_once()
+        self.email_provider.check.assert_called_once()
 
 
 @override_settings(

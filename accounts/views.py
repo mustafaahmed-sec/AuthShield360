@@ -25,7 +25,7 @@ from .lockout import (
 
 from .forms import EmailAuthenticationForm, RegistrationStatusForm, StudentSignupForm, TeacherSignupForm
 from django.contrib.auth.forms import SetPasswordForm
-from .otp import OTPProviderError, TwilioVerify, delivery_target
+from .otp import OTPProviderError, check_otp, delivery_target, start_otp
 from school.audit import record_auth_event
 
 
@@ -41,6 +41,7 @@ OTP_SESSION_KEYS = (
     "authshield_otp_started_at",
     "authshield_otp_attempts",
     "authshield_otp_resends",
+    "authshield_email_otp_hash",
 )
 
 
@@ -51,8 +52,7 @@ def _clear_otp_session(request):
 
 def _start_otp(request, user, channel, *, phase="primary", reset_resends=True):
     started_at = timezone.now().timestamp() if phase == "primary" else request.session.get("authshield_otp_started_at")
-    provider = TwilioVerify()
-    provider.start(delivery_target(user, channel), channel)
+    start_otp(delivery_target(user, channel), channel, request.session)
     request.session["authshield_otp_user_id"] = user.pk
     request.session["authshield_otp_channel"] = channel
     request.session["authshield_otp_phase"] = phase
@@ -66,7 +66,7 @@ def _start_otp(request, user, channel, *, phase="primary", reset_resends=True):
     request.session["authshield_otp_attempts"] = 0
     if reset_resends:
         request.session["authshield_otp_resends"] = 0
-    request.session.set_expiry(600)
+    request.session.set_expiry(settings.AUTHSHIELD_OTP_TTL_SECONDS)
 
 
 def _otp_duration_ms(request):
@@ -302,7 +302,7 @@ def otp_verify(request):
             messages.error(request, "Too many code attempts. Start sign-in again.")
             return redirect("login")
         try:
-            approved = TwilioVerify().check(delivery_target(user, channel), code)
+            approved = check_otp(delivery_target(user, channel), channel, code, request.session)
         except (OTPProviderError, ImproperlyConfigured):
             messages.error(request, "We could not verify that code right now. Try again shortly.")
             return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase), status=503)

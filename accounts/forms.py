@@ -97,7 +97,7 @@ class EmailAuthenticationForm(AuthenticationForm):
     otp_channel = forms.ChoiceField(
         label="Send the sign-in code by",
         choices=(("whatsapp", "WhatsApp"), ("email", "Email")),
-        initial="whatsapp",
+        initial="email",
         required=False,
     )
 
