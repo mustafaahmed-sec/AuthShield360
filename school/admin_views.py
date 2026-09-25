@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
@@ -56,6 +56,7 @@ def admin_management(request):
             20,
         ).get_page(request.GET.get("pending_page")),
         "accounts": Paginator(accounts.select_related("student_record"), 40).get_page(request.GET.get("page")),
+        "duplicate_names": set(accounts.values("full_name").annotate(total=Count("id")).filter(total__gt=1).values_list("full_name", flat=True)),
         "pending_changes": Paginator(
             EnrollmentChangeRequest.objects.filter(
                 status=EnrollmentChangeRequest.Status.PENDING
@@ -309,3 +310,5 @@ def review_enrollment_request(request, request_id):
     record_event(request.user, f"enrollment_request_{status_label}", summary, target_name=change.student_name, request=request)
     messages.success(request, summary)
     return redirect("admin_management")
+
+

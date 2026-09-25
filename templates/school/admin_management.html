@@ -38,7 +38,7 @@
           <tbody>
             {% for account in pending_accounts %}
               <tr>
-                <td>{{ account.full_name }}</td>
+                <td>{{ account.full_name }}{% if account.full_name in duplicate_names %}<span class="muted"> · {{ account.email }}</span>{% endif %}</td>
                 <td>{{ account.get_role_display }}</td>
                 <td>{{ account.email }}</td>
                 <td>{{ account.date_joined|date:"j M Y, H:i" }}</td>
@@ -121,7 +121,7 @@
           <tbody>
             {% for account in accounts %}
               <tr>
-                <td>{{ account.full_name }}</td>
+                <td>{{ account.full_name }}{% if account.full_name in duplicate_names %}<span class="muted"> · {{ account.email }}</span>{% endif %}</td>
                 <td>{{ account.get_role_display }}</td>
                 <td>{{ account.email }}</td>
                 <td>
@@ -187,3 +187,4 @@
     {% endif %}
   </section>
 {% endblock %}
+
