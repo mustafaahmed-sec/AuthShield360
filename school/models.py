@@ -196,6 +196,32 @@ class AttendanceRecord(models.Model):
         return f"{self.course.code}: {self.student.full_name} on {self.date} ({self.get_status_display()})"
 
 
+class Announcement(models.Model):
+    class Audience(models.TextChoices):
+        ALL = "all", "Everyone"
+        STUDENTS = User.Role.STUDENT, "Students"
+        TEACHERS = User.Role.TEACHER, "Teachers"
+        ADMINISTRATORS = User.Role.ADMIN, "Administrators"
+
+    title = models.CharField(max_length=160)
+    body = models.TextField()
+    audience = models.CharField(max_length=16, choices=Audience.choices, default=Audience.ALL)
+    is_active = models.BooleanField(default=True)
+    starts_on = models.DateField(blank=True, null=True)
+    ends_on = models.DateField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-pk")
+
+    def clean(self):
+        if self.starts_on and self.ends_on and self.ends_on < self.starts_on:
+            raise ValidationError({"ends_on": "The end date must be on or after the start date."})
+
+    def __str__(self):
+        return self.title
+
+
 class Assignment(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="assignments")
     title = models.CharField(max_length=160)

@@ -4,6 +4,7 @@
   <div class="eyebrow">Teacher portal</div>
   <h1>Welcome, {{ request.user.full_name }}</h1>
   <p class="intro">Only classes assigned to you and their related records appear here.</p>
+  {% include "school/partials/announcements.html" %}
   <div class="actions">
     <a class="button" href="{% url 'teacher_attendance' %}">Take attendance</a>
     <a class="button" href="{% url 'teacher_students' %}">Search students</a>

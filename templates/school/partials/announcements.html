@@ -1,0 +1,20 @@
+{% if announcements %}
+  <section class="panel" aria-labelledby="announcements-title">
+    <h2 id="announcements-title">School announcements</h2>
+    <ul class="item-list">
+      {% for announcement in announcements %}
+        <li>
+          <strong>{{ announcement.title }}</strong>
+          <p>{{ announcement.body|linebreaksbr }}</p>
+          {% if announcement.starts_on or announcement.ends_on %}
+            <span>
+              {% if announcement.starts_on %}From {{ announcement.starts_on|date:"j M Y" }}{% endif %}
+              {% if announcement.starts_on and announcement.ends_on %} · {% endif %}
+              {% if announcement.ends_on %}Until {{ announcement.ends_on|date:"j M Y" }}{% endif %}
+            </span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}

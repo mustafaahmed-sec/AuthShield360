@@ -5,14 +5,27 @@ from datetime import timedelta
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
-from django.db.models import Avg, Count, ExpressionWrapper, F, FloatField, Q
+from django.db.models import Avg, Count, ExpressionWrapper, F, FloatField, Q, Sum
 from django.shortcuts import render
 from django.utils import timezone
 
 from accounts.models import User
 
 from .audit import record_role_denial
-from .models import Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
+from .models import Announcement, Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
+
+
+def active_announcements_for(user):
+    today = timezone.localdate()
+    return Announcement.objects.filter(
+        is_active=True,
+    ).filter(
+        Q(audience=Announcement.Audience.ALL) | Q(audience=user.role),
+    ).filter(
+        Q(starts_on__isnull=True) | Q(starts_on__lte=today),
+    ).filter(
+        Q(ends_on__isnull=True) | Q(ends_on__gte=today),
+    )
 
 
 def home(request):
@@ -43,6 +56,23 @@ def dashboard(request):
             counted = item["present"] + item["absent"] + item["late"]
             item["attended_percent"] = round(100 * (item["present"] + item["late"]) / counted, 1) if counted else None
             attendance_summary.append(item)
+        attendance_days_counted = sum(
+            item["present"] + item["absent"] + item["late"] for item in attendance_summary
+        )
+        attendance_days_attended = sum(
+            item["present"] + item["late"] for item in attendance_summary
+        )
+        overall_attendance_percent = (
+            round(100 * attendance_days_attended / attendance_days_counted, 1)
+            if attendance_days_counted else None
+        )
+        result_totals = ExamResult.objects.filter(student=user).aggregate(
+            earned=Sum("score"), possible=Sum("max_score")
+        )
+        grade_average_percent = (
+            round(100 * result_totals["earned"] / result_totals["possible"], 1)
+            if result_totals["possible"] else None
+        )
         courses = (
             Course.objects.filter(enrollments__student=user)
             .select_related("teacher")
@@ -57,24 +87,34 @@ def dashboard(request):
             )
             .order_by("code")
         )
+        due_soon = Assignment.objects.filter(
+            course__enrollments__student=user,
+            due_date__gte=today,
+            due_date__lte=today + timedelta(days=14),
+        ).select_related("course").order_by("due_date", "id")
         context = {
+            "announcements": active_announcements_for(user),
             "record": StudentRecord.objects.filter(student=user).first(),
             "attendance_summary": attendance_summary,
+            "attendance_days_counted": attendance_days_counted,
+            "overall_attendance_percent": overall_attendance_percent,
             "recent_attendance": AttendanceRecord.objects.filter(student=user)
             .select_related("course").order_by("-date", "course__code")[:12],
             "courses": courses,
-            "due_soon": Assignment.objects.filter(
-                course__enrollments__student=user,
-                due_date__gte=today,
-                due_date__lte=today + timedelta(days=14),
-            ).select_related("course").order_by("due_date", "id"),
+            "due_soon": due_soon,
+            "due_soon_count": due_soon.count(),
             "assignments": Assignment.objects.filter(course__enrollments__student=user)
             .select_related("course").order_by("due_date", "id"),
             "results": ExamResult.objects.filter(student=user).select_related("course").order_by("course__code", "exam_name"),
+            "recent_results": ExamResult.objects.filter(student=user)
+            .select_related("course").order_by("-pk")[:3],
+            "grade_average_percent": grade_average_percent,
+            "graded_assessment_count": ExamResult.objects.filter(student=user).count(),
         }
         return render(request, "school/student_dashboard.html", context)
     if user.is_portal_teacher:
         context = {
+            "announcements": active_announcements_for(user),
             "courses": Course.objects.filter(teacher=user).order_by("code"),
             "assignments": Paginator(
                 Assignment.objects.filter(course__teacher=user).select_related("course").order_by("due_date", "id"), 20
@@ -96,6 +136,7 @@ def dashboard(request):
         return render(request, "school/teacher_dashboard.html", context)
     if user.is_portal_admin:
         context = {
+            "announcements": active_announcements_for(user),
             "attendance_count": AttendanceRecord.objects.count(),
             "student_count": StudentRecord.objects.count(),
             "teacher_count": User.objects.filter(

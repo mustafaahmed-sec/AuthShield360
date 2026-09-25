@@ -2,11 +2,12 @@ from datetime import date, timedelta
 from unittest.mock import patch
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from accounts.models import User
-from .models import Assignment, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
+from .models import Announcement, Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
 
 
 class AccountApprovalFlowTests(TestCase):
@@ -429,6 +430,36 @@ class StudentDashboardProgressTests(TestCase):
         self.assertEqual(titles, ["Due today", "Due in fourteen days"])
         self.assertContains(response, "Due soon")
 
+    def test_progress_overview_summarizes_only_this_students_records(self):
+        today = date(2026, 9, 25)
+        for day, status in (
+            (today - timedelta(days=3), AttendanceRecord.Status.PRESENT),
+            (today - timedelta(days=2), AttendanceRecord.Status.LATE),
+            (today - timedelta(days=1), AttendanceRecord.Status.ABSENT),
+            (today, AttendanceRecord.Status.EXCUSED),
+        ):
+            AttendanceRecord.objects.create(
+                course=self.course, student=self.student, date=day, status=status,
+            )
+        Assignment.objects.create(
+            course=self.course, title="Upcoming work", due_date=today + timedelta(days=2),
+        )
+        self.client.force_login(self.student)
+
+        with patch("school.views.timezone.localdate", return_value=today):
+            response = self.client.get(reverse("dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["attendance_days_counted"], 3)
+        self.assertEqual(response.context["overall_attendance_percent"], 66.7)
+        self.assertEqual(response.context["grade_average_percent"], 81.7)
+        self.assertEqual(response.context["graded_assessment_count"], 2)
+        self.assertEqual(response.context["due_soon_count"], 1)
+        self.assertEqual(response.context["recent_results"][0].exam_name, "Second result")
+        self.assertContains(response, "Progress at a glance")
+        self.assertContains(response, "Upcoming work")
+        self.assertNotContains(response, "Other student's result")
+
 
 class DjangoAdminRoleBoundaryTests(TestCase):
     def test_staff_flagged_teacher_cannot_access_django_admin(self):
@@ -588,3 +619,70 @@ class PortalNavigationAndFeedbackTests(TestCase):
         self.assertContains(self.client.get(reverse("login")), 'data-busy-label="Signing in…"')
         self.assertContains(self.client.get(reverse("student_signup")), 'data-busy-label="Submitting request…"')
         self.assertContains(self.client.get(reverse("registration_status")), 'data-busy-label="Checking status…"')
+
+
+class AnnouncementDashboardTests(TestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(
+            "announcement-student@example.test", "student-password",
+            full_name="Announcement Student", role=User.Role.STUDENT,
+        )
+        self.teacher = User.objects.create_user(
+            "announcement-teacher@example.test", "teacher-password",
+            full_name="Announcement Teacher", role=User.Role.TEACHER,
+        )
+        self.admin = User.objects.create_superuser(
+            "announcement-admin@example.test", "admin-password",
+            full_name="Announcement Admin",
+        )
+
+    def test_role_and_everyone_announcements_are_scoped_to_dashboards(self):
+        for title, audience in (
+            ("For everyone", Announcement.Audience.ALL),
+            ("For students", Announcement.Audience.STUDENTS),
+            ("For teachers", Announcement.Audience.TEACHERS),
+            ("For administrators", Announcement.Audience.ADMINISTRATORS),
+        ):
+            Announcement.objects.create(title=title, body="A notice.", audience=audience)
+
+        for user, expected, excluded in (
+            (self.student, ("For everyone", "For students"), ("For teachers", "For administrators")),
+            (self.teacher, ("For everyone", "For teachers"), ("For students", "For administrators")),
+            (self.admin, ("For everyone", "For administrators"), ("For students", "For teachers")),
+        ):
+            with self.subTest(role=user.role):
+                self.client.force_login(user)
+                response = self.client.get(reverse("dashboard"))
+                for title in expected:
+                    self.assertContains(response, title)
+                for title in excluded:
+                    self.assertNotContains(response, title)
+
+    def test_only_active_announcements_inside_the_date_window_are_shown_and_content_is_escaped(self):
+        today = date(2026, 9, 25)
+        Announcement.objects.create(
+            title="Current notice", body="Line one\n<script>alert(1)</script>",
+            starts_on=today, ends_on=today,
+        )
+        Announcement.objects.create(title="Inactive notice", body="Hidden", is_active=False)
+        Announcement.objects.create(title="Future notice", body="Hidden", starts_on=today + timedelta(days=1))
+        Announcement.objects.create(title="Expired notice", body="Hidden", ends_on=today - timedelta(days=1))
+        self.client.force_login(self.student)
+
+        with patch("school.views.timezone.localdate", return_value=today):
+            response = self.client.get(reverse("dashboard"))
+
+        self.assertContains(response, "Current notice")
+        self.assertContains(response, "&lt;script&gt;alert(1)&lt;/script&gt;")
+        self.assertNotContains(response, "<script>alert(1)</script>")
+        self.assertNotContains(response, "Inactive notice")
+        self.assertNotContains(response, "Future notice")
+        self.assertNotContains(response, "Expired notice")
+
+    def test_end_date_must_not_precede_start_date(self):
+        announcement = Announcement(
+            title="Invalid date range", body="Test", starts_on=date(2026, 9, 26), ends_on=date(2026, 9, 25),
+        )
+
+        with self.assertRaises(ValidationError):
+            announcement.full_clean()

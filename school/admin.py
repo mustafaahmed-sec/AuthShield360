@@ -1,9 +1,50 @@
 import csv
 
+from django import forms
 from django.contrib import admin
+from django.db.models import Q
 from django.http import HttpResponse
 
+from accounts.models import User
+
 from .models import Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
+from . import announcement_admin  # noqa: F401
+
+
+class AttendanceRecordAdminForm(forms.ModelForm):
+    class Meta:
+        model = AttendanceRecord
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        student_field = self.fields["student"]
+        student_field.error_messages["invalid_choice"] = (
+            "That student is not enrolled in the selected course. Add the student to the course roster first."
+        )
+        students = User.objects.filter(role=User.Role.STUDENT)
+        course_id = (
+            self.data.get(self.add_prefix("course"))
+            if self.is_bound
+            else self.initial.get("course") or getattr(self.instance, "course_id", None)
+        )
+        if course_id:
+            eligible_student = Q(enrollments__course_id=course_id)
+            if self.instance.pk and self.instance.student_id:
+                eligible_student |= Q(pk=self.instance.student_id)
+            students = students.filter(eligible_student)
+        student_field.queryset = students.distinct().order_by("full_name", "email")
+
+    def clean(self):
+        cleaned = super().clean()
+        course = cleaned.get("course")
+        student = cleaned.get("student")
+        day = cleaned.get("date")
+        if course and student and day and self.instance._state.adding:
+            exists = AttendanceRecord.objects.filter(course=course, student=student, date=day).exists()
+            if exists:
+                self.add_error("date", "An attendance record already exists for this student, course, and date.")
+        return cleaned
 
 
 @admin.register(StudentRecord)
@@ -32,11 +73,17 @@ class AssignmentAdmin(admin.ModelAdmin):
 
 @admin.register(AttendanceRecord)
 class AttendanceRecordAdmin(admin.ModelAdmin):
+    form = AttendanceRecordAdminForm
     list_display = ("date", "course", "student", "status", "marked_by", "updated_at")
     list_filter = ("date", "status", "course")
     search_fields = ("student__full_name", "student__email", "course__code")
     readonly_fields = ("updated_at",)
     list_select_related = ("course", "student", "marked_by")
+
+    def save_model(self, request, obj, form, change):
+        if not change and obj.marked_by_id is None:
+            obj.marked_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(ExamResult)
