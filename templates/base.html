@@ -5,9 +5,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}AuthShield 360{% endblock %}</title>
-  <link rel="icon" type="image/png" href="{% static 'img/authshield-portal-icon-v5.png' %}">
-  <link rel="stylesheet" href="{% static 'css/site.css' %}">
-  <script src="{% static 'js/password-tools.js' %}" defer></script>
+  <link rel="icon" type="image/png" href="{% static 'img/authshield-portal-icon-v5.png' %}?v={{ static_version }}">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v={{ static_version }}">
+  <script src="{% static 'js/password-tools.js' %}?v={{ static_version }}" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
