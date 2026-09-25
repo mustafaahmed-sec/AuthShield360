@@ -62,7 +62,9 @@ class AccountSignupForm(UserCreationForm):
     def clean_email(self):
         email = self.cleaned_data["email"].strip().lower()
         if User.objects.filter(email__iexact=email).exclude(pk=self.instance.pk).exists():
-            raise forms.ValidationError("We could not submit this request. Check your details or contact the administrator.")
+            raise forms.ValidationError(
+                "This email is already registered. Use a different email or sign in with the existing account."
+            )
         return email
 
     def save(self, commit=True):

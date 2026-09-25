@@ -48,7 +48,7 @@ class PublicAccountFlowTests(TestCase):
             "password1": "FictionalDemo!2468-Strong", "password2": "FictionalDemo!2468-Strong",
         })
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "We could not submit this request")
+        self.assertContains(response, "This email is already registered")
         self.assertEqual(User.objects.filter(email="existing@example.test").count(), 1)
 
     def test_rejected_applicant_can_resubmit_and_admin_can_approve(self):
