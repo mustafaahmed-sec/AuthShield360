@@ -11,7 +11,7 @@
       {% elif result == 'approved' %}
         <div class="status-banner status-approved" role="status"><strong>Request approved</strong><span>Your account is ready. You can now <a href="{% url 'login' %}">sign in</a>.</span></div>
       {% elif result == 'not_approved' %}
-        <div class="status-banner status-pending" role="status"><strong>Access is not available</strong><span>A rejected applicant can send a new request using the same email and password. For a deactivated account, contact the portal administrator.</span></div>
+        <div class="status-banner status-rejected" role="status"><strong>Your request was not approved</strong><span>You cannot sign in with this request. Review your details, then submit a new Student or Teacher access request using the same email, or contact the portal administrator for help.</span></div>
       {% endif %}
       {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
       <form method="post" action="{% url 'registration_status' %}" data-busy-label="Checking status…">
@@ -25,3 +25,4 @@
     <aside class="side-card status-aside"><span class="eyebrow">Protected lookup</span><h2>Your password stays private</h2><p>Only the correct email and password can view the request status. This page does not sign you in or reveal whether another email address has an account.</p></aside>
   </div>
 {% endblock %}
+
