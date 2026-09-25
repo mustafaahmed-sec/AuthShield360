@@ -11,7 +11,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from school.models import Assignment, Course, Enrollment, ExamResult, StudentRecord
+from school.models import Assignment, AttendanceRecord, Course, Enrollment, ExamResult, StudentRecord
 
 
 STUDENT_TARGET = 486
@@ -193,6 +193,7 @@ class Command(BaseCommand):
         seeded_courses = Course.objects.filter(code__in=course_codes)
         seeded_enrollments = Enrollment.objects.filter(student__in=student_users, course__in=seeded_courses)
         seeded_results = ExamResult.objects.filter(student__in=student_users, course__in=seeded_courses)
+        seeded_attendance = AttendanceRecord.objects.filter(student__in=student_users, course__in=seeded_courses)
         self.stdout.write(
             self.style.SUCCESS(
                 f"Ready: {len(student_users)} seeded students, "
@@ -596,4 +597,38 @@ class Command(BaseCommand):
             ExamResult.objects.bulk_create(new_results, batch_size=500)
         if changed_results:
             ExamResult.objects.bulk_update(changed_results, ["score", "max_score"], batch_size=500)
+        existing_attendance = {
+            (record.student_id, record.course_id, record.date): record
+            for record in AttendanceRecord.objects.filter(student_id__in=student_ids, course_id__in=course_ids)
+        }
+        new_attendance = []
+        changed_attendance = []
+        today = timezone.localdate()
+        for student_index, (student, slot) in enumerate(student_details):
+            for subject_index, (_, _, _) in enumerate(subjects):
+                course = courses[(slot["grade_index"], slot["section"], subject_index)]
+                for session_index in range(10, 0, -1):
+                    day = today - timedelta(days=session_index * 7)
+                    pattern = (student_index * 7 + slot["grade_index"] * 3 + subject_index * 5 + session_index) % 20
+                    status = (
+                        AttendanceRecord.Status.ABSENT if pattern in (0, 1)
+                        else AttendanceRecord.Status.LATE if pattern in (2, 3)
+                        else AttendanceRecord.Status.EXCUSED if pattern == 4
+                        else AttendanceRecord.Status.PRESENT
+                    )
+                    key = (student.pk, course.pk, day)
+                    record = existing_attendance.get(key)
+                    if record is None:
+                        new_attendance.append(
+                            AttendanceRecord(student=student, course=course, date=day, status=status, marked_by=course.teacher)
+                        )
+                    elif reset_existing and record.status != status:
+                        record.status = status
+                        record.marked_by = course.teacher
+                        changed_attendance.append(record)
+        if new_attendance:
+            AttendanceRecord.objects.bulk_create(new_attendance, batch_size=1000)
+        if changed_attendance:
+            AttendanceRecord.objects.bulk_update(changed_attendance, ["status", "marked_by"], batch_size=1000)
         return requested_course_codes
+
