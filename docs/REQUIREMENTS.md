@@ -19,8 +19,8 @@ Progress marks: `pending`, `in progress`, `done`. The last row is an optional en
 | Three-run login-time averages and event visibility within five seconds | Pending | SRS 1.7 |
 | Report, presentation, MP4 demo, ZIP and README | Pending | SRS 1.9 |
 | Student and Teacher requests, Admin approval, teacher roster search, scoped record edits, admin-reviewed roster requests, activity history | Optional enhancement implemented | Consistent with the fictional three-role portal and server-side role controls in SRS 1.4 and 1.6(ii, vii); OTP and AI remain excluded from this phase |
-| Student course progress averages and 14-day due-soon dashboard | Optional enhancement implemented | Averages use the current student's results; seeded assignments are scheduled one week after a demo reset |
-| Course attendance | Optional enhancement implemented locally | Teachers mark dated attendance for enrolled students in their own courses; students see only their own records; administrators can review and correct records in Django Admin. Unmarked days are not treated as absences. Requires the new database migration before deployment. |
+| Student course progress averages and 14-day due-soon dashboard | Optional enhancement implemented | Averages use the current student's results; three seeded assignments per course are staggered one, three, and five weeks ahead |
+| Course attendance | Optional enhancement deployed | Teachers mark dated attendance for enrolled students in their assigned courses; students see only their own records; administrators can review and correct records in Django Admin. Unmarked days are not treated as absences. The production migration is applied. |
 | Automated tests for approval, scope, admin-reviewed roster changes, seed roster invariants, student progress, failed-login lockout, logout/session reuse, and audit export | Optional enhancement implemented | Run all tests with `python manage.py test --settings=config.test_settings`; tests use a temporary in-memory SQLite database |
 
 ## Clarifications and assumptions
