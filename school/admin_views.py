@@ -62,6 +62,7 @@ def admin_management(request):
             ).select_related("requester", "student", "course").order_by("created_at", "pk"),
             20,
         ).get_page(request.GET.get("change_page")),
+        "admin_accounts": User.objects.filter(role=User.Role.ADMIN).order_by("designation", "full_name"),
         "recent_events": PortalAuditEvent.objects.all()[:20],
         "search": search,
         "role_filter": role,

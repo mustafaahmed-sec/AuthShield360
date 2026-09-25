@@ -32,6 +32,11 @@ class User(AbstractUser):
         TEACHER = "teacher", "Teacher"
         ADMIN = "admin", "Administrator"
 
+    class Designation(models.TextChoices):
+        SCHOOL_DIRECTOR = "school_director", "School Director"
+        PRINCIPAL = "principal", "Principal"
+        ASSISTANT_PRINCIPAL = "assistant_principal", "Assistant Principal"
+
     class ApprovalStatus(models.TextChoices):
         PENDING = "pending", "Pending review"
         APPROVED = "approved", "Approved"
@@ -42,6 +47,7 @@ class User(AbstractUser):
     full_name = models.CharField(max_length=150)
     phone_number = models.CharField(max_length=32, blank=True)
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.STUDENT)
+    designation = models.CharField(max_length=32, choices=Designation.choices, blank=True, default="")
     approval_status = models.CharField(
         max_length=16,
         choices=ApprovalStatus.choices,

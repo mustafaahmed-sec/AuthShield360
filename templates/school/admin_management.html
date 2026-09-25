@@ -11,6 +11,24 @@
     <a class="button secondary" href="{% url 'admin:index' %}">School data administration</a>
   </div>
 
+  <section class="panel management-section" aria-labelledby="leadership-title">
+    <h2 id="leadership-title">School leadership</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Designation</th><th>Portal access</th></tr></thead>
+        <tbody>
+          {% for admin_account in admin_accounts %}
+            <tr>
+              <td>{{ admin_account.full_name }}</td>
+              <td>{{ admin_account.get_designation_display|default:"Administrator" }}</td>
+              <td>Administrator</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="panel management-section" aria-labelledby="pending-accounts-title">
     <h2 id="pending-accounts-title">New account requests <span class="count-chip">{{ pending_accounts.paginator.count }}</span></h2>
     {% if pending_accounts %}
