@@ -51,6 +51,18 @@ class PublicAccountFlowTests(TestCase):
         self.assertContains(response, "This email is already registered")
         self.assertEqual(User.objects.filter(email="existing@example.test").count(), 1)
 
+    def test_duplicate_teacher_email_has_existing_account_error(self):
+        User.objects.create_user(
+            "existing-teacher@example.test", "FictionalDemo!2468", full_name="Existing Teacher", role=User.Role.TEACHER
+        )
+        response = self.client.post(reverse("teacher_signup"), {
+            "full_name": "Another Teacher", "email": "existing-teacher@example.test", "phone_number": "+1 555 010 0102",
+            "password1": "FictionalDemo!2468-Strong", "password2": "FictionalDemo!2468-Strong",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "This email is already registered")
+        self.assertEqual(User.objects.filter(email="existing-teacher@example.test").count(), 1)
+
     def test_rejected_applicant_can_resubmit_and_admin_can_approve(self):
         admin = User.objects.create_superuser("reviewer@example.test", "AdminDemo!2468", full_name="Reviewer")
         applicant = User.objects.create_user(
