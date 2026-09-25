@@ -69,7 +69,11 @@ def admin_management(request):
         "status_filter": status,
         "account_page_url": "?" + urlencode({"q": search, "role": role, "status": status}) + "&page=",
         "student_count": User.objects.filter(role=User.Role.STUDENT).count(),
-        "teacher_count": User.objects.filter(role=User.Role.TEACHER).count(),
+        "teacher_count": User.objects.filter(
+            role=User.Role.TEACHER,
+            is_active=True,
+            approval_status=User.ApprovalStatus.APPROVED,
+        ).count(),
     }
     return render(request, "school/admin_management.html", context)
 

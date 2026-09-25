@@ -98,7 +98,11 @@ def dashboard(request):
         context = {
             "attendance_count": AttendanceRecord.objects.count(),
             "student_count": StudentRecord.objects.count(),
-            "teacher_count": User.objects.filter(role=User.Role.TEACHER).count(),
+            "teacher_count": User.objects.filter(
+                role=User.Role.TEACHER,
+                is_active=True,
+                approval_status=User.ApprovalStatus.APPROVED,
+            ).count(),
             "admin_count": User.objects.filter(role=User.Role.ADMIN).count(),
             "course_count": Course.objects.count(),
             "assignment_count": Assignment.objects.count(),
