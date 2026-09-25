@@ -1,6 +1,8 @@
 """Create a balanced, repeatable fictional K–12 school roster for the demo."""
 
 import json
+import re
+import unicodedata
 from datetime import timedelta
 from pathlib import Path
 
@@ -20,6 +22,13 @@ COURSE_PREFIX = "D26-"
 STUDENT_EMAIL = "ali.khan.authshield@gmail.com"
 TEACHER_EMAIL = "sara.ahmed.authshield@gmail.com"
 ADMIN_EMAIL = "mina.rahman.authshield@gmail.com"
+LEGACY_STUDENT_EMAIL_TEMPLATE = "demo.student.{number:04d}@example.test"
+
+
+def demo_student_email(number, full_name):
+    normalized_name = unicodedata.normalize("NFKD", full_name).encode("ascii", "ignore").decode("ascii")
+    name_slug = re.sub(r"[^a-z0-9]+", ".", normalized_name.casefold()).strip(".") or "student"
+    return f"{name_slug}.{number:04d}@example.test"
 
 # The three existing demo logins remain the only accounts with demo passwords.
 # Other seeded accounts use Django's unusable-password marker until an
@@ -144,8 +153,14 @@ class Command(BaseCommand):
             # Remove only seeded accounts, identified by their reserved email
             # plus Django's unusable-password marker. Public signups always
             # have a usable password, even if someone chooses a demo.* email.
+            student_profiles = self._load_student_profiles()
             seeded_student_emails = [
-                f"demo.student.{number:04d}@example.test" for number in range(1, STUDENT_TARGET)
+                email
+                for number, profile in enumerate(student_profiles, start=1)
+                for email in (
+                    LEGACY_STUDENT_EMAIL_TEMPLATE.format(number=number),
+                    demo_student_email(number, profile["full_name"]),
+                )
             ]
             seeded_teacher_emails = [
                 email
@@ -270,21 +285,44 @@ class Command(BaseCommand):
             User.objects.bulk_update(changed, ["is_staff", "is_superuser"], batch_size=500)
 
     def _ensure_students(self, User):
-        fixture_path = Path(__file__).resolve().parents[2] / "data" / "demo_students.json"
-        profiles = json.loads(fixture_path.read_text(encoding="utf-8"))
+        profiles = self._load_student_profiles()
         if len(profiles) != STUDENT_TARGET - 1:
             raise CommandError("The fictional student-name fixture must contain exactly 485 profiles.")
-        expected_emails = [f"demo.student.{number:04d}@example.test" for number in range(1, len(profiles) + 1)]
-        existing = {user.email: user for user in User.objects.filter(email__in=expected_emails)}
+        expected_emails = [
+            demo_student_email(number, profile["full_name"])
+            for number, profile in enumerate(profiles, start=1)
+        ]
+        legacy_emails = [
+            LEGACY_STUDENT_EMAIL_TEMPLATE.format(number=number)
+            for number in range(1, len(profiles) + 1)
+        ]
+        existing = {
+            user.email: user
+            for user in User.objects.filter(email__in=[*expected_emails, *legacy_emails])
+        }
         created = []
         for number, profile in enumerate(profiles, start=1):
             email = expected_emails[number - 1]
+            legacy_email = legacy_emails[number - 1]
             user = existing.get(email)
+            legacy_user = existing.get(legacy_email)
+            if user and legacy_user and user.pk != legacy_user.pk:
+                raise CommandError(f"Both old and new fictional student accounts exist for roster entry {number}.")
+            user = user or legacy_user
             if user and user.role != User.Role.STUDENT:
-                raise CommandError(f"Reserved fictional student email {email} already belongs to another role.")
+                raise CommandError(f"Reserved fictional student email {user.email} already belongs to another role.")
             if user and user.approval_status != User.ApprovalStatus.APPROVED:
-                raise CommandError(f"Reserved fictional student email {email} has a pending or rejected request.")
+                raise CommandError(f"Reserved fictional student email {user.email} has a pending or rejected request.")
             if user:
+                fields_to_update = []
+                if user.email != email:
+                    user.email = email
+                    fields_to_update.append("email")
+                if user.full_name.casefold().startswith("demo student"):
+                    user.full_name = profile["full_name"]
+                    fields_to_update.append("full_name")
+                if fields_to_update:
+                    user.save(update_fields=fields_to_update)
                 continue
             user = User(email=email, full_name=profile["full_name"], role=User.Role.STUDENT)
             user.set_unusable_password()
@@ -297,6 +335,10 @@ class Command(BaseCommand):
         if len(students) != STUDENT_TARGET:
             raise CommandError("The reserved fictional student roster is incomplete.")
         return students
+
+    def _load_student_profiles(self):
+        fixture_path = Path(__file__).resolve().parents[2] / "data" / "demo_students.json"
+        return json.loads(fixture_path.read_text(encoding="utf-8"))
 
     def _seed_additional_assignments(self):
         subject_names = {code: name for code, name, _ in TEACHER_GROUPS}
@@ -465,17 +507,13 @@ class Command(BaseCommand):
         for student_index, (student, slot) in enumerate(zip(students, grade_slots, strict=True)):
             if student.email == STUDENT_EMAIL:
                 gender = StudentRecord.Gender.BOY
-            elif student.email.startswith("demo.student."):
-                roster_number = int(student.email.split(".")[2].split("@")[0])
-                profile_index = roster_number - 1
-                if profile_index < len(source_profiles):
-                    gender = (
-                        StudentRecord.Gender.BOY
-                        if source_profiles[profile_index]["gender"] == "boy"
-                        else StudentRecord.Gender.GIRL
-                    )
-                else:
-                    gender = StudentRecord.Gender.BOY if student_index % 2 else StudentRecord.Gender.GIRL
+            elif student_index > 0:
+                profile = source_profiles[student_index - 1]
+                gender = (
+                    StudentRecord.Gender.BOY
+                    if profile["gender"] == "boy"
+                    else StudentRecord.Gender.GIRL
+                )
             else:
                 gender = StudentRecord.Gender.NOT_SPECIFIED
 
