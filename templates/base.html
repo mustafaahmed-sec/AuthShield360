@@ -5,14 +5,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}AuthShield 360{% endblock %}</title>
-  <link rel="icon" type="image/svg+xml" href="{% static 'img/authshield-icon.svg' %}">
+  <link rel="icon" type="image/png" href="{% static 'img/authshield-portal-icon.png' %}">
   <link rel="stylesheet" href="{% static 'css/site.css' %}">
   <script src="{% static 'js/password-tools.js' %}" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
   <header class="site-header">
-    <a class="brand" href="{% url 'home' %}" aria-label="AuthShield 360 home"><span class="brand-mark" aria-hidden="true">A</span><span>AuthShield <strong>360</strong></span></a>
+    <a class="brand" href="{% url 'home' %}" aria-label="AuthShield 360 home"><img class="brand-mark" src="{% static 'img/authshield-portal-icon.png' %}" alt=""><span>AuthShield <strong>360</strong></span></a>
     <nav class="site-nav{% if not request.user.is_authenticated %} guest-nav{% endif %}" aria-label="Primary navigation">
       {% if request.user.is_authenticated %}
         <a href="{% url 'dashboard' %}">Dashboard</a>
