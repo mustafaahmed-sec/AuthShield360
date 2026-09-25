@@ -7,7 +7,20 @@ from django.http import HttpResponse
 
 from accounts.models import User
 
-from .models import Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
+from .audit import record_event
+from .models import (
+    Assignment,
+    AttendanceRecord,
+    Course,
+    Enrollment,
+    EnrollmentChangeRequest,
+    ExamResult,
+    PortalAuditEvent,
+    StudentPortalAuditEvent,
+    StudentRecord,
+    TeacherAttendanceRecord,
+    TeacherPortalAuditEvent,
+)
 from . import announcement_admin  # noqa: F401
 
 
@@ -47,6 +60,20 @@ class AttendanceRecordAdminForm(forms.ModelForm):
         return cleaned
 
 
+class TeacherAttendanceRecordAdminForm(forms.ModelForm):
+    class Meta:
+        model = TeacherAttendanceRecord
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["teacher"].queryset = User.objects.filter(
+            role=User.Role.TEACHER,
+            is_active=True,
+            approval_status=User.ApprovalStatus.APPROVED,
+        ).order_by("full_name", "email")
+
+
 @admin.register(StudentRecord)
 class StudentRecordAdmin(admin.ModelAdmin):
     list_display = ("admission_number", "student", "grade", "age", "gender")
@@ -84,6 +111,77 @@ class AttendanceRecordAdmin(admin.ModelAdmin):
         if not change and obj.marked_by_id is None:
             obj.marked_by = request.user
         super().save_model(request, obj, form, change)
+        record_event(
+            request.user,
+            "attendance_updated" if change else "attendance_recorded",
+            f"{'Updated' if change else 'Recorded'} {obj.get_status_display().lower()} attendance for {obj.student.full_name} in {obj.course.code} on {obj.date.isoformat()}.",
+            target_name=obj.student.full_name,
+            request=request,
+        )
+
+    def delete_model(self, request, obj):
+        record_event(
+            request.user,
+            "attendance_deleted",
+            f"Deleted attendance for {obj.student.full_name} in {obj.course.code} on {obj.date.isoformat()}.",
+            target_name=obj.student.full_name,
+            request=request,
+        )
+        super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        for record in queryset.select_related("student", "course"):
+            record_event(
+                request.user,
+                "attendance_deleted",
+                f"Deleted attendance for {record.student.full_name} in {record.course.code} on {record.date.isoformat()}.",
+                target_name=record.student.full_name,
+                request=request,
+            )
+        super().delete_queryset(request, queryset)
+
+
+@admin.register(TeacherAttendanceRecord)
+class TeacherAttendanceRecordAdmin(admin.ModelAdmin):
+    form = TeacherAttendanceRecordAdminForm
+    list_display = ("date", "teacher", "status", "marked_by", "updated_at")
+    list_filter = ("date", "status")
+    search_fields = ("teacher__full_name", "teacher__email")
+    readonly_fields = ("updated_at",)
+    list_select_related = ("teacher", "marked_by")
+
+    def save_model(self, request, obj, form, change):
+        if not change and obj.marked_by_id is None:
+            obj.marked_by = request.user
+        super().save_model(request, obj, form, change)
+        record_event(
+            request.user,
+            "teacher_attendance_updated" if change else "teacher_attendance_recorded",
+            f"{'Updated' if change else 'Recorded'} {obj.get_status_display().lower()} attendance for {obj.teacher.full_name} on {obj.date.isoformat()}.",
+            target_name=obj.teacher.full_name,
+            request=request,
+        )
+
+    def delete_model(self, request, obj):
+        record_event(
+            request.user,
+            "teacher_attendance_deleted",
+            f"Deleted teacher attendance for {obj.teacher.full_name} on {obj.date.isoformat()}.",
+            target_name=obj.teacher.full_name,
+            request=request,
+        )
+        super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        for record in queryset.select_related("teacher"):
+            record_event(
+                request.user,
+                "teacher_attendance_deleted",
+                f"Deleted teacher attendance for {record.teacher.full_name} on {record.date.isoformat()}.",
+                target_name=record.teacher.full_name,
+                request=request,
+            )
+        super().delete_queryset(request, queryset)
 
 
 @admin.register(ExamResult)
@@ -140,3 +238,15 @@ class PortalAuditEventAdmin(admin.ModelAdmin):
                 row.append(value)
             writer.writerow(row)
         return response
+
+
+@admin.register(StudentPortalAuditEvent)
+class StudentPortalAuditEventAdmin(PortalAuditEventAdmin):
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(actor_role=User.Role.STUDENT)
+
+
+@admin.register(TeacherPortalAuditEvent)
+class TeacherPortalAuditEventAdmin(PortalAuditEventAdmin):
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(actor_role=User.Role.TEACHER)

@@ -12,7 +12,18 @@ from django.utils import timezone
 from accounts.models import User
 
 from .audit import record_role_denial
-from .models import Announcement, Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
+from .models import (
+    Announcement,
+    Assignment,
+    AttendanceRecord,
+    Course,
+    Enrollment,
+    EnrollmentChangeRequest,
+    ExamResult,
+    PortalAuditEvent,
+    StudentRecord,
+    TeacherAttendanceRecord,
+)
 
 
 def active_announcements_for(user):
@@ -143,6 +154,7 @@ def dashboard(request):
         context = {
             "announcements": active_announcements_for(user),
             "attendance_count": AttendanceRecord.objects.count(),
+            "teacher_attendance_count": TeacherAttendanceRecord.objects.count(),
             "student_count": StudentRecord.objects.count(),
             "teacher_count": User.objects.filter(
                 role=User.Role.TEACHER,

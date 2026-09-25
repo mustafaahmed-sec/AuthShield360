@@ -90,6 +90,20 @@ class PortalAuditEvent(models.Model):
         return f"{self.created_at:%Y-%m-%d %H:%M} {self.actor_email}: {self.action}"
 
 
+class StudentPortalAuditEvent(PortalAuditEvent):
+    class Meta:
+        proxy = True
+        verbose_name = "student audit event"
+        verbose_name_plural = "student audit events"
+
+
+class TeacherPortalAuditEvent(PortalAuditEvent):
+    class Meta:
+        proxy = True
+        verbose_name = "teacher audit event"
+        verbose_name_plural = "teacher audit events"
+
+
 class EnrollmentChangeRequest(models.Model):
     class Action(models.TextChoices):
         ADD = "add", "Request enrollment"
@@ -180,6 +194,8 @@ class AttendanceRecord(models.Model):
 
     class Meta:
         ordering = ("-date", "course__code", "student__full_name")
+        verbose_name = "student attendance record"
+        verbose_name_plural = "student attendance records"
         constraints = [
             models.UniqueConstraint(fields=("course", "student", "date"), name="unique_course_student_attendance_date")
         ]
@@ -194,6 +210,44 @@ class AttendanceRecord(models.Model):
 
     def __str__(self):
         return f"{self.course.code}: {self.student.full_name} on {self.date} ({self.get_status_display()})"
+
+
+class TeacherAttendanceRecord(models.Model):
+    class Status(models.TextChoices):
+        PRESENT = "present", "Present"
+        ABSENT = "absent", "Absent"
+        LATE = "late", "Late"
+        EXCUSED = "excused", "Excused"
+
+    teacher = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="teacher_attendance_records",
+    )
+    date = models.DateField()
+    status = models.CharField(max_length=8, choices=Status.choices)
+    marked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="teacher_attendance_markings",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-date", "teacher__full_name")
+        constraints = [
+            models.UniqueConstraint(fields=("teacher", "date"), name="unique_teacher_attendance_date")
+        ]
+        indexes = [models.Index(fields=("date", "status"), name="teacher_attendance_day_idx")]
+
+    def clean(self):
+        if self.teacher_id and self.teacher.role != User.Role.TEACHER:
+            raise ValidationError({"teacher": "Teacher attendance requires a Teacher account."})
+
+    def __str__(self):
+        return f"{self.teacher.full_name} on {self.date} ({self.get_status_display()})"
 
 
 class Announcement(models.Model):

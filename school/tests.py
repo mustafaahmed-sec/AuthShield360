@@ -7,7 +7,18 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from accounts.models import User
-from .models import Announcement, Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, PortalAuditEvent, StudentRecord
+from .models import (
+    Announcement,
+    Assignment,
+    AttendanceRecord,
+    Course,
+    Enrollment,
+    EnrollmentChangeRequest,
+    ExamResult,
+    PortalAuditEvent,
+    StudentRecord,
+    TeacherAttendanceRecord,
+)
 
 
 class AccountApprovalFlowTests(TestCase):
@@ -112,6 +123,96 @@ class AccountApprovalFlowTests(TestCase):
         self.assertContains(response, "Success")
         self.assertContains(response, "192.0.2.25")
         self.assertContains(response, "c0ffee12")
+
+    def test_admin_has_separate_student_and_teacher_audit_lists(self):
+        student_event = PortalAuditEvent.objects.create(
+            actor_name="Test Student", actor_email="student@example.test", actor_role=User.Role.STUDENT,
+            action="login_success", description="Student login",
+        )
+        teacher_event = PortalAuditEvent.objects.create(
+            actor_name="Test Teacher", actor_email="teacher@example.test", actor_role=User.Role.TEACHER,
+            action="login_success", description="Teacher login",
+        )
+        self.client.force_login(self.admin)
+
+        index = self.client.get(reverse("admin:index"))
+        students = self.client.get(reverse("admin:school_studentportalauditevent_changelist"))
+        teachers = self.client.get(reverse("admin:school_teacherportalauditevent_changelist"))
+
+        self.assertContains(index, "Student audit events")
+        self.assertContains(index, "Teacher audit events")
+        self.assertContains(index, "Student attendance records")
+        self.assertContains(index, "Teacher attendance records")
+        self.assertEqual(students.status_code, 200)
+        self.assertContains(students, student_event.actor_email)
+        self.assertNotContains(students, teacher_event.actor_email)
+        self.assertEqual(teachers.status_code, 200)
+        self.assertContains(teachers, teacher_event.actor_email)
+        self.assertNotContains(teachers, student_event.actor_email)
+
+    def test_admin_can_record_teacher_attendance_and_it_is_audited(self):
+        teacher = User.objects.create_user(
+            "teacher@example.test", "FictionalDemo!2468", full_name="Test Teacher",
+            role=User.Role.TEACHER,
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(reverse("admin:school_teacherattendancerecord_add"), {
+            "teacher": teacher.pk,
+            "date": "2026-09-25",
+            "status": TeacherAttendanceRecord.Status.PRESENT,
+            "_save": "Save",
+        })
+
+        self.assertEqual(response.status_code, 302)
+        attendance = TeacherAttendanceRecord.objects.get(teacher=teacher, date="2026-09-25")
+        self.assertEqual(attendance.status, TeacherAttendanceRecord.Status.PRESENT)
+        self.assertEqual(attendance.marked_by, self.admin)
+        event = PortalAuditEvent.objects.get(action="teacher_attendance_recorded")
+        self.assertEqual(event.actor, self.admin)
+        self.assertEqual(event.target_name, teacher.full_name)
+
+    def test_admin_can_record_student_attendance_and_it_is_audited(self):
+        teacher = User.objects.create_user(
+            "teacher@example.test", "FictionalDemo!2468", full_name="Test Teacher",
+            role=User.Role.TEACHER,
+        )
+        student = User.objects.create_user(
+            "student@example.test", "FictionalDemo!2468", full_name="Test Student",
+            role=User.Role.STUDENT,
+        )
+        course = Course.objects.create(code="TEST-101", title="Test Course", teacher=teacher)
+        Enrollment.objects.create(student=student, course=course)
+        self.client.force_login(self.admin)
+
+        response = self.client.post(reverse("admin:school_attendancerecord_add"), {
+            "student": student.pk,
+            "course": course.pk,
+            "date": "2026-09-25",
+            "status": AttendanceRecord.Status.PRESENT,
+            "_save": "Save",
+        })
+
+        self.assertEqual(response.status_code, 302)
+        attendance = AttendanceRecord.objects.get(student=student, course=course, date="2026-09-25")
+        self.assertEqual(attendance.marked_by, self.admin)
+        event = PortalAuditEvent.objects.get(action="attendance_recorded")
+        self.assertEqual(event.actor, self.admin)
+        self.assertEqual(event.target_name, student.full_name)
+
+    def test_teacher_attendance_rejects_a_student_account(self):
+        student = User.objects.create_user(
+            "student@example.test", "FictionalDemo!2468", full_name="Test Student",
+            role=User.Role.STUDENT,
+        )
+        attendance = TeacherAttendanceRecord(
+            teacher=student,
+            date="2026-09-25",
+            status=TeacherAttendanceRecord.Status.PRESENT,
+        )
+
+        with self.assertRaises(ValidationError):
+            attendance.full_clean()
 
     @override_settings(AUTHSHIELD_BASELINE_LOGIN_ENABLED=True)
     def test_pending_account_cannot_sign_in_and_admin_approval_enables_it(self):
