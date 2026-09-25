@@ -16,7 +16,16 @@ from accounts.models import User
 from .access import portal_admin_view, require_portal_admin
 from .audit import record_event
 from .forms import AdminAttendanceFilterForm, AdminStudentCreationForm
-from .models import AttendanceRecord, Enrollment, EnrollmentChangeRequest, PortalAuditEvent, StudentRecord
+from .models import (
+    Assignment,
+    AttendanceRecord,
+    Course,
+    Enrollment,
+    EnrollmentChangeRequest,
+    ExamResult,
+    PortalAuditEvent,
+    StudentRecord,
+)
 
 
 @login_required
@@ -94,6 +103,51 @@ def admin_attendance(request):
         "advanced_attendance_url": "admin:school_attendancerecord_changelist",
     }
     return render(request, "school/admin_attendance.html", context)
+
+
+@login_required
+@portal_admin_view
+def preview_school_portal(request, user_id):
+    target = get_object_or_404(
+        User.objects.select_related("student_record"),
+        pk=user_id,
+        role__in=(User.Role.STUDENT, User.Role.TEACHER),
+    )
+    record_event(
+        request.user,
+        "portal_preview_opened",
+        f"Opened a read-only {target.get_role_display().lower()} portal preview; no account session was changed.",
+        target_name=target.full_name,
+        request=request,
+    )
+    context = {"target": target}
+    if target.role == User.Role.TEACHER:
+        courses = Course.objects.filter(teacher=target).order_by("code")
+        context.update({
+            "courses": courses,
+            "enrollments": Enrollment.objects.filter(course__teacher=target)
+            .select_related("student", "course", "student__student_record")
+            .order_by("course__code", "student__full_name")[:60],
+            "assignments": Assignment.objects.filter(course__teacher=target)
+            .select_related("course").order_by("due_date", "pk")[:30],
+            "results": ExamResult.objects.filter(course__teacher=target)
+            .select_related("student", "course").order_by("course__code", "student__full_name")[:40],
+            "attendance_count": AttendanceRecord.objects.filter(course__teacher=target).count(),
+        })
+    else:
+        courses = Course.objects.filter(enrollments__student=target).select_related("teacher").order_by("code")
+        context.update({
+            "record": getattr(target, "student_record", None),
+            "courses": courses,
+            "recent_attendance": AttendanceRecord.objects.filter(student=target)
+            .select_related("course").order_by("-date", "course__code")[:15],
+            "assignments": Assignment.objects.filter(course__enrollments__student=target)
+            .select_related("course").order_by("due_date", "pk")[:30],
+            "results": ExamResult.objects.filter(student=target)
+            .select_related("course").order_by("course__code", "exam_name")[:30],
+            "attendance_count": AttendanceRecord.objects.filter(student=target).count(),
+        })
+    return render(request, "school/admin_portal_preview.html", context)
 
 
 @login_required

@@ -8,6 +8,7 @@ from school.admin_views import (
     admin_attendance,
     change_account_access,
     delete_school_account,
+    preview_school_portal,
     review_account_request,
     review_enrollment_request,
 )
@@ -41,6 +42,7 @@ urlpatterns = [
     path("teacher/enrollment-requests/new/", request_enrollment_change, name="request_enrollment_change"),
     path("administrator/management/", admin_management, name="admin_management"),
     path("administrator/attendance/", admin_attendance, name="admin_attendance"),
+    path("administrator/accounts/<int:user_id>/preview/", preview_school_portal, name="preview_school_portal"),
     path("administrator/students/new/", add_student, name="add_student"),
     path("administrator/accounts/<int:user_id>/review/", review_account_request, name="review_account_request"),
     path("administrator/accounts/<int:user_id>/access/", change_account_access, name="change_account_access"),

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Portal preview | AuthShield 360{% endblock %}
+{% block content %}
+  <div class="eyebrow">Administrator portal</div>
+  <h1>{{ target.get_role_display }} portal preview</h1>
+  <section class="note" role="status" aria-live="polite">
+    <div>
+      <h2>Read-only preview</h2>
+      <p>You are signed in as {{ request.user.full_name }}. You are viewing {{ target.full_name }}’s portal data. No user session was changed, and actions are disabled.</p>
+    </div>
+  </section>
+  <section class="panel management-section" aria-labelledby="preview-account-title">
+    <div class="panel-heading">
+      <div><h2 id="preview-account-title">{{ target.full_name }}</h2><span class="muted">{{ target.email }} · {{ target.get_role_display }}</span></div>
+      <span class="count-chip">{% if target.is_active %}Active{% else %}Inactive{% endif %}</span>
+    </div>
+    <p class="form-foot">This preview was recorded in administrator activity.</p>
+  </section>
+
+  {% if target.role == 'student' %}
+    <div class="dashboard-grid">
+      <section class="panel">
+        <h2>Student record</h2>
+        {% if record %}<dl class="details"><dt>Admission number</dt><dd>{{ record.admission_number }}</dd><dt>Grade</dt><dd>{{ record.grade }}</dd>{% if record.age %}<dt>Age</dt><dd>{{ record.age }}</dd>{% endif %}</dl>
+        {% else %}<p class="empty">No student record has been assigned.</p>{% endif %}
+      </section>
+      <section class="panel">
+        <h2>Courses</h2>
+        {% if courses %}<ul class="item-list">{% for course in courses %}<li><strong>{{ course.code }} · {{ course.title }}</strong><span>Teacher: {{ course.teacher.full_name|default:"Not assigned" }}</span></li>{% endfor %}</ul>
+        {% else %}<p class="empty">No courses assigned.</p>{% endif %}
+      </section>
+      <section class="panel">
+        <h2>Attendance · {{ attendance_count }} record{{ attendance_count|pluralize }}</h2>
+        {% if recent_attendance %}<ul class="item-list">{% for item in recent_attendance %}<li><strong>{{ item.course.code }} · {{ item.get_status_display }}</strong><span>{{ item.date|date:"j M Y" }}</span></li>{% endfor %}</ul>
+        {% else %}<p class="empty">No attendance recorded.</p>{% endif %}
+      </section>
+      <section class="panel">
+        <h2>Assignments</h2>
+        {% if assignments %}<ul class="item-list">{% for item in assignments %}<li><strong>{{ item.title }}</strong><span>{{ item.course.code }} · Due {{ item.due_date|date:"j M Y" }}</span></li>{% endfor %}</ul>
+        {% else %}<p class="empty">No assignments.</p>{% endif %}
+      </section>
+      <section class="panel">
+        <h2>Exam results</h2>
+        {% if results %}<ul class="item-list">{% for item in results %}<li><strong>{{ item.exam_name }}</strong><span>{{ item.course.code }} · {{ item.score }} / {{ item.max_score }}</span></li>{% endfor %}</ul>
+        {% else %}<p class="empty">No results recorded.</p>{% endif %}
+      </section>
+    </div>
+  {% else %}
+    <div class="stats" aria-label="Teacher portal overview">
+      <div class="stat"><strong>{{ courses|length }}</strong><span>classes</span></div>
+      <div class="stat"><strong>{{ attendance_count }}</strong><span>attendance records</span></div>
+      <div class="stat"><strong>{{ enrollments|length }}</strong><span>students shown</span></div>
+    </div>
+    <div class="dashboard-grid">
+      <section class="panel">
+        <h2>Classes</h2>
+        {% if courses %}<ul class="item-list">{% for course in courses %}<li><strong>{{ course.code }} · {{ course.title }}</strong></li>{% endfor %}</ul>
+        {% else %}<p class="empty">No classes assigned.</p>{% endif %}
+      </section>
+      <section class="panel">
+        <h2>Students in these classes</h2>
+        {% if enrollments %}<ul class="item-list">{% for enrollment in enrollments %}<li><strong>{{ enrollment.student.full_name }}</strong><span>{{ enrollment.course.code }}{% if enrollment.student.student_record.grade %} · {{ enrollment.student.student_record.grade }}{% endif %}</span></li>{% endfor %}</ul>
+        {% else %}<p class="empty">No students are enrolled.</p>{% endif %}
+      </section>
+      <section class="panel">
+        <h2>Assignments</h2>
+        {% if assignments %}<ul class="item-list">{% for item in assignments %}<li><strong>{{ item.title }}</strong><span>{{ item.course.code }} · Due {{ item.due_date|date:"j M Y" }}</span></li>{% endfor %}</ul>
+        {% else %}<p class="empty">No assignments.</p>{% endif %}
+      </section>
+      <section class="panel">
+        <h2>Exam results</h2>
+        {% if results %}<ul class="item-list">{% for item in results %}<li><strong>{{ item.student.full_name }} · {{ item.exam_name }}</strong><span>{{ item.course.code }} · {{ item.score }} / {{ item.max_score }}</span></li>{% endfor %}</ul>
+        {% else %}<p class="empty">No results recorded.</p>{% endif %}
+      </section>
+    </div>
+  {% endif %}
+
+  <div class="actions"><a class="button secondary" href="{% url 'admin_management' %}">Back to accounts and requests</a></div>
+{% endblock %}
