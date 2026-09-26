@@ -47,14 +47,20 @@
         <a href="{% url 'teacher_students' %}">Search and manage</a>
       </div>
       {% if enrollments %}
-        <ul class="item-list">
-          {% for enrollment in enrollments %}
-            <li>
-              <strong>{{ enrollment.student.full_name }}</strong>
-              <span>{{ enrollment.course.code }} · {{ enrollment.student.student_record.grade }}{% if enrollment.student.student_record.age %} · age {{ enrollment.student.student_record.age }}{% endif %}</span>
-            </li>
+        {% regroup enrollments by course as course_rosters %}
+        {% for roster in course_rosters %}
+          <section class="course-roster-group" aria-label="Students in {{ roster.grouper.title }}">
+            <h3 class="course-roster-heading"><span>{{ roster.grouper.code }}</span>{{ roster.grouper.title }}</h3>
+            <ul class="item-list">
+              {% for enrollment in roster.list %}
+                <li>
+                  <strong>{{ enrollment.student.full_name }}</strong>
+                  <span>{{ enrollment.student.student_record.grade }}{% if enrollment.student.student_record.age %} · age {{ enrollment.student.student_record.age }}{% endif %}</span>
+                </li>
+              {% endfor %}
+            </ul>
+          </section>
           {% endfor %}
-        </ul>
         {% include "school/partials/pagination.html" with page_obj=enrollments page_url="?students_page=" label="Student preview pages" %}
       {% else %}<p class="empty">No students enrolled yet.</p>{% endif %}
     </section>
