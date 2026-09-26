@@ -338,7 +338,7 @@ class FailedLoginProtectionTests(TestCase):
         self.assertEqual(PortalAuditEvent.objects.filter(action="locked_out").count(), 1)
 
         blocked = self.post_login(password="FictionalDemo!2468")
-        self.assertContains(blocked, "Too many attempts. Try again in 5 minutes.")
+        self.assertContains(blocked, "05:00")
         self.assertNotIn("_auth_user_id", self.client.session)
         self.assertEqual(PortalAuditEvent.objects.filter(action="locked_out").count(), 2)
 
@@ -418,6 +418,6 @@ class FailedLoginProtectionTests(TestCase):
             for errors in form.errors.as_data().values()
             for error in errors
         ]
-        self.assertContains(blocked, "Too many attempts. Try again in 2 minutes.")
+        self.assertContains(blocked, "02:00")
         self.assertEqual(error_codes, ["ip_rate_limited"])
         self.assertEqual(PortalAuditEvent.objects.filter(action="ip_rate_limited").count(), 1)
