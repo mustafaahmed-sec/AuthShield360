@@ -171,6 +171,7 @@ def dashboard(request):
             "pending_enrollment_count": EnrollmentChangeRequest.objects.filter(
                 status=EnrollmentChangeRequest.Status.PENDING
             ).count(),
+            "counts_updated_at": timezone.localtime(),
         }
         return render(request, "school/admin_dashboard.html", context)
     record_role_denial(user, "role dashboard", request)
