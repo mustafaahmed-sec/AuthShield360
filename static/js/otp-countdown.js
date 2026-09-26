@@ -7,6 +7,8 @@
   const verifyButton = document.querySelector("[data-otp-verify]");
   const resendButton = document.querySelector("[data-otp-resend]");
   const resendLabel = resendButton?.dataset.idleLabel || resendButton?.textContent.trim() || "Send a new code";
+  const countdownPrefix = timer?.dataset.countdownPrefix || "Code expires in";
+  const expiredMessage = timer?.dataset.expiredMessage || "Code expired. Request a new code to continue.";
   let expiresAt = Number(timer?.dataset.expiresAt || 0);
   let resendAt = Number(timer?.dataset.resendAt || 0);
 
@@ -21,9 +23,9 @@
     if (timer) {
       const remaining = Math.max(0, Math.ceil(expiresAt - now));
       if (remaining) {
-        timer.textContent = `Code expires in ${format(remaining)}`;
+        timer.textContent = `${countdownPrefix} ${format(remaining)}`;
       } else {
-        timer.textContent = "Code expired. Request a new code to continue.";
+        timer.textContent = expiredMessage;
         timer.dataset.expired = "true";
         if (codeInput) codeInput.disabled = true;
         if (verifyButton) verifyButton.disabled = true;
