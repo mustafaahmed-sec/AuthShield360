@@ -17,6 +17,7 @@ class AccountSignupForm(UserCreationForm):
         max_length=32,
         validators=[RegexValidator(r"^\+?[0-9][0-9\s().-]{6,30}$", "Enter a valid test phone number.")],
         help_text="For SMS sign-in, use an international number such as +923001234567. Pakistani 03xx numbers are converted automatically. Firebase processes the number for verification, and carrier rates may apply.",
+        widget=forms.TextInput(attrs={"autocomplete": "tel", "placeholder": "e.g. +92 300 1234567"}),
     )
 
     class Meta:
@@ -25,7 +26,7 @@ class AccountSignupForm(UserCreationForm):
         labels = {"full_name": "Full name", "phone_number": "Phone number"}
         widgets = {
             "full_name": forms.TextInput(attrs={"autocomplete": "name", "placeholder": "Your full name"}),
-            "email": forms.EmailInput(attrs={"autocomplete": "email", "placeholder": "you@example.test"}),
+            "email": forms.EmailInput(attrs={"autocomplete": "email", "placeholder": "you@example.com"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -46,6 +47,7 @@ class AccountSignupForm(UserCreationForm):
         self.fields["email"].required = True
         self.fields["password1"].widget.attrs.update({
             "autocomplete": "new-password",
+            "placeholder": "Create a password",
             "minlength": "12",
             "maxlength": "50",
             "aria-describedby": "password-policy",
@@ -56,6 +58,7 @@ class AccountSignupForm(UserCreationForm):
         )
         self.fields["password2"].widget.attrs.update({
             "autocomplete": "new-password",
+            "placeholder": "Enter your password again",
             "minlength": "12",
             "maxlength": "50",
         })
@@ -99,8 +102,8 @@ class TeacherSignupForm(AccountSignupForm):
 
 
 class RegistrationStatusForm(forms.Form):
-    email = forms.EmailField(widget=forms.EmailInput(attrs={"autocomplete": "email"}))
-    password = forms.CharField(widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}))
+    email = forms.EmailField(widget=forms.EmailInput(attrs={"autocomplete": "email", "placeholder": "you@example.com"}))
+    password = forms.CharField(widget=forms.PasswordInput(attrs={"autocomplete": "current-password", "placeholder": "Enter your password"}))
 
 
 class PasswordResetRequestForm(forms.Form):
@@ -111,7 +114,10 @@ class PasswordResetRequestForm(forms.Form):
 
 
 class EmailAuthenticationForm(AuthenticationForm):
-    username = forms.EmailField(label="Email address", widget=forms.EmailInput(attrs={"autocomplete": "username"}))
+    username = forms.EmailField(
+        label="Email address",
+        widget=forms.EmailInput(attrs={"autocomplete": "username", "placeholder": "you@example.com"}),
+    )
     error_messages = {
         **AuthenticationForm.error_messages,
         "invalid_login": "Check your email address and password, then try again.",
@@ -128,7 +134,10 @@ class EmailAuthenticationForm(AuthenticationForm):
         if not firebase_phone_auth_available():
             self.fields["otp_channel"].choices = (("email", "Email"),)
             self.fields["otp_channel"].initial = "email"
-        self.fields["password"].widget.attrs.update({"autocomplete": "current-password"})
+        self.fields["password"].widget.attrs.update({
+            "autocomplete": "current-password",
+            "placeholder": "Enter your password",
+        })
 
     def clean_username(self):
         return self.cleaned_data["username"].strip().lower()

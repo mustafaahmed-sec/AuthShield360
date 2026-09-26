@@ -1,4 +1,7 @@
+import hashlib
+import hmac
 import time
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib import messages
@@ -35,7 +38,7 @@ from .forms import (
     TeacherSignupForm,
 )
 from django.contrib.auth.forms import SetPasswordForm
-from .models import EmailOTPChallenge
+from .models import EmailOTPChallenge, PasswordResetRequestLimit
 from .otp import (
     OTPChallengeChanged,
     OTPChallengeExpired,
@@ -47,7 +50,7 @@ from .otp import (
     start_otp,
     verify_firebase_phone_id_token,
 )
-from school.audit import record_auth_event
+from school.audit import record_auth_event, request_ip
 
 
 User = get_user_model()
@@ -757,8 +760,47 @@ def _password_reset_user(**lookup):
     return eligible_users.filter(**lookup).first()
 
 
+def _password_reset_request_allowed(request, now=None):
+    """Apply a cross-instance IP limit without storing the visitor's raw IP."""
+    address = request_ip(request)
+    if not address:
+        return True
+
+    now = now or timezone.now()
+    fingerprint = hmac.new(
+        settings.SECRET_KEY.encode("utf-8"),
+        f"password-reset-ip:{address}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    window = timedelta(minutes=settings.AUTHSHIELD_PASSWORD_RESET_IP_WINDOW_MINUTES)
+    with transaction.atomic():
+        bucket, _ = PasswordResetRequestLimit.objects.select_for_update().get_or_create(
+            fingerprint=fingerprint,
+            defaults={"window_started_at": now},
+        )
+        if now - bucket.window_started_at >= window:
+            bucket.window_started_at = now
+            bucket.request_count = 0
+        if bucket.request_count >= settings.AUTHSHIELD_PASSWORD_RESET_IP_LIMIT:
+            return False
+        bucket.request_count += 1
+        bucket.save(update_fields=("window_started_at", "request_count"))
+
+    # Keep abandoned IP buckets from accumulating indefinitely.
+    PasswordResetRequestLimit.objects.filter(window_started_at__lt=now - timedelta(days=2)).delete()
+    return True
+
+
+def _wait_for_password_reset_response(started_at):
+    floor = settings.AUTHSHIELD_PASSWORD_RESET_RESPONSE_FLOOR_SECONDS
+    remaining = floor - (time.monotonic() - started_at)
+    if remaining > 0:
+        time.sleep(remaining)
+
+
 @require_http_methods(["GET", "POST"])
 def password_reset_request(request):
+    response_started_at = time.monotonic()
     form = PasswordResetRequestForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         _clear_otp_session(request)
@@ -771,6 +813,9 @@ def password_reset_request(request):
         request.session["authshield_password_reset_resends"] = 0
         request.session.set_expiry(settings.SESSION_COOKIE_AGE)
         email = normalized_email(form.cleaned_data["email"])
+        if not _password_reset_request_allowed(request, now_datetime):
+            _wait_for_password_reset_response(response_started_at)
+            return redirect("password_reset_verify")
         user = _password_reset_user(email__iexact=email)
         if user:
             prior_challenge = EmailOTPChallenge.objects.filter(
@@ -841,6 +886,7 @@ def password_reset_request(request):
                         outcome="success",
                     )
         # Keep the response the same for known and unknown addresses.
+        _wait_for_password_reset_response(response_started_at)
         return redirect("password_reset_verify")
     return render(request, "accounts/password_reset_request.html", {"form": form})
 
@@ -855,6 +901,9 @@ def password_reset_verify(request):
     ).first() if user else None
     has_reset_request = bool(request.session.get("authshield_password_reset_started_at"))
     password_form = SetPasswordForm(user, request.POST or None) if has_reset_request else None
+    if password_form:
+        password_form.fields["new_password1"].widget.attrs["placeholder"] = "Create a new password"
+        password_form.fields["new_password2"].widget.attrs["placeholder"] = "Enter your new password again"
     now = timezone.now()
     active = bool(
         challenge

@@ -153,6 +153,13 @@ AUTHSHIELD_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_OTP_TTL_SECON
 AUTHSHIELD_SMS_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_SMS_OTP_TTL_SECONDS", 300)
 AUTHSHIELD_EMAIL_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_EMAIL_OTP_TTL_SECONDS", 60)
 AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS", 300)
+AUTHSHIELD_PASSWORD_RESET_IP_LIMIT = _positive_integer_setting("AUTHSHIELD_PASSWORD_RESET_IP_LIMIT", 30)
+AUTHSHIELD_PASSWORD_RESET_IP_WINDOW_MINUTES = _positive_integer_setting(
+    "AUTHSHIELD_PASSWORD_RESET_IP_WINDOW_MINUTES", 15
+)
+AUTHSHIELD_PASSWORD_RESET_RESPONSE_FLOOR_SECONDS = _positive_integer_setting(
+    "AUTHSHIELD_PASSWORD_RESET_RESPONSE_FLOOR_SECONDS", 9
+)
 
 # Password-only access remains a controlled lab stage. For a Vercel demo it
 # requires a separately configured protected deployment; ordinary users never

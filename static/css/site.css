@@ -136,6 +136,10 @@ button { cursor: pointer; }
 .privacy-note { margin-top: 1.1rem; padding: .95rem; border-radius: .65rem; background: #e5f3f1; }
 .privacy-note p { margin: .3rem 0 0; color: #405870; line-height: 1.5; }
 .status-banner { display: grid; gap: .35rem; margin: 1.2rem 0; padding: 1rem; border-left: 4px solid #087c75; background: #edf8f5; line-height: 1.5; }
+.mail-delivery-notice { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); align-items: start; gap: .85rem; margin: 1rem 0; padding: 1rem 1.1rem; border: 1px solid #b8dcd5; border-radius: .85rem; background: linear-gradient(135deg, #f0faf8, #f7fbff); color: #173b4f; line-height: 1.5; }
+.mail-delivery-icon { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border-radius: 50%; background: #d9f0eb; color: #087c75; font-size: 1.25rem; }
+.mail-delivery-notice strong { display: block; margin: .1rem 0 .2rem; color: #153c56; }
+.mail-delivery-notice p { margin: 0; color: #486275; font-size: .95rem; }
 .status-pending { border-color: #a66c08; background: #fff8e8; }
 .status-approved { border-color: #087c48; background: #edf8f1; }
 .status-rejected { border-color: #b42318; background: #fff1f0; }

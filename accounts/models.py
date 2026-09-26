@@ -126,3 +126,14 @@ class EmailOTPChallenge(models.Model):
         constraints = [
             models.UniqueConstraint(fields=("user", "purpose"), name="unique_user_email_otp_purpose"),
         ]
+
+
+class PasswordResetRequestLimit(models.Model):
+    """A persistent per-source counter for password recovery requests."""
+
+    fingerprint = models.CharField(max_length=64, unique=True)
+    window_started_at = models.DateTimeField()
+    request_count = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        indexes = [models.Index(fields=("window_started_at",), name="pwd_reset_limit_window_idx")]

@@ -3,6 +3,7 @@
 import hashlib
 import ipaddress
 import logging
+import os
 
 from django.conf import settings
 
@@ -22,8 +23,15 @@ FAILURE_ACTIONS = {
 
 
 def request_ip(request):
-    """Return the peer IP observed by Django; forwarded headers are not trusted here."""
+    """Return the peer IP, trusting Vercel's platform-set client-IP header only there."""
     raw_address = request.META.get("REMOTE_ADDR", "") if request else ""
+    if request and os.environ.get("VERCEL") == "1":
+        raw_address = (
+            request.META.get("HTTP_X_VERCEL_FORWARDED_FOR")
+            or request.META.get("HTTP_X_FORWARDED_FOR")
+            or raw_address
+        )
+        raw_address = raw_address.split(",", 1)[0].strip()
     try:
         return str(ipaddress.ip_address(raw_address))
     except ValueError:
