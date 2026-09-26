@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Your AuthShield 360 sign-in code</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#f2f6fa;font-family:Arial,Helvetica,sans-serif;color:#203247;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+      Your one-time AuthShield 360 sign-in code expires in {{ expiration }}.
+    </div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f2f6fa;padding:28px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background-color:#ffffff;border:1px solid #d9e3ec;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="padding:22px 28px;background-color:#124a78;border-bottom:4px solid #20a39a;">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td align="center" valign="middle" width="42" height="42" style="width:42px;height:42px;border-radius:12px;background-color:#ffffff;color:#087c75;font-size:25px;font-weight:bold;line-height:42px;">
+                      &#10003;
+                    </td>
+                    <td style="padding-left:12px;color:#ffffff;font-size:20px;letter-spacing:.2px;">
+                      AuthShield <strong>360</strong>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 28px 18px;">
+                <p style="margin:0 0 8px;color:#087c75;font-size:12px;font-weight:bold;letter-spacing:1.5px;text-transform:uppercase;">Secure sign-in</p>
+                <h1 style="margin:0 0 22px;color:#18324b;font-size:27px;line-height:1.25;font-weight:700;">Verify your sign-in</h1>
+                <p style="margin:0 0 14px;font-size:16px;line-height:1.6;">Dear {{ recipient_name }},</p>
+                <p style="margin:0 0 22px;color:#506579;font-size:15px;line-height:1.65;">
+                  We received a sign-in request for your AuthShield 360 account. Enter this one-time code on the sign-in page to continue:
+                </p>
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 22px;">
+                  <tr>
+                    {% for digit in code %}
+                      <td align="center" valign="middle" style="width:42px;height:52px;padding:0 3px;">
+                        <div style="border:1px solid #cbd9e5;border-radius:8px;background-color:#f6f9fc;color:#124a78;font-family:Arial,Helvetica,sans-serif;font-size:27px;font-weight:bold;line-height:50px;text-align:center;">{{ digit }}</div>
+                      </td>
+                    {% endfor %}
+                  </tr>
+                </table>
+                <p style="margin:0 0 20px;padding:13px 15px;border-left:4px solid #20a39a;border-radius:4px;background-color:#eef8f7;color:#36566b;font-size:14px;line-height:1.6;">
+                  This code expires in <strong>{{ expiration }}</strong> and can only be used once. You can request a replacement code after 30 seconds.
+                </p>
+                <p style="margin:0;color:#506579;font-size:14px;line-height:1.65;">
+                  If you did not request this code, ignore this email. For your security, never share the code with anyone, including school staff.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 28px 24px;border-top:1px solid #e5edf3;background-color:#f8fafc;color:#718194;font-size:12px;line-height:1.6;">
+                <p style="margin:0 0 5px;">Sent to {{ recipient_email }}</p>
+                <p style="margin:0;color:#506579;font-weight:bold;">AuthShield 360 · Secure school portal</p>
+                <p style="margin:8px 0 0;">This is an automated account-security message.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

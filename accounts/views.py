@@ -58,7 +58,12 @@ def _otp_ttl_seconds(channel):
 
 def _start_otp(request, user, channel, *, phase="primary", reset_resends=True):
     started_at = timezone.now().timestamp() if phase == "primary" else request.session.get("authshield_otp_started_at")
-    start_otp(delivery_target(user, channel), channel, request.session)
+    start_otp(
+        delivery_target(user, channel),
+        channel,
+        request.session,
+        recipient_name=user.full_name,
+    )
     request.session["authshield_otp_user_id"] = user.pk
     request.session["authshield_otp_channel"] = channel
     request.session["authshield_otp_phase"] = phase

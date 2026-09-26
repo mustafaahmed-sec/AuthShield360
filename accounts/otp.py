@@ -12,7 +12,8 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ImproperlyConfigured
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 
 
 class OTPProviderError(Exception):
@@ -42,7 +43,7 @@ class GmailEmailOTP:
                 "Gmail email verification is enabled but its server-side settings are incomplete."
             )
 
-    def start(self, destination, session):
+    def start(self, destination, session, recipient_name="there"):
         if not destination or "@" not in destination:
             raise OTPProviderError("The account has no usable email address.")
         session.pop(self.SESSION_KEY, None)
@@ -53,18 +54,24 @@ class GmailEmailOTP:
             expiration = f"{minutes} minute{'s' if minutes != 1 else ''}"
         else:
             expiration = f"{ttl_seconds} seconds"
-        message = (
-            f"Your AuthShield 360 sign-in code is {code}.\n\n"
-            f"It expires in {expiration}. If you did not request this code, ignore this email."
-        )
+        context = {
+            "code": code,
+            "expiration": expiration,
+            "recipient_email": destination,
+            "recipient_name": (recipient_name or "").strip() or "there",
+        }
         try:
-            sent = send_mail(
+            message = EmailMultiAlternatives(
                 subject="Your AuthShield 360 sign-in code",
-                message=message,
+                body=render_to_string("emails/otp_email.txt", context),
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[destination],
-                fail_silently=False,
+                to=[destination],
             )
+            message.attach_alternative(
+                render_to_string("emails/otp_email.html", context),
+                "text/html",
+            )
+            sent = message.send(fail_silently=False)
         except (OSError, smtplib.SMTPException, TimeoutError) as error:
             raise OTPProviderError("Gmail could not send the verification email.") from error
         if sent != 1:
@@ -146,9 +153,9 @@ def delivery_target(user, channel):
     return re.sub(r"[^0-9+]", "", user.phone_number)
 
 
-def start_otp(destination, channel, session):
+def start_otp(destination, channel, session, recipient_name="there"):
     if channel == GmailEmailOTP.EMAIL_CHANNEL:
-        GmailEmailOTP().start(destination, session)
+        GmailEmailOTP().start(destination, session, recipient_name)
         return
     TwilioVerify().start(destination, channel)
 
