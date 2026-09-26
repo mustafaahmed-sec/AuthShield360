@@ -1,6 +1,6 @@
 # AuthShield 360 requirement map
 
-Source: `D:\AuthShield 360-Ethical Cyber Horizons_SRS.pdf`, version 1.0, 21 pages.
+Source: `AuthShield 360-Ethical Cyber Horizons_SRS.pdf`, version 1.0, 21 pages.
 Progress marks: `pending`, `in progress`, `done`. The last row is an optional enhancement, not part of the minimum build.
 
 | Area | Status | Source / decision |
@@ -8,8 +8,8 @@ Progress marks: `pending`, `in progress`, `done`. The last row is an optional en
 | Fictional school portal with Student, Teacher, Administrator accounts and dummy records | Done | SRS 1.4, 1.6(i-ii); teacher says the team builds it |
 | Password-only baseline with success/failure and login time | In progress | Local login works; comparison measurements remain. SRS 1.2 scenario 1, 1.6(iii) |
 | Secure password storage through Django authentication | Done | SRS 1.6(iv) |
-| OTP MFA with valid, invalid, expired and missing factor cases | In progress | Twilio Verify flow and mocked checks implemented locally; provider setup and live channel evidence remain. SRS 1.2 scenario 2, 1.6(v-vi) |
-| Mobile OTP followed by time-limited email OTP | In progress | WhatsApp is the selected mobile channel; the flow sends WhatsApp first and then requires email step-up by default. Twilio/SendGrid configuration and participant-owned delivery testing remain. SRS 1.2 scenario 3; teacher requires email OTP |
+| OTP MFA with valid, invalid, expired and missing factor cases | In progress | Gmail email OTP and Firebase phone-token verification are implemented; Firebase project setup and live channel evidence remain. SRS 1.2 scenario 2, 1.6(v-vi) |
+| SMS OTP followed by time-limited email OTP | In progress | Firebase Phone Auth SMS is the selected mobile channel. The browser uses reCAPTCHA and the server verifies the signed Firebase token; Firebase setup, billing decision, account phone-number quality, and live delivery evidence remain. Email step-up is configurable. SRS 1.2 scenario 3; teacher requires email OTP |
 | Server-enforced role access | In progress | Admin/Teacher/Student scopes are enforced; tests cover approval, assigned-student boundaries, and Admin-only roster changes. Broader matrix testing remains. SRS 1.6(vii) |
 | Failed-login protection and session validation | In progress | Five account failures in 15 minutes trigger an account lock of at least 30 minutes; a separate 30-failure IP threshold adds a one-minute throttle. Request-status checks share account limits. Automated checks cover administrator unlock, 15-minute rolling sessions, logout, and stale-cookie reuse. Live-browser comparison evidence remains. SRS 1.6(viii-ix) |
 | Authentication logging and monitoring | In progress | Events record timestamp, account/role, action, auth mode, factor, outcome, observed peer IP, short session hint, and measured duration. Admin can review and export read-only CSV; OTP events are implemented and covered with tests, while live monitoring evidence remains. SRS 1.6(x) |
@@ -28,7 +28,7 @@ Progress marks: `pending`, `in progress`, `done`. The last row is an optional en
 
 - The SRS describes a provided or preconfigured portal and says not to copy project content or configuration from AI tools. The teacher later instructed the team to build the portal and permits AI assistance when the student understands the work. We follow the teacher's clarification and document the contribution clearly.
 - Email step-up is conditional in SRS 1.4 and 1.6(xii), but required by the teacher. It is therefore in the implementation plan.
-- The user selected WhatsApp for mobile delivery. Twilio Verify with SendGrid email is the recommended integration; provider credentials, WhatsApp Business sender/template, and email sender setup remain pending.
+- The user selected Firebase Authentication Phone Auth for SMS, with Gmail SMTP for email codes. SMS requires an enabled Firebase Phone provider, an allowed SMS region, an authorized portal domain, web-app configuration, and a billing decision before live delivery.
 - Public forms allow separate Student and Teacher access requests; the account is inactive until an Administrator approves it. Administrator accounts remain administrator-provisioned only.
 - Applicants can check their own request status after authenticating with their email and password. No external email notification or OTP is implemented in this phase.
 - Teachers can search and filter only students enrolled in their own classes and can edit a bounded set of school-record fields. Roster additions/removals remain requests that only an Administrator can approve.
@@ -41,4 +41,4 @@ Progress marks: `pending`, `in progress`, `done`. The last row is an optional en
 - **Required:** the portal, three role accounts, password baseline, OTP MFA, authorization, failed-login protection, logging, testing, matrix, reset, measurements, and submission evidence listed above.
 - **Conditional in the SRS:** email step-up and account recovery where the selected platform supports them. The teacher has made email OTP required for this project; account recovery remains conditional.
 - **Optional:** the professional enhancement backlog in the kickoff brief, after required work is reliable.
-- **Awaiting a teacher decision:** SMS versus WhatsApp for mobile OTP delivery, and whether the remote jury needs a live URL or accepts a screen-shared local demo.
+- **Awaiting a teacher decision:** whether the remote jury needs a live URL or accepts a screen-shared local demo. The user selected SMS through Firebase for the mobile OTP channel.

@@ -6,11 +6,12 @@ from django.contrib.auth import login, update_session_auth_hash
 from django.contrib.auth import get_user_model
 from django.contrib.auth.views import LoginView, LogoutView
 from django.core.exceptions import ImproperlyConfigured, NON_FIELD_ERRORS, PermissionDenied
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 from django.contrib.auth.decorators import login_required
 
 from .lockout import (
@@ -25,7 +26,14 @@ from .lockout import (
 
 from .forms import EmailAuthenticationForm, RegistrationStatusForm, StudentSignupForm, TeacherSignupForm
 from django.contrib.auth.forms import SetPasswordForm
-from .otp import OTPProviderError, check_otp, delivery_target, mobile_otp_available, start_otp
+from .otp import (
+    OTPProviderError,
+    check_otp,
+    delivery_target,
+    firebase_phone_auth_available,
+    start_otp,
+    verify_firebase_phone_id_token,
+)
 from school.audit import record_auth_event
 
 
@@ -41,6 +49,9 @@ OTP_SESSION_KEYS = (
     "authshield_otp_started_at",
     "authshield_otp_attempts",
     "authshield_otp_resends",
+    "authshield_otp_sms_sent_at",
+    "authshield_otp_sms_send_authorized_at",
+    "authshield_otp_sms_sent",
     "authshield_email_otp_hash",
 )
 
@@ -53,6 +64,8 @@ def _clear_otp_session(request):
 def _otp_ttl_seconds(channel):
     if channel == "email":
         return settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
+    if channel == "sms":
+        return settings.AUTHSHIELD_SMS_OTP_TTL_SECONDS
     return settings.AUTHSHIELD_OTP_TTL_SECONDS
 
 
@@ -81,6 +94,25 @@ def _start_otp(request, user, channel, *, phase="primary", reset_resends=True):
     request.session.set_expiry(ttl_seconds)
 
 
+def _prepare_firebase_sms_challenge(request, user):
+    if not firebase_phone_auth_available():
+        raise ImproperlyConfigured("Firebase Phone Authentication is not configured.")
+    if not delivery_target(user, "sms"):
+        raise OTPProviderError("This account has no valid international phone number.")
+    _clear_otp_session(request)
+    now = timezone.now().timestamp()
+    request.session["authshield_otp_user_id"] = user.pk
+    request.session["authshield_otp_channel"] = "sms"
+    request.session["authshield_otp_phase"] = "primary"
+    request.session["authshield_otp_primary_channel"] = "sms"
+    request.session["authshield_otp_started_at"] = now
+    request.session["authshield_otp_expires_at"] = now + settings.AUTHSHIELD_SMS_OTP_TTL_SECONDS
+    request.session["authshield_otp_attempts"] = 0
+    request.session["authshield_otp_resends"] = 0
+    request.session["authshield_otp_sms_sent"] = False
+    request.session.set_expiry(settings.AUTHSHIELD_SMS_OTP_TTL_SECONDS)
+
+
 def _otp_duration_ms(request):
     started_at = request.session.get("authshield_otp_started_at")
     if started_at is None:
@@ -94,13 +126,24 @@ def _otp_context(user, channel, phase):
         local, _, domain = destination.partition("@")
         destination = f"{local[:1]}***@{domain}" if domain else "your email address"
     else:
-        destination = f"••••{destination[-4:]}" if len(destination) >= 4 else "your WhatsApp number"
-    return {
+        destination = f"••••{destination[-4:]}" if len(destination) >= 4 else "your phone number"
+    context = {
         "channel": channel,
         "destination": destination,
         "phase": phase,
         "step_up": phase == "email_step_up",
     }
+    if channel == "sms":
+        context.update({
+            "firebase_phone_config": {
+                "apiKey": settings.AUTHSHIELD_FIREBASE_API_KEY,
+                "authDomain": settings.AUTHSHIELD_FIREBASE_AUTH_DOMAIN,
+                "projectId": settings.AUTHSHIELD_FIREBASE_PROJECT_ID,
+                "appId": settings.AUTHSHIELD_FIREBASE_APP_ID,
+            },
+            "firebase_phone_number": delivery_target(user, "sms"),
+        })
+    return context
 
 
 def signup(request, role="student"):
@@ -206,33 +249,45 @@ class BaselineLoginView(LoginView):
         user = form.get_user()
         if settings.AUTHSHIELD_OTP_ENABLED:
             if settings.AUTHSHIELD_EMAIL_STEP_UP:
-                channel = "whatsapp"
-            elif mobile_otp_available():
+                channel = "sms"
+            elif firebase_phone_auth_available():
                 channel = form.cleaned_data.get("otp_channel") or "email"
             else:
                 channel = "email"
-            try:
-                _start_otp(self.request, user, channel)
-            except (OTPProviderError, ImproperlyConfigured):
-                record_auth_event(
-                    "otp_delivery_failure", email=user.email,
-                    description="The configured one-time-code service could not start a challenge.",
-                    request=self.request,
-                    factor="email_otp" if channel == "email" else "mobile_otp",
-                    outcome="failure",
-                )
-                form.add_error(None, "We could not send a verification code. Try again or choose another method.")
-                return self.render_to_response(self.get_context_data(form=form))
+            if channel == "sms":
+                try:
+                    _prepare_firebase_sms_challenge(self.request, user)
+                except (OTPProviderError, ImproperlyConfigured) as error:
+                    record_auth_event(
+                        "otp_delivery_failure", email=user.email,
+                        description="Firebase SMS sign-in could not be started.",
+                        request=self.request, factor="mobile_otp", outcome="failure",
+                    )
+                    if isinstance(error, ImproperlyConfigured):
+                        form.add_error(None, "SMS sign-in is not configured yet. Choose Email or contact the administrator.")
+                    else:
+                        form.add_error(None, "This account needs a valid international phone number for SMS. Choose Email or ask an administrator to update it.")
+                    return self.render_to_response(self.get_context_data(form=form))
+            else:
+                try:
+                    _start_otp(self.request, user, channel)
+                except (OTPProviderError, ImproperlyConfigured):
+                    record_auth_event(
+                        "otp_delivery_failure", email=user.email,
+                        description="The configured email one-time-code service could not start a challenge.",
+                        request=self.request, factor="email_otp", outcome="failure",
+                    )
+                    form.add_error(None, "We could not send a verification code. Try again or choose another method.")
+                    return self.render_to_response(self.get_context_data(form=form))
             next_url = self.get_redirect_url()
             if next_url and url_has_allowed_host_and_scheme(next_url, {self.request.get_host()}, require_https=self.request.is_secure()):
                 self.request.session["authshield_otp_next"] = next_url
-            record_auth_event(
-                "otp_sent", email=user.email,
-                description="A sign-in verification code was requested.",
-                request=self.request,
-                factor="email_otp" if channel == "email" else "mobile_otp",
-                outcome="success",
-            )
+            if channel == "email":
+                record_auth_event(
+                    "otp_sent", email=user.email,
+                    description="A sign-in verification code was requested.",
+                    request=self.request, factor="email_otp", outcome="success",
+                )
             return redirect("otp_verify")
 
         response = super().form_valid(form)
@@ -255,7 +310,7 @@ class BaselineLoginView(LoginView):
         context = super().get_context_data(**kwargs)
         context["otp_enabled"] = settings.AUTHSHIELD_OTP_ENABLED
         context["email_step_up"] = settings.AUTHSHIELD_EMAIL_STEP_UP
-        context["mobile_otp_enabled"] = mobile_otp_available()
+        context["mobile_otp_enabled"] = firebase_phone_auth_available()
         return context
 
     def form_invalid(self, form):
@@ -315,11 +370,26 @@ def otp_verify(request):
             _clear_otp_session(request)
             messages.error(request, "Too many code attempts. Start sign-in again.")
             return redirect("login")
-        try:
-            approved = check_otp(delivery_target(user, channel), channel, code, request.session)
-        except (OTPProviderError, ImproperlyConfigured):
-            messages.error(request, "We could not verify that code right now. Try again shortly.")
-            return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase), status=503)
+        if channel == "sms":
+            if not request.session.get("authshield_otp_sms_sent"):
+                messages.error(request, "Request the SMS code first, then enter it here.")
+                return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase), status=400)
+            try:
+                verified_token = verify_firebase_phone_id_token(
+                    request.POST.get("firebase_id_token", ""),
+                    expected_phone=delivery_target(user, "sms"),
+                    minimum_auth_time=request.session.get("authshield_otp_started_at", 0),
+                )
+                approved = verified_token is not None
+            except (OTPProviderError, ImproperlyConfigured):
+                messages.error(request, "Firebase could not verify the sign-in right now. Try again shortly.")
+                return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase), status=503)
+        else:
+            try:
+                approved = check_otp(delivery_target(user, channel), channel, code, request.session)
+            except (OTPProviderError, ImproperlyConfigured):
+                messages.error(request, "We could not verify that code right now. Try again shortly.")
+                return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase), status=503)
         if not approved:
             request.session["authshield_otp_attempts"] = attempts + 1
             record_failed_authentication(
@@ -349,7 +419,7 @@ def otp_verify(request):
             duration_ms=_otp_duration_ms(request),
         )
 
-        if phase == "primary" and settings.AUTHSHIELD_EMAIL_STEP_UP and channel == "whatsapp":
+        if phase == "primary" and settings.AUTHSHIELD_EMAIL_STEP_UP and channel == "sms":
             try:
                 _start_otp(request, user, "email", phase="email_step_up")
             except (OTPProviderError, ImproperlyConfigured):
@@ -366,7 +436,7 @@ def otp_verify(request):
                 description="The additional email verification code was requested.",
                 request=request, factor="email_otp", outcome="success",
             )
-            messages.success(request, "WhatsApp verified. Enter the additional code sent to your email.")
+            messages.success(request, "SMS verified. Enter the additional code sent to your email.")
             return redirect("otp_verify")
 
         auth_mode = "otp_email" if phase == "email_step_up" else "otp"
@@ -393,13 +463,95 @@ def otp_verify(request):
     return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase))
 
 
+def _pending_sms_user(request):
+    user_id = request.session.get("authshield_otp_user_id")
+    if (
+        not settings.AUTHSHIELD_OTP_ENABLED
+        or request.session.get("authshield_otp_channel") != "sms"
+        or not firebase_phone_auth_available()
+    ):
+        return None
+    user = User.objects.filter(
+        pk=user_id,
+        is_active=True,
+        approval_status=User.ApprovalStatus.APPROVED,
+    ).first()
+    if not user or (user.locked_until and user.locked_until > timezone.now()):
+        return None
+    if timezone.now().timestamp() >= request.session.get("authshield_otp_expires_at", 0):
+        return None
+    if not delivery_target(user, "sms"):
+        return None
+    return user
+
+
+@require_POST
+def otp_sms_authorize_send(request):
+    user = _pending_sms_user(request)
+    if not user:
+        return JsonResponse({"error": "Restart sign-in before requesting an SMS code."}, status=400)
+    now = timezone.now().timestamp()
+    sent_at = request.session.get("authshield_otp_sms_sent_at")
+    if sent_at:
+        remaining = 60 - int(now - sent_at)
+        if remaining > 0:
+            return JsonResponse({"error": f"Wait {remaining} seconds before requesting another SMS."}, status=429)
+        if request.session.get("authshield_otp_resends", 0) >= 3:
+            return JsonResponse({"error": "You have reached the SMS resend limit. Restart sign-in later."}, status=429)
+        request.session["authshield_otp_resends"] = request.session.get("authshield_otp_resends", 0) + 1
+    request.session["authshield_otp_sms_sent_at"] = now
+    request.session["authshield_otp_sms_send_authorized_at"] = now
+    request.session["authshield_otp_sms_sent"] = False
+    request.session.save()
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def otp_sms_mark_sent(request):
+    user = _pending_sms_user(request)
+    authorized_at = request.session.get("authshield_otp_sms_send_authorized_at", 0)
+    if not user or not authorized_at or timezone.now().timestamp() - authorized_at > 120:
+        return JsonResponse({"error": "The SMS request expired. Request a new code."}, status=400)
+    request.session["authshield_otp_sms_sent"] = True
+    request.session.save()
+    record_auth_event(
+        "otp_sent", email=user.email,
+        description="Firebase accepted the SMS verification request.",
+        request=request, factor="mobile_otp", outcome="success",
+    )
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def otp_sms_record_failure(request):
+    user = _pending_sms_user(request)
+    if not user:
+        return JsonResponse({"error": "The SMS sign-in has expired. Restart sign-in."}, status=400)
+    attempts = request.session.get("authshield_otp_attempts", 0) + 1
+    request.session["authshield_otp_attempts"] = attempts
+    record_failed_authentication(
+        user.email,
+        "otp_failure",
+        request,
+        factor="mobile_otp",
+        duration_ms=_otp_duration_ms(request),
+        description="Firebase rejected an SMS verification code.",
+    )
+    user.refresh_from_db(fields=["locked_until"])
+    if (user.locked_until and user.locked_until > timezone.now()) or attempts >= 5:
+        _clear_otp_session(request)
+        return JsonResponse({"error": "Too many code attempts. Restart sign-in later."}, status=429)
+    request.session.save()
+    return JsonResponse({"ok": True, "remainingAttempts": 5 - attempts})
+
+
 @require_http_methods(["POST"])
 def otp_resend(request):
     user_id = request.session.get("authshield_otp_user_id")
     user = User.objects.filter(pk=user_id, is_active=True, approval_status=User.ApprovalStatus.APPROVED).first()
     channel = request.session.get("authshield_otp_channel", "")
     phase = request.session.get("authshield_otp_phase", "primary")
-    if not settings.AUTHSHIELD_OTP_ENABLED or not user or channel not in ("whatsapp", "email"):
+    if not settings.AUTHSHIELD_OTP_ENABLED or not user or channel != "email":
         _clear_otp_session(request)
         messages.error(request, "Start sign-in again to request a verification code.")
         return redirect("login")
@@ -408,12 +560,9 @@ def otp_resend(request):
         _clear_otp_session(request)
         messages.error(request, "That verification request has expired. Start sign-in again.")
         return redirect("login")
-    resend_cooldown_seconds = 30 if channel == "email" else 60
+    resend_cooldown_seconds = 30
     if timezone.now().timestamp() - sent_at < resend_cooldown_seconds:
-        if channel == "email":
-            messages.info(request, "Wait 30 seconds before requesting another email code.")
-        else:
-            messages.info(request, "Wait one minute before requesting another code.")
+        messages.info(request, "Wait 30 seconds before requesting another email code.")
         return redirect("otp_verify")
     if request.session.get("authshield_otp_resends", 0) >= 3:
         messages.error(request, "You have reached the resend limit. Start sign-in again later.")
@@ -427,7 +576,7 @@ def otp_resend(request):
         "otp_sent", email=user.email,
         description="A replacement sign-in verification code was requested.",
         request=request,
-        factor="email_otp" if channel == "email" else "mobile_otp",
+        factor="email_otp",
         outcome="success",
     )
     request.session["authshield_otp_resends"] = request.session.get("authshield_otp_resends", 0) + 1

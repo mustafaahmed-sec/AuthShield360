@@ -29,7 +29,6 @@
         <a class="nav-enroll" href="{% url 'signup' %}">Create account</a>
       {% endif %}
     </nav>
-    {% if auth_mode_label %}<span class="environment" title="Authentication mode">{{ auth_mode_label }}</span>{% endif %}
   </header>
   <main id="main" class="main-content">
     {% if messages %}

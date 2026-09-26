@@ -675,16 +675,17 @@ class PortalNavigationAndFeedbackTests(TestCase):
         self.assertContains(response, "Portal Teacher · Teacher")
         self.assertNotContains(response, self.teacher.email)
 
-    @override_settings(DEBUG=True, AUTHSHIELD_PROTECTED_DEMO=False)
-    def test_authentication_mode_badge_only_appears_in_local_or_protected_demo(self):
-        response = self.client.get(reverse("home"))
-        self.assertContains(response, "Password-only baseline")
-        with override_settings(DEBUG=False, AUTHSHIELD_PROTECTED_DEMO=True):
-            response = self.client.get(reverse("home"))
-        self.assertContains(response, "Password-only baseline")
-        with override_settings(DEBUG=False, AUTHSHIELD_PROTECTED_DEMO=False):
-            response = self.client.get(reverse("home"))
-        self.assertNotContains(response, "Password-only baseline")
+    def test_authentication_mode_badge_is_not_rendered_in_the_shared_header(self):
+        settings = (
+            {"DEBUG": True, "AUTHSHIELD_PROTECTED_DEMO": False},
+            {"DEBUG": False, "AUTHSHIELD_PROTECTED_DEMO": True},
+        )
+        for values in settings:
+            with self.subTest(**values), override_settings(**values):
+                response = self.client.get(reverse("home"))
+                self.assertNotContains(response, "Password-only baseline")
+                self.assertNotContains(response, "Email OTP sign-in")
+                self.assertNotContains(response, "OTP sign-in")
 
     def test_messages_have_distinct_label_and_accessibility_role(self):
         self.client.force_login(self.admin)

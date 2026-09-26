@@ -1,76 +1,62 @@
-import json
-from urllib.error import HTTPError
-from urllib.parse import parse_qs
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
+from google.auth.exceptions import GoogleAuthError
 
-from .otp import OTPProviderError, TwilioVerify
+from .otp import OTPProviderError, normalize_phone_number, verify_firebase_phone_id_token
 
 
 @override_settings(
-    TWILIO_API_KEY_SID="SK" + "a" * 32,
-    TWILIO_API_KEY_SECRET="test-secret",
-    TWILIO_VERIFY_SERVICE_SID="VA" + "b" * 32,
+    AUTHSHIELD_FIREBASE_API_KEY="test-web-api-key",
+    AUTHSHIELD_FIREBASE_AUTH_DOMAIN="authshield-test.firebaseapp.com",
+    AUTHSHIELD_FIREBASE_PROJECT_ID="authshield-test",
+    AUTHSHIELD_FIREBASE_APP_ID="1:123:web:test",
 )
-class TwilioVerifyAdapterTests(SimpleTestCase):
-    def provider_response(self, data):
-        patcher = patch("accounts.otp.urlopen")
-        response = patcher.start()
-        self.addCleanup(patcher.stop)
-        response.return_value.__enter__.return_value.read.return_value = json.dumps(data).encode()
-        return response
+class FirebasePhoneAuthTests(SimpleTestCase):
+    def claims(self, **overrides):
+        claims = {
+            "aud": "authshield-test",
+            "auth_time": 101,
+            "phone_number": "+923001234567",
+            "firebase": {"sign_in_provider": "phone"},
+        }
+        claims.update(overrides)
+        return claims
 
-    def test_start_posts_a_whatsapp_verification_to_twilio_verify(self):
-        mocked_urlopen = self.provider_response({"status": "pending"})
+    def test_pakistani_phone_input_is_normalized_to_e164(self):
+        self.assertEqual(normalize_phone_number("0300 1234567"), "+923001234567")
+        self.assertEqual(normalize_phone_number("+92 (300) 123-4567"), "+923001234567")
+        self.assertEqual(normalize_phone_number("not a phone"), "")
 
-        TwilioVerify().start("+15550100123", "whatsapp")
+    def test_valid_fresh_phone_token_is_returned_for_expected_project_and_number(self):
+        with patch("accounts.otp.verify_firebase_token", return_value=self.claims()) as verify:
+            claims = verify_firebase_phone_id_token(
+                "signed-token", expected_phone="+923001234567", minimum_auth_time=100,
+            )
 
-        request = mocked_urlopen.call_args.args[0]
-        self.assertTrue(request.full_url.endswith("/Services/VA" + "b" * 32 + "/Verifications"))
-        self.assertEqual(
-            parse_qs(request.data.decode()),
-            {"To": ["+15550100123"], "Channel": ["whatsapp"]},
+        self.assertIsNotNone(claims)
+        verify.assert_called_once()
+        self.assertEqual(verify.call_args.kwargs["audience"], "authshield-test")
+
+    def test_wrong_phone_provider_or_stale_token_is_rejected(self):
+        cases = (
+            self.claims(phone_number="+923001234568"),
+            self.claims(firebase={"sign_in_provider": "password"}),
+            self.claims(auth_time=50),
         )
-        self.assertIsNotNone(request.get_header("Authorization"))
+        for claims in cases:
+            with self.subTest(claims=claims), patch("accounts.otp.verify_firebase_token", return_value=claims):
+                self.assertIsNone(verify_firebase_phone_id_token(
+                    "signed-token", expected_phone="+923001234567", minimum_auth_time=100,
+                ))
 
-    def test_check_posts_code_and_returns_only_provider_approval(self):
-        mocked_urlopen = self.provider_response({"status": "approved", "valid": True})
-
-        valid = TwilioVerify().check("person@example.test", "123456")
-
-        self.assertTrue(valid)
-        request = mocked_urlopen.call_args.args[0]
-        self.assertTrue(request.full_url.endswith("/VerificationCheck"))
-        self.assertEqual(
-            parse_qs(request.data.decode()),
-            {"To": ["person@example.test"], "Code": ["123456"]},
-        )
-
-    def test_code_is_rejected_when_provider_has_not_approved_it(self):
-        self.provider_response({"status": "pending", "valid": False})
-
-        self.assertFalse(TwilioVerify().check("person@example.test", "123456"))
-
-    def test_expired_twilio_verification_is_reported_as_a_rejected_code(self):
-        patcher = patch("accounts.otp.urlopen", side_effect=HTTPError("url", 404, "expired", {}, None))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-
-        self.assertFalse(TwilioVerify().check("person@example.test", "123456"))
-
-    def test_invalid_whatsapp_destination_is_rejected_before_network_call(self):
-        mocked_urlopen = patch("accounts.otp.urlopen")
-        urlopen = mocked_urlopen.start()
-        self.addCleanup(mocked_urlopen.stop)
-
-        with self.assertRaises(OTPProviderError):
-            TwilioVerify().start("555-010-0123", "whatsapp")
-
-        urlopen.assert_not_called()
-
-    def test_start_rejects_a_non_pending_provider_response(self):
-        self.provider_response({"status": "failed"})
-
-        with self.assertRaises(OTPProviderError):
-            TwilioVerify().start("+15550100123", "whatsapp")
+    def test_invalid_token_is_rejected_and_google_verifier_outage_is_reported(self):
+        with patch("accounts.otp.verify_firebase_token", side_effect=ValueError("invalid token")):
+            self.assertIsNone(verify_firebase_phone_id_token(
+                "bad-token", expected_phone="+923001234567", minimum_auth_time=100,
+            ))
+        with patch("accounts.otp.verify_firebase_token", side_effect=GoogleAuthError("offline")):
+            with self.assertRaises(OTPProviderError):
+                verify_firebase_phone_id_token(
+                    "signed-token", expected_phone="+923001234567", minimum_auth_time=100,
+                )

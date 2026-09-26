@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from .lockout import account_lockout_until, ip_throttle_until, retry_minutes
 from .models import User
-from .otp import mobile_otp_available
+from .otp import firebase_phone_auth_available, normalize_phone_number
 
 
 class AccountSignupForm(UserCreationForm):
@@ -16,7 +16,7 @@ class AccountSignupForm(UserCreationForm):
         label="Phone number",
         max_length=32,
         validators=[RegexValidator(r"^\+?[0-9][0-9\s().-]{6,30}$", "Enter a valid test phone number.")],
-        help_text="Use fictional contact details for this demonstration.",
+        help_text="For SMS sign-in, use an international number such as +923001234567. Pakistani 03xx numbers are converted automatically. Firebase processes the number for verification, and carrier rates may apply.",
     )
 
     class Meta:
@@ -68,6 +68,14 @@ class AccountSignupForm(UserCreationForm):
             )
         return email
 
+    def clean_phone_number(self):
+        phone_number = normalize_phone_number(self.cleaned_data["phone_number"])
+        if not phone_number:
+            raise forms.ValidationError(
+                "Enter a valid international phone number. Pakistani 03xx numbers are also accepted."
+            )
+        return phone_number
+
     def save(self, commit=True):
         user = super().save(commit=False)
         user.role = self.requested_role
@@ -99,15 +107,16 @@ class EmailAuthenticationForm(AuthenticationForm):
     username = forms.EmailField(label="Email address", widget=forms.EmailInput(attrs={"autocomplete": "username"}))
     otp_channel = forms.ChoiceField(
         label="Send the sign-in code by",
-        choices=(("whatsapp", "WhatsApp"), ("email", "Email")),
-        initial="email",
+        choices=(("sms", "SMS text message"), ("email", "Email")),
+        initial="sms",
         required=False,
     )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not mobile_otp_available():
+        if not firebase_phone_auth_available():
             self.fields["otp_channel"].choices = (("email", "Email"),)
+            self.fields["otp_channel"].initial = "email"
         self.fields["password"].widget.attrs.update({"autocomplete": "current-password"})
 
     def clean(self):

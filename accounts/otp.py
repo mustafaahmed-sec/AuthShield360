@@ -1,32 +1,95 @@
-"""Delivery adapters for email and mobile one-time codes."""
+"""Email code delivery and Firebase phone-token verification."""
 
-import base64
-import json
 import secrets
 import re
 import smtplib
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ImproperlyConfigured
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+from google.auth.exceptions import GoogleAuthError
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from google.oauth2.id_token import verify_firebase_token
 
 
 class OTPProviderError(Exception):
     """A provider request failed without exposing provider details to the user."""
 
 
-def mobile_otp_available():
-    """Return whether a mobile OTP provider is configured for this deployment."""
+class FirebaseTokenRequest(GoogleAuthRequest):
+    """Bound certificate-fetch time so token checks cannot stall a portal request."""
+
+    def __call__(self, url, method="GET", body=None, headers=None, timeout=8, **kwargs):
+        return super().__call__(
+            url,
+            method=method,
+            body=body,
+            headers=headers,
+            timeout=min(timeout or 8, 8),
+            **kwargs,
+        )
+
+
+def firebase_phone_auth_available():
+    """Return whether this deployment has the Firebase web configuration it needs."""
     return all((
-        settings.TWILIO_API_KEY_SID,
-        settings.TWILIO_API_KEY_SECRET,
-        settings.TWILIO_VERIFY_SERVICE_SID,
+        settings.AUTHSHIELD_FIREBASE_API_KEY,
+        settings.AUTHSHIELD_FIREBASE_AUTH_DOMAIN,
+        settings.AUTHSHIELD_FIREBASE_PROJECT_ID,
+        settings.AUTHSHIELD_FIREBASE_APP_ID,
     ))
+
+
+def normalize_phone_number(value):
+    """Convert supported phone input to E.164, including Pakistani local numbers."""
+    value = (value or "").strip()
+    if not value or not re.fullmatch(r"\+?[0-9\s().-]{7,32}", value):
+        return ""
+    digits = re.sub(r"\D", "", value)
+    if value.startswith("+"):
+        candidate = f"+{digits}"
+    elif digits.startswith("00"):
+        candidate = f"+{digits[2:]}"
+    elif len(digits) == 11 and digits.startswith("03"):
+        candidate = f"+92{digits[1:]}"
+    elif len(digits) == 10 and digits.startswith("3"):
+        candidate = f"+92{digits}"
+    else:
+        candidate = f"+{digits}"
+    return candidate if re.fullmatch(r"\+[1-9][0-9]{7,14}", candidate) else ""
+
+
+def verify_firebase_phone_id_token(id_token, *, expected_phone, minimum_auth_time):
+    """Verify a client Firebase token and require fresh authentication by phone."""
+    if not firebase_phone_auth_available():
+        raise ImproperlyConfigured("Firebase Phone Authentication is not configured.")
+    if not id_token or len(id_token) > 8192:
+        return None
+    try:
+        claims = verify_firebase_token(
+            id_token,
+            FirebaseTokenRequest(),
+            audience=settings.AUTHSHIELD_FIREBASE_PROJECT_ID,
+        )
+    except ValueError:
+        return None
+    except GoogleAuthError as error:
+        raise OTPProviderError("Firebase could not verify the sign-in token.") from error
+
+    firebase_claims = claims.get("firebase") or {}
+    try:
+        auth_time = int(claims.get("auth_time", 0))
+    except (TypeError, ValueError):
+        return None
+    if (
+        firebase_claims.get("sign_in_provider") != "phone"
+        or auth_time < int(minimum_auth_time) - 10
+        or normalize_phone_number(claims.get("phone_number")) != expected_phone
+    ):
+        return None
+    return claims
 
 
 class GmailEmailOTP:
@@ -88,79 +151,20 @@ class GmailEmailOTP:
         return True
 
 
-class TwilioVerify:
-    """Twilio Verify adapter reserved for mobile channels such as WhatsApp or SMS."""
-
-    API_ROOT = "https://verify.twilio.com/v2/Services"
-    WHATSAPP_CHANNEL = "whatsapp"
-    SMS_CHANNEL = "sms"
-
-    def __init__(self):
-        self.key_sid = settings.TWILIO_API_KEY_SID
-        self.key_secret = settings.TWILIO_API_KEY_SECRET
-        self.service_sid = settings.TWILIO_VERIFY_SERVICE_SID
-        if not all((self.key_sid, self.key_secret, self.service_sid)):
-            raise ImproperlyConfigured("Twilio Verify is enabled but its server-side settings are incomplete.")
-        if not re.fullmatch(r"VA[0-9a-fA-F]{32}", self.service_sid):
-            raise ImproperlyConfigured("TWILIO_VERIFY_SERVICE_SID must be a Verify Service SID.")
-        if not re.fullmatch(r"SK[0-9a-fA-F]{32}", self.key_sid):
-            raise ImproperlyConfigured("TWILIO_API_KEY_SID must be an API Key SID.")
-
-    def start(self, destination, channel):
-        if channel not in (self.WHATSAPP_CHANNEL, self.SMS_CHANNEL):
-            raise OTPProviderError("Unsupported verification channel.")
-        if not re.fullmatch(r"\+[1-9][0-9]{7,14}", destination or ""):
-            raise OTPProviderError("The account has no usable phone number.")
-        result = self._post("Verifications", {"To": destination, "Channel": channel})
-        if result.get("status") != "pending":
-            raise OTPProviderError("The verification request was not accepted.")
-
-    def check(self, destination, code):
-        if not code or len(code) > 12:
-            return False
-        result = self._post("VerificationCheck", {"To": destination, "Code": code})
-        return result.get("status") == "approved" and result.get("valid") is True
-
-    def _post(self, endpoint, values):
-        token = base64.b64encode(f"{self.key_sid}:{self.key_secret}".encode("utf-8")).decode("ascii")
-        request = Request(
-            f"{self.API_ROOT}/{self.service_sid}/{endpoint}",
-            data=urlencode(values).encode("ascii"),
-            headers={
-                "Authorization": f"Basic {token}",
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Accept": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with urlopen(request, timeout=8) as response:
-                result = json.loads(response.read().decode("utf-8"))
-        except HTTPError as error:
-            if endpoint == "VerificationCheck" and error.code == 404:
-                return {"status": "expired", "valid": False}
-            raise OTPProviderError("The verification service could not complete the request.") from error
-        except (URLError, TimeoutError, OSError, ValueError) as error:
-            raise OTPProviderError("The verification service could not complete the request.") from error
-        if not isinstance(result, dict):
-            raise OTPProviderError("The verification service returned an invalid response.")
-        return result
-
-
 def delivery_target(user, channel):
     if channel == GmailEmailOTP.EMAIL_CHANNEL:
         return user.email
-    return re.sub(r"[^0-9+]", "", user.phone_number)
+    return normalize_phone_number(user.phone_number)
 
 
 def start_otp(destination, channel, session, recipient_name="there"):
     if channel == GmailEmailOTP.EMAIL_CHANNEL:
         GmailEmailOTP().start(destination, session, recipient_name)
         return
-    TwilioVerify().start(destination, channel)
+    raise ImproperlyConfigured("SMS codes are sent and verified in the Firebase phone-auth page.")
 
 
 def check_otp(destination, channel, code, session):
     if channel == GmailEmailOTP.EMAIL_CHANNEL:
         return GmailEmailOTP().check(code, session)
-    return TwilioVerify().check(destination, code)
+    return False

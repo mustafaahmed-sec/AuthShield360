@@ -62,7 +62,6 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "config.context_processors.auth_mode",
                 "config.context_processors.static_version",
             ],
         },
@@ -154,6 +153,7 @@ AUTHSHIELD_IP_FAILURE_LIMIT = _positive_integer_setting("AUTHSHIELD_IP_FAILURE_L
 AUTHSHIELD_IP_WINDOW_MINUTES = _positive_integer_setting("AUTHSHIELD_IP_WINDOW_MINUTES", 15)
 AUTHSHIELD_IP_THROTTLE_MINUTES = _positive_integer_setting("AUTHSHIELD_IP_THROTTLE_MINUTES", 1)
 AUTHSHIELD_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_OTP_TTL_SECONDS", 600)
+AUTHSHIELD_SMS_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_SMS_OTP_TTL_SECONDS", 300)
 AUTHSHIELD_EMAIL_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_EMAIL_OTP_TTL_SECONDS", 60)
 
 # Password-only access remains a controlled lab stage. For a Vercel demo it
@@ -181,9 +181,10 @@ EMAIL_TIMEOUT = 8
 EMAIL_HOST_USER = AUTHSHIELD_GMAIL_ADDRESS
 EMAIL_HOST_PASSWORD = AUTHSHIELD_GMAIL_APP_PASSWORD
 DEFAULT_FROM_EMAIL = AUTHSHIELD_GMAIL_ADDRESS
-TWILIO_API_KEY_SID = os.environ.get("TWILIO_API_KEY_SID", "")
-TWILIO_API_KEY_SECRET = os.environ.get("TWILIO_API_KEY_SECRET", "")
-TWILIO_VERIFY_SERVICE_SID = os.environ.get("TWILIO_VERIFY_SERVICE_SID", "")
+AUTHSHIELD_FIREBASE_API_KEY = os.environ.get("AUTHSHIELD_FIREBASE_API_KEY", "").strip()
+AUTHSHIELD_FIREBASE_AUTH_DOMAIN = os.environ.get("AUTHSHIELD_FIREBASE_AUTH_DOMAIN", "").strip()
+AUTHSHIELD_FIREBASE_PROJECT_ID = os.environ.get("AUTHSHIELD_FIREBASE_PROJECT_ID", "").strip()
+AUTHSHIELD_FIREBASE_APP_ID = os.environ.get("AUTHSHIELD_FIREBASE_APP_ID", "").strip()
 
 LOGGING = {
     "version": 1,

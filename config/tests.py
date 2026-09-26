@@ -3,7 +3,6 @@ from unittest.mock import patch
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
-from .context_processors import auth_mode
 from .middleware import CanonicalProductionHostMiddleware
 
 
@@ -57,16 +56,3 @@ class ProductionHostMiddlewareTests(SimpleTestCase):
             "https://authshield360.vercel.app/signup/student/?page=1",
         )
         self.assertIn("no-store", response["Cache-Control"])
-
-
-class AuthenticationModeContextTests(SimpleTestCase):
-    @override_settings(
-        DEBUG=True,
-        AUTHSHIELD_PROTECTED_DEMO=False,
-        AUTHSHIELD_OTP_ENABLED=True,
-        AUTHSHIELD_EMAIL_STEP_UP=False,
-    )
-    def test_enabled_email_otp_replaces_the_password_only_label(self):
-        context = auth_mode(None)
-
-        self.assertEqual(context["auth_mode_label"], "Email OTP sign-in")

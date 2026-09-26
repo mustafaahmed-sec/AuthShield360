@@ -18,32 +18,35 @@ class LoginPresentationTests(SimpleTestCase):
         DEBUG=True,
         AUTHSHIELD_OTP_ENABLED=True,
         AUTHSHIELD_EMAIL_STEP_UP=False,
-        TWILIO_API_KEY_SID="",
-        TWILIO_API_KEY_SECRET="",
-        TWILIO_VERIFY_SERVICE_SID="",
+        AUTHSHIELD_FIREBASE_API_KEY="",
+        AUTHSHIELD_FIREBASE_AUTH_DOMAIN="",
+        AUTHSHIELD_FIREBASE_PROJECT_ID="",
+        AUTHSHIELD_FIREBASE_APP_ID="",
     )
-    def test_email_only_login_hides_whatsapp_and_shows_otp_label(self):
+    def test_email_only_login_hides_sms_and_auth_mode_badge(self):
         response = self.client.get(reverse("login"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Email OTP sign-in")
+        self.assertNotContains(response, "Email OTP sign-in")
+        self.assertNotContains(response, "OTP sign-in")
         self.assertNotContains(response, "Password-only baseline")
-        self.assertNotContains(response, "WhatsApp")
+        self.assertNotContains(response, "SMS text message")
         self.assertEqual(response.context["form"].fields["otp_channel"].choices, [("email", "Email")])
 
     @override_settings(
         DEBUG=True,
         AUTHSHIELD_OTP_ENABLED=True,
         AUTHSHIELD_EMAIL_STEP_UP=False,
-        TWILIO_API_KEY_SID="SK" + "a" * 32,
-        TWILIO_API_KEY_SECRET="test-secret",
-        TWILIO_VERIFY_SERVICE_SID="VA" + "b" * 32,
+        AUTHSHIELD_FIREBASE_API_KEY="test-web-api-key",
+        AUTHSHIELD_FIREBASE_AUTH_DOMAIN="authshield-test.firebaseapp.com",
+        AUTHSHIELD_FIREBASE_PROJECT_ID="authshield-test",
+        AUTHSHIELD_FIREBASE_APP_ID="1:123:web:test",
     )
-    def test_whatsapp_choice_appears_when_mobile_provider_is_configured(self):
+    def test_sms_choice_appears_when_firebase_is_configured(self):
         response = self.client.get(reverse("login"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "WhatsApp")
+        self.assertContains(response, "SMS text message")
         self.assertContains(response, "Email")
 
 
@@ -162,9 +165,10 @@ class AuthenticationAuditTests(TestCase):
     AUTHSHIELD_BASELINE_LOGIN_ENABLED=True,
     AUTHSHIELD_OTP_ENABLED=True,
     AUTHSHIELD_EMAIL_STEP_UP=False,
-    TWILIO_API_KEY_SID="SK" + "a" * 32,
-    TWILIO_API_KEY_SECRET="test-secret",
-    TWILIO_VERIFY_SERVICE_SID="VA" + "b" * 32,
+    AUTHSHIELD_FIREBASE_API_KEY="test-web-api-key",
+    AUTHSHIELD_FIREBASE_AUTH_DOMAIN="authshield-test.firebaseapp.com",
+    AUTHSHIELD_FIREBASE_PROJECT_ID="authshield-test",
+    AUTHSHIELD_FIREBASE_APP_ID="1:123:web:test",
 )
 class OTPLoginTests(TestCase):
     def setUp(self):
@@ -175,11 +179,12 @@ class OTPLoginTests(TestCase):
             role=User.Role.STUDENT,
             phone_number="+15550100123",
         )
-        self.provider_patch = patch("accounts.otp.TwilioVerify")
-        self.provider_class = self.provider_patch.start()
-        self.addCleanup(self.provider_patch.stop)
-        self.provider = self.provider_class.return_value
-        self.provider.check.return_value = True
+        self.firebase_token_patch = patch(
+            "accounts.views.verify_firebase_phone_id_token",
+            return_value={"phone_number": self.user.phone_number, "firebase": {"sign_in_provider": "phone"}},
+        )
+        self.verify_firebase_token = self.firebase_token_patch.start()
+        self.addCleanup(self.firebase_token_patch.stop)
         self.email_provider_patch = patch("accounts.otp.GmailEmailOTP")
         self.email_provider_class = self.email_provider_patch.start()
         self.addCleanup(self.email_provider_patch.stop)
@@ -187,20 +192,26 @@ class OTPLoginTests(TestCase):
         self.email_provider = self.email_provider_class.return_value
         self.email_provider.check.return_value = True
 
-    def submit_password(self, channel="whatsapp"):
+    def submit_password(self, channel="sms"):
         return self.client.post(reverse("login"), {
             "username": self.user.email,
             "password": "FictionalDemo!2468",
             "otp_channel": channel,
         })
 
-    def test_valid_password_starts_whatsapp_challenge_without_authenticating(self):
+    def complete_sms_send(self):
+        authorized = self.client.post(reverse("otp_sms_authorize_send"))
+        self.assertEqual(authorized.status_code, 200)
+        sent = self.client.post(reverse("otp_sms_mark_sent"))
+        self.assertEqual(sent.status_code, 200)
+
+    def test_valid_password_starts_firebase_sms_challenge_without_authenticating(self):
         response = self.submit_password()
 
         self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
         self.assertNotIn("_auth_user_id", self.client.session)
-        self.assertEqual(self.client.session["authshield_otp_channel"], "whatsapp")
-        self.provider.start.assert_called_once_with("+15550100123", "whatsapp")
+        self.assertEqual(self.client.session["authshield_otp_channel"], "sms")
+        self.assertFalse(self.client.session["authshield_otp_sms_sent"])
 
     def test_password_alone_does_not_grant_dashboard_access(self):
         self.submit_password()
@@ -252,12 +263,13 @@ class OTPLoginTests(TestCase):
         self.assertIn("expired", event.description)
         self.assertEqual(event.factor, PortalAuditEvent.Factor.MOBILE_OTP)
         self.assertIsNotNone(event.duration_ms)
-        self.provider.check.assert_not_called()
+        self.verify_firebase_token.assert_not_called()
 
     @override_settings(AUTHSHIELD_EMAIL_STEP_UP=True)
-    def test_email_step_up_requires_a_second_code_after_whatsapp(self):
+    def test_email_step_up_requires_a_second_code_after_sms(self):
         self.submit_password()
-        first = self.client.post(reverse("otp_verify"), {"code": "123456"})
+        self.complete_sms_send()
+        first = self.client.post(reverse("otp_verify"), {"code": "123456", "firebase_id_token": "signed-token"})
 
         self.assertRedirects(first, reverse("otp_verify"), fetch_redirect_response=False)
         self.assertNotIn("_auth_user_id", self.client.session)
@@ -280,8 +292,7 @@ class OTPLoginTests(TestCase):
         response = self.submit_password(channel="email")
 
         self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
-        self.assertEqual(self.client.session["authshield_otp_channel"], "whatsapp")
-        self.provider.start.assert_called_once_with("+15550100123", "whatsapp")
+        self.assertEqual(self.client.session["authshield_otp_channel"], "sms")
         self.assertNotIn("_auth_user_id", self.client.session)
 
     def test_completed_challenge_cannot_be_replayed_without_pending_challenge(self):
