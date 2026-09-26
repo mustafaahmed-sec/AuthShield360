@@ -1,14 +1,13 @@
 {% extends "base.html" %}
 {% block title %}AuthShield 360 | School portal{% endblock %}
 {% block content %}
-  <div class="eyebrow">Identity security learning environment</div>
-  <h1>A trusted place to learn, teach, and manage.</h1>
-  <p class="intro">This fictional school portal lets us compare password-only sign-in with stronger multi-factor authentication as the project develops.</p>
+  <div class="eyebrow">AuthShield 360 school portal</div>
+  <h1>A place to learn, teach, and manage.</h1>
+  <p class="intro">Explore a demonstration school portal with separate views for students, teachers, and administrators. Follow coursework, manage classes, and review account requests.</p>
   <p class="request-status-link">Already sent an access request? <a href="{% url 'registration_status' %}">Check its status</a>.</p>
-  <section class="stats" aria-label="Fictional records in the database">
+  <section class="stats" aria-label="Demonstration school records">
     <div class="stat"><strong>{{ student_count }}</strong><span>student records</span></div>
     <div class="stat"><strong>{{ course_count }}</strong><span>courses</span></div>
     <div class="stat"><strong>{{ assignment_count }}</strong><span>assignments</span></div>
   </section>
-  <section class="note" aria-labelledby="lab-stage"><h2 id="lab-stage">Current lab stage</h2><p>Student sign-up, teacher access requests, and role dashboards are available. Password-only sign-in is enabled for the controlled baseline. OTP verification is the next authentication stage.</p></section>
 {% endblock %}
