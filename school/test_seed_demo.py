@@ -64,6 +64,9 @@ class SeedDemoTests(TestCase):
         course.save(update_fields=["teacher"])
         student = User.objects.get(email="ali.khan.authshield@gmail.com")
         record = StudentRecord.objects.get(student=student)
+        # Move the demo student off grade-specific classes before changing
+        # their grade; the roster validator correctly rejects mismatches.
+        Enrollment.objects.filter(student=student, course__code__startswith="D26-G10-").delete()
         record.grade = "Grade 11"
         record.save(update_fields=["grade"])
         assignment = Assignment.objects.filter(course=course).first()
