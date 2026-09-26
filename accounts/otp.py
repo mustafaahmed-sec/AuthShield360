@@ -24,6 +24,14 @@ class OTPProviderError(Exception):
     """A provider request failed without exposing provider details to the user."""
 
 
+class OTPChallengeChanged(Exception):
+    """The account's active OTP was replaced, consumed, or otherwise invalidated."""
+
+
+class OTPChallengeExpired(Exception):
+    """The active OTP expired while the verification request was in progress."""
+
+
 class FirebaseTokenRequest(GoogleAuthRequest):
     """Bound certificate-fetch time so token checks cannot stall a portal request."""
 
@@ -210,7 +218,7 @@ class GmailEmailOTP:
         session[self.SESSION_KEY] = make_password(code)
         return None
 
-    def check(self, code, session, *, user=None, purpose="sign_in"):
+    def check(self, code, session, *, user=None, purpose="sign_in", expected_sent_at=None):
         code_has_valid_format = bool(re.fullmatch(r"[0-9]{6}", code or ""))
         if user is not None:
             from .models import EmailOTPChallenge, User
@@ -222,6 +230,22 @@ class GmailEmailOTP:
                         purpose=purpose,
                     ).first()
                     now = timezone.now()
+                    if expected_sent_at is not None:
+                        if not challenge:
+                            raise OTPChallengeChanged
+                        try:
+                            expected_sent_at = float(expected_sent_at)
+                        except (TypeError, ValueError):
+                            raise OTPChallengeChanged
+                        if (
+                            not challenge.sent_at
+                            or abs(challenge.sent_at.timestamp() - expected_sent_at) > 0.001
+                            or challenge.completed_at
+                            or not challenge.code_hash
+                        ):
+                            raise OTPChallengeChanged
+                        if not challenge.expires_at or challenge.expires_at <= now:
+                            raise OTPChallengeExpired
                     if (
                         not challenge
                         or not challenge.code_hash
@@ -281,7 +305,13 @@ def start_otp(destination, channel, session, recipient_name="there", *, user=Non
     raise ImproperlyConfigured("SMS codes are sent and verified in the Firebase phone-auth page.")
 
 
-def check_otp(destination, channel, code, session, *, user=None, purpose="sign_in"):
+def check_otp(destination, channel, code, session, *, user=None, purpose="sign_in", expected_sent_at=None):
     if channel == GmailEmailOTP.EMAIL_CHANNEL:
-        return GmailEmailOTP().check(code, session, user=user, purpose=purpose)
+        return GmailEmailOTP().check(
+            code,
+            session,
+            user=user,
+            purpose=purpose,
+            expected_sent_at=expected_sent_at,
+        )
     return False

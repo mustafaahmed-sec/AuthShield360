@@ -14,7 +14,13 @@ from django.utils import timezone
 from school.models import PortalAuditEvent, StudentRecord
 
 from .models import EmailOTPChallenge, User
-from .otp import GmailEmailOTP, MAX_OTP_ATTEMPTS
+from .otp import (
+    GmailEmailOTP,
+    MAX_OTP_ATTEMPTS,
+    OTPChallengeChanged,
+    OTPChallengeExpired,
+    check_otp,
+)
 
 
 class LoginPresentationTests(SimpleTestCase):
@@ -201,6 +207,34 @@ class EmailOTPChallengeAttemptTests(TestCase):
         sent_code = send_code.call_args.args[1]
 
         self.assertTrue(GmailEmailOTP().check(sent_code, {}, user=self.user))
+
+    @patch.object(GmailEmailOTP, "_send_code")
+    def test_replaced_challenge_is_not_counted_as_an_incorrect_code(self, send_code):
+        self.provider.start(self.user.email, {}, user=self.user)
+        challenge = EmailOTPChallenge.objects.get(user=self.user, purpose="sign_in")
+        original_sent_at = challenge.sent_at.timestamp()
+        challenge.sent_at = challenge.sent_at + timedelta(seconds=1)
+        challenge.save(update_fields=("sent_at",))
+
+        with self.assertRaises(OTPChallengeChanged):
+            self.provider.check("123456", {}, user=self.user, expected_sent_at=original_sent_at)
+
+        challenge.refresh_from_db()
+        self.assertEqual(challenge.attempts, 0)
+
+    @patch.object(GmailEmailOTP, "_send_code")
+    def test_expired_challenge_is_not_counted_as_an_incorrect_code(self, send_code):
+        self.provider.start(self.user.email, {}, user=self.user)
+        challenge = EmailOTPChallenge.objects.get(user=self.user, purpose="sign_in")
+        expected_sent_at = challenge.sent_at.timestamp()
+        challenge.expires_at = timezone.now() - timedelta(seconds=1)
+        challenge.save(update_fields=("expires_at",))
+
+        with self.assertRaises(OTPChallengeExpired):
+            self.provider.check("123456", {}, user=self.user, expected_sent_at=expected_sent_at)
+
+        challenge.refresh_from_db()
+        self.assertEqual(challenge.attempts, 0)
 
 
 @override_settings(
@@ -466,6 +500,55 @@ class EmailOTPChallengeSessionSyncTests(TestCase):
 
         self.assertRedirects(verified, reverse("dashboard"), fetch_redirect_response=False)
         self.assertEqual(int(self.client.session["_auth_user_id"]), self.user.pk)
+
+    def test_code_replaced_during_verification_uses_latest_code_without_failure(self):
+        def replace_then_check(destination, channel, code, session, *, user, purpose, expected_sent_at):
+            self.challenge.sent_at = timezone.now() - timedelta(seconds=31)
+            self.challenge.save(update_fields=("sent_at",))
+            GmailEmailOTP().start(destination, {}, user=user, purpose=purpose, force_new=True)
+            return check_otp(
+                destination,
+                channel,
+                code,
+                session,
+                user=user,
+                purpose=purpose,
+                expected_sent_at=expected_sent_at,
+            )
+
+        with patch("accounts.views.check_otp", side_effect=replace_then_check):
+            response = self.client.post(reverse("otp_verify"), {"code": "000000"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "A newer code replaced the one on this page")
+        self.assertFalse(PortalAuditEvent.objects.filter(action="otp_failure").exists())
+        self.assertEqual(len(mail.outbox), 2)
+
+        latest_code = self._code_from_latest_email()
+        verified = self.client.post(reverse("otp_verify"), {"code": latest_code})
+        self.assertRedirects(verified, reverse("dashboard"), fetch_redirect_response=False)
+
+    def test_code_expiring_during_verification_is_not_counted_as_a_wrong_code(self):
+        def expire_then_check(destination, channel, code, session, *, user, purpose, expected_sent_at):
+            self.challenge.expires_at = timezone.now() - timedelta(seconds=1)
+            self.challenge.save(update_fields=("expires_at",))
+            return check_otp(
+                destination,
+                channel,
+                code,
+                session,
+                user=user,
+                purpose=purpose,
+                expected_sent_at=expected_sent_at,
+            )
+
+        with patch("accounts.views.check_otp", side_effect=expire_then_check):
+            response = self.client.post(reverse("otp_verify"), {"code": "000000"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "That code has expired. Request a new code to continue.", status_code=400)
+        self.assertFalse(PortalAuditEvent.objects.filter(action="otp_failure").exists())
+        self.assertEqual(PortalAuditEvent.objects.filter(action="otp_expired").count(), 1)
 
 
 @override_settings(

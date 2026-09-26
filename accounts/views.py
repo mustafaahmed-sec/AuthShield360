@@ -37,6 +37,8 @@ from .forms import (
 from django.contrib.auth.forms import SetPasswordForm
 from .models import EmailOTPChallenge
 from .otp import (
+    OTPChallengeChanged,
+    OTPChallengeExpired,
     OTPProviderError,
     MAX_OTP_ATTEMPTS,
     check_otp,
@@ -484,7 +486,37 @@ def otp_verify(request):
                     request.session,
                     user=user,
                     purpose=purpose,
+                    expected_sent_at=(
+                        request.session.get("authshield_otp_sent_at") if channel == "email" else None
+                    ),
                 )
+            except OTPChallengeChanged:
+                challenge_replaced, challenge_completed = _sync_email_otp_challenge(request, user, phase)
+                if challenge_completed:
+                    _clear_otp_session(request)
+                    messages.info(request, "That sign-in code has already been used. Start sign-in again for a new code.")
+                    return redirect("login")
+                if challenge_replaced:
+                    messages.info(request, "A newer code replaced the one on this page. Use the newest AuthShield email.")
+                else:
+                    request.session["authshield_otp_expires_at"] = timezone.now().timestamp()
+                    messages.error(request, "This code is no longer active. Request a new code or restart sign-in.")
+                return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase))
+            except OTPChallengeExpired:
+                if not request.session.get("authshield_otp_expiry_logged"):
+                    record_auth_event(
+                        "otp_expired",
+                        email=user.email,
+                        description="The sign-in code expired while verification was in progress.",
+                        request=request,
+                        factor="email_otp",
+                        outcome="failure",
+                        duration_ms=_otp_duration_ms(request),
+                    )
+                    request.session["authshield_otp_expiry_logged"] = True
+                request.session["authshield_otp_expires_at"] = timezone.now().timestamp()
+                messages.error(request, "That code has expired. Request a new code to continue.")
+                return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase), status=400)
             except (OTPProviderError, ImproperlyConfigured):
                 messages.error(request, "We could not verify that code right now. Try again shortly.")
                 return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase), status=503)
