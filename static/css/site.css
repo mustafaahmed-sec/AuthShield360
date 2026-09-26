@@ -53,6 +53,9 @@ button { cursor: pointer; }
 .form-field label { display: block; margin-bottom: .4rem; font-weight: 700; }
 .form-field input, .form-field select, .form-field textarea { display: block; width: 100%; min-height: 2.9rem; border: 1px solid #9db1c4; border-radius: .5rem; padding: .65rem .8rem; background: #fff; color: #172b42; }
 .form-field textarea { min-height: 7rem; resize: vertical; }
+.form-actions { display: flex; flex-direction: column; align-items: flex-start; gap: .85rem; margin-top: 1rem; }
+.form-actions form { margin: 0; }
+.form-actions a { display: inline-flex; align-items: center; min-height: 2.5rem; }
 .form-field input:focus-visible, .form-field select:focus-visible, .form-field textarea:focus-visible, .button:focus-visible, .nav-button:focus-visible, .site-nav a:focus-visible { outline: 3px solid #0a8278; outline-offset: 2px; }
 .password-input-row { display: flex; align-items: stretch; gap: .5rem; }
 .password-input-row input { flex: 1; min-width: 0; }
