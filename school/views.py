@@ -124,6 +124,13 @@ def dashboard(request):
         }
         return render(request, "school/student_dashboard.html", context)
     if user.is_portal_teacher:
+        courses = Course.objects.filter(teacher=user).order_by("code")
+        assignments = Assignment.objects.filter(course__teacher=user).select_related("course").order_by("due_date", "id")
+        results = ExamResult.objects.filter(course__teacher=user).select_related("student", "course")
+        assignment_page = Paginator(assignments, 20).get_page(request.GET.get("assignments_page"))
+        result_page = Paginator(results.order_by("course__code", "student__full_name", "pk"), 20).get_page(
+            request.GET.get("results_page")
+        )
         context = {
             "announcements": active_announcements_for(user),
             "schoolwide_student_count": StudentRecord.objects.filter(
@@ -131,19 +138,17 @@ def dashboard(request):
                 student__is_active=True,
                 student__approval_status=User.ApprovalStatus.APPROVED,
             ).count() if user.can_manage_all_students else None,
-            "courses": Course.objects.filter(teacher=user).order_by("code"),
-            "assignments": Paginator(
-                Assignment.objects.filter(course__teacher=user).select_related("course").order_by("due_date", "id"), 20
-            ).get_page(request.GET.get("assignments_page")),
+            "courses": courses,
+            "course_count": courses.count(),
+            "assignment_count": assignment_page.paginator.count,
+            "result_count": result_page.paginator.count,
+            "assignments": assignment_page,
             "enrollments": Paginator(
                 Enrollment.objects.filter(course__teacher=user)
                 .select_related("student", "student__student_record", "course")
                 .order_by("course__code", "student__full_name", "pk"), 20,
             ).get_page(request.GET.get("students_page")),
-            "results": Paginator(
-                ExamResult.objects.filter(course__teacher=user).select_related("student", "course")
-                .order_by("course__code", "student__full_name", "pk"), 20,
-            ).get_page(request.GET.get("results_page")),
+            "results": result_page,
             "student_count": User.objects.filter(
                 role=User.Role.STUDENT, enrollments__course__teacher=user
             ).distinct().count(),

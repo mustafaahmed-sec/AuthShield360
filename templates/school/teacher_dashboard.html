@@ -2,6 +2,7 @@
 {% load school_extras %}
 {% block title %}Teacher dashboard | AuthShield 360{% endblock %}
 {% block content %}
+  <div class="teacher-dashboard">
   <div class="eyebrow">Teacher portal</div>
   <h1>Welcome, {{ request.user.full_name }}</h1>
   <p class="intro">
@@ -12,13 +13,24 @@
     {% endif %}
   </p>
   {% include "school/partials/announcements.html" %}
-  <div class="actions">
-    <a class="button" href="{% url 'teacher_attendance' %}">Take attendance</a>
-    <a class="button" href="{% url 'teacher_students' %}">{% if request.user.can_manage_all_students %}All student records{% else %}Search students{% endif %}</a>
-    <a class="button secondary" href="{% url 'request_enrollment_change' %}">Request a class roster change</a>
-    <a class="button secondary" href="{% url 'create_assignment' %}">Create assignment</a>
-    <a class="button secondary" href="{% url 'create_exam_result' %}">Record exam result</a>
-  </div>
+  <section class="teacher-overview" aria-label="Teaching overview">
+    <article class="teacher-metric"><span>My courses</span><strong>{{ course_count }}</strong><small>Assigned classes</small></article>
+    <article class="teacher-metric"><span>Students</span><strong>{{ student_count }}</strong><small>Across my courses</small></article>
+    <article class="teacher-metric"><span>Assignments</span><strong>{{ assignment_count }}</strong><small>In my courses</small></article>
+    <article class="teacher-metric"><span>Exam results</span><strong>{{ result_count }}</strong><small>Recorded in my courses</small></article>
+  </section>
+  <section class="teacher-quick-actions" aria-labelledby="teacher-quick-actions-title">
+    <div class="panel-heading">
+      <div><div class="eyebrow">Shortcuts</div><h2 id="teacher-quick-actions-title">Quick actions</h2></div>
+      <a class="teacher-roster-request" href="{% url 'request_enrollment_change' %}">Request a class roster change</a>
+    </div>
+    <div class="teacher-action-grid">
+      <a class="teacher-action" href="{% url 'teacher_attendance' %}"><span>ATTENDANCE</span><strong>Take attendance</strong><small>Mark a class day</small></a>
+      <a class="teacher-action" href="{% url 'teacher_students' %}"><span>STUDENT RECORDS</span><strong>{% if request.user.can_manage_all_students %}All student records{% else %}Find a student{% endif %}</strong><small>Search and update records</small></a>
+      <a class="teacher-action" href="{% url 'create_assignment' %}"><span>CLASSWORK</span><strong>Create assignment</strong><small>Set up upcoming work</small></a>
+      <a class="teacher-action" href="{% url 'create_exam_result' %}"><span>ASSESSMENT</span><strong>Record exam result</strong><small>Post a student's score</small></a>
+    </div>
+  </section>
   {% if request.user.can_manage_all_students %}
     <section class="panel management-section">
       <div class="panel-heading">
@@ -49,8 +61,12 @@
       {% if enrollments %}
         {% regroup enrollments by course as course_rosters %}
         {% for roster in course_rosters %}
-          <section class="course-roster-group" aria-label="Students in {{ roster.grouper.title }}">
-            <h3 class="course-roster-heading"><span>{{ roster.grouper.code }}</span>{{ roster.grouper.title }}</h3>
+          <details class="course-roster-group" {% if forloop.first %}open{% endif %}>
+            <summary class="course-roster-heading">
+              <span class="course-roster-code">{{ roster.grouper.code }}</span>
+              <span class="course-roster-title">{{ roster.grouper.title }}</span>
+              <span class="course-roster-count">{{ roster.list|length }} student{{ roster.list|length|pluralize }}</span>
+            </summary>
             <ul class="item-list">
               {% for enrollment in roster.list %}
                 <li>
@@ -59,7 +75,7 @@
                 </li>
               {% endfor %}
             </ul>
-          </section>
+          </details>
           {% endfor %}
         {% include "school/partials/pagination.html" with page_obj=enrollments page_url="?students_page=" label="Student preview pages" %}
       {% else %}<p class="empty">No students enrolled yet.</p>{% endif %}
@@ -107,5 +123,6 @@
         </ul>
       {% else %}<p class="empty">Changes you make and roster requests you submit will appear here.</p>{% endif %}
     </section>
+  </div>
   </div>
 {% endblock %}
