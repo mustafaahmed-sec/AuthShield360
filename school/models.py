@@ -40,6 +40,10 @@ class StudentRecord(models.Model):
                         "grade": f"Update the roster for {enrollment.course.code} before changing this student to {self.grade}."
                     })
 
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.admission_number} - {self.student.full_name}"
 
@@ -58,6 +62,24 @@ class Course(models.Model):
     def clean(self):
         if self.teacher_id and self.teacher.role != User.Role.TEACHER:
             raise ValidationError({"teacher": "Courses require a Teacher account."})
+        course_grade = grade_for_course_code(self.code)
+        if self.pk and course_grade:
+            existing_code = Course.objects.filter(pk=self.pk).values_list("code", flat=True).first()
+            if grade_for_course_code(existing_code) != course_grade:
+                mismatched_record = StudentRecord.objects.filter(
+                    student__enrollments__course_id=self.pk,
+                ).exclude(grade=course_grade).first()
+                if mismatched_record:
+                    raise ValidationError({
+                        "code": (
+                            f"This course already has students recorded in other grades. "
+                            f"Reconcile the roster before changing it to {course_grade}."
+                        )
+                    })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
     @property
     def expected_grade(self):
@@ -204,6 +226,10 @@ class Enrollment(models.Model):
             student_grade = StudentRecord.objects.filter(student_id=self.student_id).values_list("grade", flat=True).first()
             if course_grade and student_grade and course_grade != student_grade:
                 raise ValidationError({"course": f"This class is for {course_grade}; the student record says {student_grade}."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.student.full_name} in {self.course.code}"

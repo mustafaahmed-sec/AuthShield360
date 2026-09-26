@@ -591,6 +591,8 @@ class Command(BaseCommand):
                     changed_results.append(result)
 
         if new_enrollments:
+            for enrollment in new_enrollments:
+                enrollment.full_clean()
             Enrollment.objects.bulk_create(new_enrollments, batch_size=500)
         if new_results:
             ExamResult.objects.bulk_create(new_results, batch_size=500)

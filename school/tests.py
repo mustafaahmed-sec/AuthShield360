@@ -22,6 +22,50 @@ from .models import (
 )
 
 
+class EnrollmentGradeValidationTests(TestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(
+            "grade-check@example.test", "student-password",
+            full_name="Grade Check Student", role=User.Role.STUDENT,
+        )
+        self.record = StudentRecord.objects.create(
+            student=self.student, admission_number="GRADE-0001", grade="Grade 10",
+        )
+        self.course = Course.objects.create(
+            code="D26-G12-SCI-A", title="Grade 12 Science",
+        )
+
+    def test_direct_orm_enrollment_rejects_a_grade_mismatch(self):
+        with self.assertRaises(ValidationError):
+            Enrollment.objects.create(student=self.student, course=self.course)
+
+        self.assertFalse(Enrollment.objects.filter(student=self.student, course=self.course).exists())
+
+    def test_student_grade_cannot_change_while_old_roster_conflicts(self):
+        self.record.grade = "Grade 12"
+        self.record.save()
+        Enrollment.objects.create(student=self.student, course=self.course)
+
+        self.record.grade = "Grade 10"
+        with self.assertRaises(ValidationError):
+            self.record.save()
+
+        self.record.refresh_from_db()
+        self.assertEqual(self.record.grade, "Grade 12")
+
+    def test_course_grade_code_cannot_be_changed_under_a_conflicting_roster(self):
+        self.record.grade = "Grade 12"
+        self.record.save()
+        Enrollment.objects.create(student=self.student, course=self.course)
+
+        self.course.code = "D26-G10-SCI-A"
+        with self.assertRaises(ValidationError):
+            self.course.save()
+
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.code, "D26-G12-SCI-A")
+
+
 class AccountApprovalFlowTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(
