@@ -388,7 +388,7 @@ class BaselineLoginView(LoginView):
             record_blocked_attempt(email, self.request, action="locked_out", duration_ms=duration_ms)
         elif form.has_error(NON_FIELD_ERRORS, "ip_rate_limited"):
             record_blocked_attempt(email, self.request, action="ip_rate_limited", duration_ms=duration_ms)
-        else:
+        elif form.cleaned_data.get("username") and form.cleaned_data.get("password"):
             record_failed_authentication(
                 email,
                 "login_failure",

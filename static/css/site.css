@@ -107,10 +107,11 @@ button { cursor: pointer; }
 .details dt { color: #50647b; }
 .details dd { margin: 0; font-weight: 650; }
 .item-list { list-style: none; padding: 0; margin: 0; }
-.item-list li { padding: .85rem 0; border-top: 1px solid #e4ebf2; }
+.item-list li { min-width: 0; padding: .85rem 0; border-top: 1px solid #e4ebf2; overflow-wrap: anywhere; }
 .item-list li:first-child { border-top: 0; padding-top: 0; }
 .item-list strong, .item-list span { display: block; }
 .item-list span { margin-top: .2rem; color: #50647b; }
+.item-list .placement-warning { color: #7d4b13; font-weight: 650; }
 .item-list p { margin: .55rem 0 0; line-height: 1.5; }
 .signup-card { border-color: #d3e0e9; }
 .signup-choice-card { max-width: 760px; margin: auto; }

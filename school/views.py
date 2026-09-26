@@ -103,6 +103,11 @@ def dashboard(request):
             due_date__gte=today,
             due_date__lte=today + timedelta(days=14),
         ).select_related("course").order_by("due_date", "id")
+        assignment_page = Paginator(
+            Assignment.objects.filter(course__enrollments__student=user)
+            .select_related("course").order_by("due_date", "id"),
+            5,
+        ).get_page(request.GET.get("assignments_page"))
         context = {
             "announcements": active_announcements_for(user),
             "record": StudentRecord.objects.filter(student=user).first(),
@@ -114,8 +119,7 @@ def dashboard(request):
             "courses": courses,
             "due_soon": due_soon,
             "due_soon_count": due_soon.count(),
-            "assignments": Assignment.objects.filter(course__enrollments__student=user)
-            .select_related("course").order_by("due_date", "id"),
+            "assignments": assignment_page,
             "results": ExamResult.objects.filter(student=user).select_related("course").order_by("course__code", "exam_name"),
             "recent_results": ExamResult.objects.filter(student=user)
             .select_related("course").order_by("-pk")[:5],

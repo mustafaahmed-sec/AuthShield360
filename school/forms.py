@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from accounts.models import User
 
-from .models import Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, StudentRecord
+from .models import Assignment, AttendanceRecord, Course, Enrollment, EnrollmentChangeRequest, ExamResult, StudentRecord, grade_for_course_code
 
 
 class AdminStudentCreationForm(UserCreationForm):
@@ -199,6 +199,13 @@ class EnrollmentChangeRequestForm(forms.ModelForm):
             enrolled = Enrollment.objects.filter(course=course, student=student).exists()
             if action == EnrollmentChangeRequest.Action.ADD and enrolled:
                 raise ValidationError("This student is already enrolled in that course.")
+            if action == EnrollmentChangeRequest.Action.ADD:
+                course_grade = grade_for_course_code(course.code)
+                if course_grade and student.student_record.grade != course_grade:
+                    self.add_error(
+                        "course",
+                        f"This class is for {course_grade}; the student record says {student.student_record.grade}.",
+                    )
             if action == EnrollmentChangeRequest.Action.REMOVE and not enrolled:
                 raise ValidationError("This student is not enrolled in that course.")
             if EnrollmentChangeRequest.objects.filter(

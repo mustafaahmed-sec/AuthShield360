@@ -26,7 +26,7 @@
       </section>
       <section class="panel">
         <h2>Courses</h2>
-        {% if courses %}<ul class="item-list">{% for course in courses %}<li><strong>{{ course.code }} · {{ course.title }}</strong><span>Teacher: {{ course.teacher.full_name|default:"Not assigned" }}</span></li>{% endfor %}</ul>
+        {% if courses %}<ul class="item-list">{% for course in courses %}<li><strong>{{ course.code }} · {{ course.title }}</strong><span>Teacher: {{ course.teacher.full_name|default:"Not assigned" }}</span>{% if record and course.expected_grade and course.expected_grade != record.grade %}<span class="placement-warning">Grade differs from this class. Confirm the placement.</span>{% endif %}</li>{% endfor %}</ul>
         {% else %}<p class="empty">No courses assigned.</p>{% endif %}
       </section>
       <section class="panel">
@@ -59,7 +59,7 @@
       </section>
       <section class="panel">
         <h2>Students in these classes</h2>
-        {% if enrollments %}<ul class="item-list">{% for enrollment in enrollments %}<li><strong>{{ enrollment.student.full_name }}</strong><span>{{ enrollment.course.code }}{% if enrollment.student.student_record.grade %} · {{ enrollment.student.student_record.grade }}{% endif %}</span></li>{% endfor %}</ul>
+        {% if enrollments %}<ul class="item-list">{% for enrollment in enrollments %}<li><strong>{{ enrollment.student.full_name }}</strong><span>{{ enrollment.course.code }}{% if enrollment.student.student_record.grade %} · {{ enrollment.student.student_record.grade }}{% endif %}</span>{% if enrollment.course.expected_grade and enrollment.course.expected_grade != enrollment.student.student_record.grade %}<span class="placement-warning">Grade differs from this class. Confirm the placement.</span>{% endif %}</li>{% endfor %}</ul>
         {% else %}<p class="empty">No students are enrolled.</p>{% endif %}
       </section>
       <section class="panel">

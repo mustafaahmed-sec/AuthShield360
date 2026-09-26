@@ -1,9 +1,20 @@
+import re
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 
 from accounts.models import User
+
+
+def grade_for_course_code(code):
+    """Return the grade encoded in a seeded class code, if there is one."""
+    match = re.match(r"^D\d+-(K|G(?:[1-9]|1[0-2]))-", code or "")
+    if not match:
+        return None
+    grade_code = match.group(1)
+    return "Kindergarten" if grade_code == "K" else f"Grade {grade_code[1:]}"
 
 
 class StudentRecord(models.Model):
@@ -21,6 +32,13 @@ class StudentRecord(models.Model):
     def clean(self):
         if self.student_id and self.student.role != User.Role.STUDENT:
             raise ValidationError({"student": "Student records require a Student account."})
+        if self.pk and self.student_id and StudentRecord.objects.filter(pk=self.pk).exclude(grade=self.grade).exists():
+            for enrollment in Enrollment.objects.filter(student_id=self.student_id).select_related("course"):
+                course_grade = enrollment.course.expected_grade
+                if course_grade and course_grade != self.grade:
+                    raise ValidationError({
+                        "grade": f"Update the roster for {enrollment.course.code} before changing this student to {self.grade}."
+                    })
 
     def __str__(self):
         return f"{self.admission_number} - {self.student.full_name}"
@@ -40,6 +58,10 @@ class Course(models.Model):
     def clean(self):
         if self.teacher_id and self.teacher.role != User.Role.TEACHER:
             raise ValidationError({"teacher": "Courses require a Teacher account."})
+
+    @property
+    def expected_grade(self):
+        return grade_for_course_code(self.code)
 
     def __str__(self):
         return f"{self.code} - {self.title}"
@@ -177,6 +199,11 @@ class Enrollment(models.Model):
     def clean(self):
         if self.student_id and self.student.role != User.Role.STUDENT:
             raise ValidationError({"student": "Enrollments require a Student account."})
+        if self.student_id and self.course_id:
+            course_grade = grade_for_course_code(self.course.code)
+            student_grade = StudentRecord.objects.filter(student_id=self.student_id).values_list("grade", flat=True).first()
+            if course_grade and student_grade and course_grade != student_grade:
+                raise ValidationError({"course": f"This class is for {course_grade}; the student record says {student_grade}."})
 
     def __str__(self):
         return f"{self.student.full_name} in {self.course.code}"

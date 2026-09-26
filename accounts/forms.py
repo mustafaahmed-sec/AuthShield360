@@ -112,6 +112,10 @@ class PasswordResetRequestForm(forms.Form):
 
 class EmailAuthenticationForm(AuthenticationForm):
     username = forms.EmailField(label="Email address", widget=forms.EmailInput(attrs={"autocomplete": "username"}))
+    error_messages = {
+        **AuthenticationForm.error_messages,
+        "invalid_login": "Check your email address and password, then try again.",
+    }
     otp_channel = forms.ChoiceField(
         label="Send the sign-in code by",
         choices=(("sms", "SMS text message"), ("email", "Email")),
@@ -126,8 +130,11 @@ class EmailAuthenticationForm(AuthenticationForm):
             self.fields["otp_channel"].initial = "email"
         self.fields["password"].widget.attrs.update({"autocomplete": "current-password"})
 
+    def clean_username(self):
+        return self.cleaned_data["username"].strip().lower()
+
     def clean(self):
-        email = self.data.get(self.add_prefix(self.username_field), "").strip().lower()
+        email = self.cleaned_data.get("username", "")
         now = timezone.now()
         ip_until = ip_throttle_until(self.request, now, email=email, exempt_admin=True)
         if ip_until:

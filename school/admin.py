@@ -21,8 +21,58 @@ from .models import (
     StudentRecord,
     TeacherAttendanceRecord,
     TeacherPortalAuditEvent,
+    grade_for_course_code,
 )
 from . import announcement_admin  # noqa: F401
+
+
+class CourseAdminForm(forms.ModelForm):
+    class Meta:
+        model = Course
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        eligible = Q(
+            role=User.Role.TEACHER,
+            is_active=True,
+            approval_status=User.ApprovalStatus.APPROVED,
+        )
+        if self.instance.pk and self.instance.teacher_id:
+            eligible |= Q(pk=self.instance.teacher_id)
+        self.fields["teacher"].queryset = User.objects.filter(eligible).order_by("full_name", "email")
+
+
+class EnrollmentAdminForm(forms.ModelForm):
+    class Meta:
+        model = Enrollment
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        students = User.objects.filter(
+            role=User.Role.STUDENT,
+            is_active=True,
+            approval_status=User.ApprovalStatus.APPROVED,
+            student_record__isnull=False,
+        )
+        course_id = (
+            self.data.get(self.add_prefix("course"))
+            if self.is_bound
+            else self.initial.get("course") or getattr(self.instance, "course_id", None)
+        )
+        course_code = None
+        if course_id:
+            try:
+                course_code = Course.objects.filter(pk=course_id).values_list("code", flat=True).first()
+            except (TypeError, ValueError):
+                pass
+        course_grade = grade_for_course_code(course_code)
+        if course_grade:
+            students = students.filter(student_record__grade=course_grade)
+        if self.instance.pk and self.instance.student_id:
+            students = students | User.objects.filter(pk=self.instance.student_id)
+        self.fields["student"].queryset = students.distinct().order_by("full_name", "email")
 
 
 class AttendanceRecordAdminForm(forms.ModelForm):
@@ -83,12 +133,14 @@ class StudentRecordAdmin(admin.ModelAdmin):
 
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
+    form = CourseAdminForm
     list_display = ("code", "title", "teacher")
     search_fields = ("code", "title", "teacher__email")
 
 
 @admin.register(Enrollment)
 class EnrollmentAdmin(admin.ModelAdmin):
+    form = EnrollmentAdminForm
     list_display = ("student", "course")
     list_filter = ("course",)
 

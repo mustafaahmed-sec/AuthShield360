@@ -72,6 +72,7 @@
                 <li>
                   <strong>{{ enrollment.student.full_name }}</strong>
                   <span>{{ enrollment.student.student_record.grade }}{% if enrollment.student.student_record.age %} · age {{ enrollment.student.student_record.age }}{% endif %}</span>
+                  {% if roster.grouper.expected_grade and roster.grouper.expected_grade != enrollment.student.student_record.grade %}<span class="placement-warning">Grade differs from this class. Confirm the placement with an administrator.</span>{% endif %}
                 </li>
               {% endfor %}
             </ul>

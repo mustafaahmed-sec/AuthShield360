@@ -43,7 +43,7 @@
   </section>
   <div class="dashboard-grid">
     <section class="panel"><h2>My record</h2>{% if record %}<dl class="details"><dt>Admission number</dt><dd>{{ record.admission_number }}</dd><dt>Grade</dt><dd>{{ record.grade }}</dd>{% if record.age %}<dt>Age</dt><dd>{{ record.age }}</dd>{% endif %}{% if record.gender %}<dt>Gender</dt><dd>{{ record.get_gender_display }}</dd>{% endif %}</dl>{% else %}<p class="empty">Your school record has not been assigned yet.</p>{% endif %}</section>
-    <section class="panel"><h2>My courses</h2>{% if courses %}<ul class="item-list">{% for course in courses %}<li><strong>{{ course.code }} · {{ course.title }}</strong><span>Teacher: {{ course.teacher.full_name }}</span></li>{% endfor %}</ul>{% else %}<p class="empty">No courses assigned yet.</p>{% endif %}</section>
+    <section class="panel"><h2>My courses</h2>{% if courses %}<ul class="item-list">{% for course in courses %}<li><strong>{{ course.code }} · {{ course.title }}</strong><span>Teacher: {{ course.teacher.full_name }}</span>{% if record and course.expected_grade and course.expected_grade != record.grade %}<span class="placement-warning">This class is listed for {{ course.expected_grade }}, but your record says {{ record.grade }}. Please ask school staff to confirm your placement.</span>{% endif %}</li>{% endfor %}</ul>{% else %}<p class="empty">No courses assigned yet.</p>{% endif %}</section>
     <section class="panel" aria-labelledby="attendance-title">
       <h2 id="attendance-title">My attendance</h2>
       {% if overall_attendance_percent is not None %}
@@ -103,7 +103,17 @@
         </ul>
       {% else %}<p class="empty">No assignments are due in the next 14 days.</p>{% endif %}
     </section>
-    <section class="panel"><h2>Assignments</h2>{% if assignments %}<ul class="item-list">{% for assignment in assignments %}<li><strong>{{ assignment.title }}</strong><span>{{ assignment.course.code }} · Due {{ assignment.due_date|date:"j M Y" }}</span><p>{{ assignment.description }}</p></li>{% endfor %}</ul>{% else %}<p class="empty">No assignments yet.</p>{% endif %}</section>
+    <section class="panel" aria-labelledby="assignments-title">
+      <h2 id="assignments-title">Assignments{% if assignments.paginator.count %} <span class="count-chip">{{ assignments.paginator.count }}</span>{% endif %}</h2>
+      {% if assignments %}
+        <ul class="item-list">
+          {% for assignment in assignments %}
+            <li><strong>{{ assignment.title }}</strong><span>{{ assignment.course.code }} · Due {{ assignment.due_date|date:"j M Y" }}</span><p>{{ assignment.description }}</p></li>
+          {% endfor %}
+        </ul>
+        {% include "school/partials/pagination.html" with page_obj=assignments page_url="?assignments_page=" label="Assignment pages" %}
+      {% else %}<p class="empty">No assignments yet.</p>{% endif %}
+    </section>
     <section class="panel"><h2>Exam results</h2>{% if results %}<ul class="item-list">{% for result in results %}<li><strong>{{ result.exam_name }}</strong><span>{{ result.course.code }} · {{ result.score }} / {{ result.max_score }}</span></li>{% endfor %}</ul>{% else %}<p class="empty">No results posted yet.</p>{% endif %}</section>
   </div>
   </div>

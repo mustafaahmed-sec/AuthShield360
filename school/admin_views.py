@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q
@@ -316,7 +317,14 @@ def review_enrollment_request(request, request_id):
             messages.error(request, "This student account is no longer active; the request was left unchanged.")
             return redirect("admin_management")
         if change.action == EnrollmentChangeRequest.Action.ADD:
-            Enrollment.objects.get_or_create(student=change.student, course=change.course)
+            if not Enrollment.objects.filter(student=change.student, course=change.course).exists():
+                enrollment = Enrollment(student=change.student, course=change.course)
+                try:
+                    enrollment.full_clean()
+                except ValidationError as error:
+                    messages.error(request, f"The roster was not changed: {error.messages[0]}")
+                    return redirect("admin_management")
+                Enrollment.objects.get_or_create(student=change.student, course=change.course)
         else:
             Enrollment.objects.filter(student=change.student, course=change.course).delete()
         change.status = EnrollmentChangeRequest.Status.APPROVED
