@@ -328,6 +328,22 @@ class BaselineLoginView(LoginView):
         context["otp_enabled"] = settings.AUTHSHIELD_OTP_ENABLED
         context["email_step_up"] = settings.AUTHSHIELD_EMAIL_STEP_UP
         context["mobile_otp_enabled"] = firebase_phone_auth_available()
+        context["lockout_until"] = 0
+        if self.request.method == "POST":
+            email = normalized_email(self.request.POST.get("username", ""))
+            now = timezone.now()
+            account_until = account_lockout_until(email, now)
+            source_until = ip_throttle_until(self.request, now)
+            until = account_until or source_until
+            if until:
+                context["lockout_until"] = until.timestamp()
+                remaining = max(0, int((until - now).total_seconds() + 0.999))
+                context["lockout_clock_initial"] = f"{remaining // 60:02d}:{remaining % 60:02d}"
+                context["lockout_message"] = (
+                    f"This account is temporarily locked after {settings.AUTHSHIELD_LOCKOUT_ATTEMPTS} failed attempts."
+                    if account_until
+                    else "Sign-in is temporarily limited from this network after repeated requests."
+                )
         return context
 
     def form_invalid(self, form):

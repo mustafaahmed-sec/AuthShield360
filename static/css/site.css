@@ -72,6 +72,8 @@ button { cursor: pointer; }
 .help-text ul { padding-left: 1.2rem; }
 .field-error, .form-error { color: #8e1b1b; font-size: .9rem; line-height: 1.5; }
 .form-error { border-left: 3px solid #a62626; background: #fff2f2; padding: .7rem 1rem; }
+.lockout-notice { display: grid; gap: .45rem; margin: 1.2rem 0; }
+.lockout-clock { display: inline-block; margin-left: .2rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 1.2em; font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: .06em; }
 .field-error ul, .form-error ul { margin: .3rem 0; padding-left: 1.2rem; }
 .form-foot { margin: 1.4rem 0 0; }
 .otp-countdown { margin: 1.15rem 0; padding: .7rem .9rem; border-left: 3px solid #087c75; border-radius: .35rem; background: #eef8f7; color: #174a7a; font-weight: 700; font-variant-numeric: tabular-nums; }
