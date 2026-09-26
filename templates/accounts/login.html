@@ -18,6 +18,7 @@
         {% endfor %}
         <button class="button full" type="submit">{% if otp_enabled %}Continue to verification{% else %}Sign in{% endif %}</button>
       </form>
+      <p class="form-foot"><a href="{% url 'password_reset_request' %}">Forgot your password?</a></p>
       <p class="form-foot">Waiting for access approval? <a href="{% url 'registration_status' %}">Check your request status</a>.</p>
     </section>
     <aside class="side-card"><span class="eyebrow">{% if otp_enabled %}{% if email_step_up %}SMS + email verification{% elif mobile_otp_enabled %}SMS and email verification{% else %}Email verification{% endif %}{% else %}Demo baseline{% endif %}</span><h2>{% if otp_enabled %}Verify it’s you{% else %}One step at a time{% endif %}</h2><p>{% if otp_enabled %}{% if email_step_up %}After your password, verify with an SMS code and then confirm with a second code sent to your email.{% elif mobile_otp_enabled %}After your password is accepted, we’ll send a one-time code using your selected method.{% else %}After your password is accepted, we’ll send a one-time code to your account email.{% endif %} You will not be signed in until verification succeeds.{% else %}This demonstration currently uses password-only sign-in. Your role takes you to the matching school dashboard.{% endif %}</p><p>Use fictional school records and test contact details for this demonstration.</p></aside>

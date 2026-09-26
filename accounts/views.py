@@ -4,8 +4,10 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login, update_session_auth_hash
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import check_password
 from django.contrib.auth.views import LoginView, LogoutView
 from django.core.exceptions import ImproperlyConfigured, NON_FIELD_ERRORS, PermissionDenied
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
@@ -24,8 +26,15 @@ from .lockout import (
     retry_minutes,
 )
 
-from .forms import EmailAuthenticationForm, RegistrationStatusForm, StudentSignupForm, TeacherSignupForm
+from .forms import (
+    EmailAuthenticationForm,
+    PasswordResetRequestForm,
+    RegistrationStatusForm,
+    StudentSignupForm,
+    TeacherSignupForm,
+)
 from django.contrib.auth.forms import SetPasswordForm
+from .models import EmailOTPChallenge
 from .otp import (
     OTPProviderError,
     check_otp,
@@ -69,13 +78,16 @@ def _otp_ttl_seconds(channel):
     return settings.AUTHSHIELD_OTP_TTL_SECONDS
 
 
-def _start_otp(request, user, channel, *, phase="primary", reset_resends=True):
-    started_at = timezone.now().timestamp() if phase == "primary" else request.session.get("authshield_otp_started_at")
-    start_otp(
+def _start_otp(request, user, channel, *, phase="primary", reset_resends=True, force_new=False):
+    purpose = "email_step_up" if phase == "email_step_up" else "sign_in"
+    challenge = start_otp(
         delivery_target(user, channel),
         channel,
         request.session,
         recipient_name=user.full_name,
+        user=user,
+        purpose=purpose,
+        force_new=force_new,
     )
     request.session["authshield_otp_user_id"] = user.pk
     request.session["authshield_otp_channel"] = channel
@@ -83,15 +95,17 @@ def _start_otp(request, user, channel, *, phase="primary", reset_resends=True):
     if phase == "primary":
         request.session["authshield_otp_primary_channel"] = channel
     now = timezone.now().timestamp()
-    request.session["authshield_otp_sent_at"] = now
+    sent_at = challenge.sent_at.timestamp() if isinstance(challenge, EmailOTPChallenge) and challenge.sent_at else now
+    request.session["authshield_otp_sent_at"] = sent_at
     ttl_seconds = _otp_ttl_seconds(channel)
-    request.session["authshield_otp_expires_at"] = now + ttl_seconds
-    if phase == "primary":
-        request.session["authshield_otp_started_at"] = started_at
+    expires_at = challenge.expires_at.timestamp() if isinstance(challenge, EmailOTPChallenge) and challenge.expires_at else now + ttl_seconds
+    request.session["authshield_otp_expires_at"] = expires_at
+    request.session["authshield_otp_started_at"] = sent_at
     request.session["authshield_otp_attempts"] = 0
     if reset_resends:
         request.session["authshield_otp_resends"] = 0
-    request.session.set_expiry(ttl_seconds)
+    request.session.set_expiry(max(1, int(expires_at - now)))
+    return challenge
 
 
 def _prepare_firebase_sms_challenge(request, user):
@@ -120,7 +134,7 @@ def _otp_duration_ms(request):
     return max(0, int((timezone.now().timestamp() - started_at) * 1000))
 
 
-def _otp_context(user, channel, phase):
+def _otp_context(request, user, channel, phase):
     destination = delivery_target(user, channel)
     if channel == "email":
         local, _, domain = destination.partition("@")
@@ -132,6 +146,9 @@ def _otp_context(user, channel, phase):
         "destination": destination,
         "phase": phase,
         "step_up": phase == "email_step_up",
+        "otp_sms_sent": channel != "sms" or bool(request.session.get("authshield_otp_sms_sent")),
+        "otp_expires_at": request.session.get("authshield_otp_expires_at", 0),
+        "otp_resend_available_at": request.session.get("authshield_otp_sent_at", 0) + 30,
     }
     if channel == "sms":
         context.update({
@@ -363,7 +380,7 @@ def otp_verify(request):
         if source_until:
             record_blocked_attempt(user.email, request, action="ip_rate_limited")
             messages.error(request, f"Too many attempts. Try again in {retry_minutes(source_until, now)} minutes.")
-            return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase), status=429)
+            return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase), status=429)
         code = (request.POST.get("code") or "").strip()
         attempts = request.session.get("authshield_otp_attempts", 0)
         if attempts >= 5:
@@ -373,7 +390,7 @@ def otp_verify(request):
         if channel == "sms":
             if not request.session.get("authshield_otp_sms_sent"):
                 messages.error(request, "Request the SMS code first, then enter it here.")
-                return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase), status=400)
+                return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase), status=400)
             try:
                 verified_token = verify_firebase_phone_id_token(
                     request.POST.get("firebase_id_token", ""),
@@ -383,13 +400,21 @@ def otp_verify(request):
                 approved = verified_token is not None
             except (OTPProviderError, ImproperlyConfigured):
                 messages.error(request, "Firebase could not verify the sign-in right now. Try again shortly.")
-                return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase), status=503)
+                return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase), status=503)
         else:
             try:
-                approved = check_otp(delivery_target(user, channel), channel, code, request.session)
+                purpose = "email_step_up" if phase == "email_step_up" else "sign_in"
+                approved = check_otp(
+                    delivery_target(user, channel),
+                    channel,
+                    code,
+                    request.session,
+                    user=user,
+                    purpose=purpose,
+                )
             except (OTPProviderError, ImproperlyConfigured):
                 messages.error(request, "We could not verify that code right now. Try again shortly.")
-                return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase), status=503)
+                return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase), status=503)
         if not approved:
             request.session["authshield_otp_attempts"] = attempts + 1
             record_failed_authentication(
@@ -406,7 +431,7 @@ def otp_verify(request):
                 messages.error(request, "Too many attempts. The account is temporarily locked.")
                 return redirect("login")
             messages.error(request, "That code is invalid or expired. Check it and try again.")
-            return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase))
+            return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase))
 
         record_auth_event(
             "otp_success",
@@ -460,7 +485,7 @@ def otp_verify(request):
             return redirect("password_change")
         return redirect(next_url)
 
-    return render(request, "accounts/otp_verify.html", _otp_context(user, channel, phase))
+    return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase))
 
 
 def _pending_sms_user(request):
@@ -513,13 +538,23 @@ def otp_sms_mark_sent(request):
     if not user or not authorized_at or timezone.now().timestamp() - authorized_at > 120:
         return JsonResponse({"error": "The SMS request expired. Request a new code."}, status=400)
     request.session["authshield_otp_sms_sent"] = True
+    now = timezone.now().timestamp()
+    request.session["authshield_otp_sent_at"] = now
+    request.session["authshield_otp_started_at"] = now
+    request.session["authshield_otp_expires_at"] = now + settings.AUTHSHIELD_SMS_OTP_TTL_SECONDS
+    request.session.set_expiry(settings.AUTHSHIELD_SMS_OTP_TTL_SECONDS)
     request.session.save()
     record_auth_event(
         "otp_sent", email=user.email,
         description="Firebase accepted the SMS verification request.",
         request=request, factor="mobile_otp", outcome="success",
     )
-    return JsonResponse({"ok": True})
+    return JsonResponse({
+        "ok": True,
+        "sentAt": now,
+        "expiresAt": request.session["authshield_otp_expires_at"],
+        "resendAvailableAt": now + 60,
+    })
 
 
 @require_POST
@@ -568,9 +603,12 @@ def otp_resend(request):
         messages.error(request, "You have reached the resend limit. Start sign-in again later.")
         return redirect("otp_verify")
     try:
-        _start_otp(request, user, channel, phase=phase, reset_resends=False)
+        challenge = _start_otp(request, user, channel, phase=phase, reset_resends=False, force_new=True)
     except (OTPProviderError, ImproperlyConfigured):
         messages.error(request, "We could not send another code right now.")
+        return redirect("otp_verify")
+    if challenge and not getattr(challenge, "_email_sent", True):
+        messages.info(request, "A code was just sent. Check that message, then wait before requesting another.")
         return redirect("otp_verify")
     record_auth_event(
         "otp_sent", email=user.email,
@@ -582,6 +620,259 @@ def otp_resend(request):
     request.session["authshield_otp_resends"] = request.session.get("authshield_otp_resends", 0) + 1
     messages.success(request, "A new verification code was sent.")
     return redirect("otp_verify")
+
+
+def _clear_password_reset_session(request):
+    request.session.pop("authshield_password_reset_user_id", None)
+    request.session.pop("authshield_password_reset_resends", None)
+    request.session.pop("authshield_password_reset_expires_at", None)
+    request.session.pop("authshield_password_reset_sent_at", None)
+    request.session.pop("authshield_password_reset_started_at", None)
+
+
+@require_http_methods(["GET", "POST"])
+def password_reset_request(request):
+    form = PasswordResetRequestForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        _clear_otp_session(request)
+        _clear_password_reset_session(request)
+        now = timezone.now().timestamp()
+        request.session["authshield_password_reset_started_at"] = now
+        request.session["authshield_password_reset_sent_at"] = now
+        request.session["authshield_password_reset_expires_at"] = now + settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
+        request.session["authshield_password_reset_resends"] = 0
+        request.session.set_expiry(settings.SESSION_COOKIE_AGE)
+        email = normalized_email(form.cleaned_data["email"])
+        user = User.objects.filter(
+            email__iexact=email,
+            is_active=True,
+            approval_status=User.ApprovalStatus.APPROVED,
+        ).first()
+        if user:
+            # Keep the eligible account in this browser session so a transient
+            # mail-delivery failure can be retried from the same generic page.
+            request.session["authshield_password_reset_user_id"] = user.pk
+            try:
+                challenge = start_otp(
+                    user.email,
+                    "email",
+                    request.session,
+                    recipient_name=user.full_name,
+                    user=user,
+                    purpose=EmailOTPChallenge.Purpose.PASSWORD_RESET,
+                )
+            except OTPProviderError:
+                record_auth_event(
+                    "password_reset_otp_failure",
+                    email=user.email,
+                    actor=user,
+                    description="Email delivery for a password recovery code could not be completed.",
+                    request=request,
+                    factor="email_otp",
+                    outcome="failure",
+                )
+            except ImproperlyConfigured:
+                # Without the challenge table or provider configuration there
+                # is no recoverable reset request to associate with this page.
+                request.session.pop("authshield_password_reset_user_id", None)
+                record_auth_event(
+                    "password_reset_otp_failure",
+                    email=user.email,
+                    actor=user,
+                    description="Email password recovery is not configured for this deployment.",
+                    request=request,
+                    factor="email_otp",
+                    outcome="failure",
+                )
+            else:
+                request.session["authshield_password_reset_user_id"] = user.pk
+                expires_at = challenge.expires_at.timestamp() if challenge and challenge.expires_at else 0
+                sent_at = challenge.sent_at.timestamp() if challenge and challenge.sent_at else now
+                request.session["authshield_password_reset_sent_at"] = sent_at
+                request.session["authshield_password_reset_expires_at"] = expires_at
+                request.session.set_expiry(settings.SESSION_COOKIE_AGE)
+                record_auth_event(
+                    "password_reset_otp_sent",
+                    email=user.email,
+                    actor=user,
+                    description="A password recovery code was sent or an active code was reused.",
+                    request=request,
+                    factor="email_otp",
+                    outcome="success",
+                )
+        # Keep the response the same for known and unknown addresses.
+        return redirect("password_reset_verify")
+    return render(request, "accounts/password_reset_request.html", {"form": form})
+
+
+@require_http_methods(["GET", "POST"])
+def password_reset_verify(request):
+    user_id = request.session.get("authshield_password_reset_user_id")
+    user = User.objects.filter(
+        pk=user_id,
+        is_active=True,
+        approval_status=User.ApprovalStatus.APPROVED,
+    ).first() if user_id else None
+    challenge = EmailOTPChallenge.objects.filter(
+        user=user,
+        purpose=EmailOTPChallenge.Purpose.PASSWORD_RESET,
+    ).first() if user else None
+    has_reset_request = bool(request.session.get("authshield_password_reset_started_at"))
+    password_form = SetPasswordForm(user, request.POST or None) if has_reset_request else None
+    now = timezone.now()
+    active = bool(
+        challenge
+        and challenge.code_hash
+        and challenge.expires_at
+        and challenge.expires_at > now
+        and not challenge.completed_at
+    )
+    if request.method == "POST":
+        code = (request.POST.get("code") or "").strip()
+        failure_message = "That code is invalid or expired. Check your email and try again."
+        failed_code = False
+        completed = False
+        password_invalid = False
+        if user and challenge and active:
+            with transaction.atomic():
+                challenge = EmailOTPChallenge.objects.select_for_update().get(pk=challenge.pk)
+                if challenge.attempts >= 5 or not challenge.code_hash or not challenge.expires_at or challenge.expires_at <= timezone.now():
+                    challenge.code_hash = ""
+                    challenge.save(update_fields=("code_hash",))
+                elif not check_password(code, challenge.code_hash):
+                    challenge.attempts += 1
+                    if challenge.attempts >= 5:
+                        challenge.code_hash = ""
+                    challenge.save(update_fields=("attempts", "code_hash"))
+                    failed_code = True
+                elif password_form and password_form.is_valid():
+                    reset_user = password_form.save(commit=False)
+                    reset_user.must_change_password = False
+                    reset_user.locked_until = None
+                    reset_user.save(update_fields=("password", "must_change_password", "locked_until"))
+                    challenge.code_hash = ""
+                    challenge.completed_at = timezone.now()
+                    challenge.save(update_fields=("code_hash", "completed_at"))
+                    completed = True
+                else:
+                    password_invalid = True
+        else:
+            failure_message = "That code is invalid or expired. Check your email and try again."
+
+        if completed:
+            _clear_password_reset_session(request)
+            record_auth_event(
+                "password_reset_completed",
+                email=user.email,
+                actor=user,
+                description="The account holder reset their password after verifying an email code.",
+                request=request,
+                factor="email_otp",
+                outcome="success",
+            )
+            messages.success(request, "Your password has been reset. Sign in with your new password.")
+            return redirect("login")
+        if failed_code:
+            record_failed_authentication(
+                user.email,
+                "password_reset_failure",
+                request,
+                factor="email_otp",
+                description="An invalid password recovery code was submitted.",
+            )
+            if challenge.attempts >= 5:
+                failure_message = "That code is invalid or expired. Check your email and try again."
+        if not password_invalid:
+            messages.error(request, failure_message)
+        challenge = EmailOTPChallenge.objects.filter(
+            user=user,
+            purpose=EmailOTPChallenge.Purpose.PASSWORD_RESET,
+        ).first() if user else None
+        now = timezone.now()
+        active = bool(
+            challenge
+            and challenge.code_hash
+            and challenge.expires_at
+            and challenge.expires_at > now
+            and not challenge.completed_at
+        )
+
+    expires_at = request.session.get("authshield_password_reset_expires_at", 0)
+    sent_at = request.session.get("authshield_password_reset_sent_at", 0)
+    if user and challenge:
+        sent_at = challenge.sent_at.timestamp() if challenge.sent_at else sent_at
+        expires_at = challenge.expires_at.timestamp() if challenge.expires_at else expires_at
+        if challenge.completed_at or not challenge.code_hash:
+            expires_at = min(expires_at, now.timestamp()) if expires_at else now.timestamp()
+        request.session["authshield_password_reset_sent_at"] = sent_at
+        request.session["authshield_password_reset_expires_at"] = expires_at
+    context = {
+        "has_reset_request": has_reset_request,
+        "password_form": password_form,
+        "challenge_active": has_reset_request,
+        "otp_expires_at": expires_at,
+        "otp_resend_available_at": sent_at + 30,
+    }
+    return render(request, "accounts/password_reset_verify.html", context)
+
+
+@require_POST
+def password_reset_resend(request):
+    user_id = request.session.get("authshield_password_reset_user_id")
+    user = User.objects.filter(
+        pk=user_id,
+        is_active=True,
+        approval_status=User.ApprovalStatus.APPROVED,
+    ).first() if user_id else None
+    challenge = EmailOTPChallenge.objects.filter(
+        user=user,
+        purpose=EmailOTPChallenge.Purpose.PASSWORD_RESET,
+    ).first() if user else None
+    if not request.session.get("authshield_password_reset_started_at"):
+        return redirect("password_reset_request")
+
+    now = timezone.now()
+    seconds_since_send = int((now - challenge.sent_at).total_seconds()) if challenge and challenge.sent_at else 30
+    if user and challenge and seconds_since_send < 30:
+        return redirect("password_reset_verify")
+    resend_count = request.session.get("authshield_password_reset_resends", 0)
+    if resend_count < 3:
+        if user and challenge:
+            try:
+                challenge = start_otp(
+                    user.email,
+                    "email",
+                    request.session,
+                    recipient_name=user.full_name,
+                    user=user,
+                    purpose=EmailOTPChallenge.Purpose.PASSWORD_RESET,
+                    force_new=True,
+                )
+            except (OTPProviderError, ImproperlyConfigured):
+                messages.error(request, "We could not send a new code right now. Try again later.")
+            if challenge and getattr(challenge, "_email_sent", False):
+                request.session["authshield_password_reset_sent_at"] = challenge.sent_at.timestamp()
+                request.session["authshield_password_reset_expires_at"] = challenge.expires_at.timestamp()
+                record_auth_event(
+                    "password_reset_otp_sent",
+                    email=user.email,
+                    actor=user,
+                    description="A replacement password recovery code was sent; the prior code is invalid.",
+                    request=request,
+                    factor="email_otp",
+                    outcome="success",
+                )
+            elif challenge and not getattr(challenge, "_email_sent", True):
+                messages.info(request, "A code was recently sent. Check that message, then wait before requesting another.")
+        now = timezone.now().timestamp()
+        request.session["authshield_password_reset_resends"] = resend_count + 1
+        if not user or not challenge:
+            request.session["authshield_password_reset_sent_at"] = now
+            request.session["authshield_password_reset_expires_at"] = now + settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
+    else:
+        messages.info(request, "This reset request reached its resend limit. Start again later.")
+    request.session.set_expiry(settings.SESSION_COOKIE_AGE)
+    return redirect("password_reset_verify")
 
 
 class BaselineLogoutView(LogoutView):

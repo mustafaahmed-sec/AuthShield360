@@ -106,3 +106,23 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.full_name or self.email
+
+
+class EmailOTPChallenge(models.Model):
+    class Purpose(models.TextChoices):
+        SIGN_IN = "sign_in", "Sign in"
+        EMAIL_STEP_UP = "email_step_up", "Additional sign-in verification"
+        PASSWORD_RESET = "password_reset", "Password reset"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="email_otp_challenges")
+    purpose = models.CharField(max_length=24, choices=Purpose.choices)
+    code_hash = models.CharField(max_length=128, blank=True, default="")
+    sent_at = models.DateTimeField(blank=True, null=True)
+    expires_at = models.DateTimeField(blank=True, null=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    completed_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("user", "purpose"), name="unique_user_email_otp_purpose"),
+        ]

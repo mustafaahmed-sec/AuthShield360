@@ -3,12 +3,15 @@
 import secrets
 import re
 import smtplib
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ImproperlyConfigured
+from django.db import OperationalError, ProgrammingError, transaction
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+from django.utils import timezone
 from google.auth.exceptions import GoogleAuthError
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2.id_token import verify_firebase_token
@@ -93,7 +96,7 @@ def verify_firebase_phone_id_token(id_token, *, expected_phone, minimum_auth_tim
 
 
 class GmailEmailOTP:
-    """Send email codes through Gmail SMTP and verify them against the session."""
+    """Send Gmail codes with one active database-backed challenge per account and purpose."""
 
     SESSION_KEY = "authshield_email_otp_hash"
     EMAIL_CHANNEL = "email"
@@ -106,26 +109,29 @@ class GmailEmailOTP:
                 "Gmail email verification is enabled but its server-side settings are incomplete."
             )
 
-    def start(self, destination, session, recipient_name="there"):
+    def _send_code(self, destination, code, recipient_name, purpose, ttl_seconds):
         if not destination or "@" not in destination:
             raise OTPProviderError("The account has no usable email address.")
-        session.pop(self.SESSION_KEY, None)
-        code = f"{secrets.randbelow(1_000_000):06d}"
-        ttl_seconds = settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
         if ttl_seconds % 60 == 0:
             minutes = ttl_seconds // 60
             expiration = f"{minutes} minute{'s' if minutes != 1 else ''}"
         else:
             expiration = f"{ttl_seconds} seconds"
+        is_reset = purpose == "password_reset"
         context = {
             "code": code,
             "expiration": expiration,
             "recipient_email": destination,
             "recipient_name": (recipient_name or "").strip() or "there",
+            "purpose": purpose,
+            "is_password_reset": is_reset,
         }
         try:
             message = EmailMultiAlternatives(
-                subject="Your AuthShield 360 sign-in code",
+                subject=(
+                    "Your AuthShield 360 password reset code"
+                    if is_reset else "Your AuthShield 360 sign-in code"
+                ),
                 body=render_to_string("emails/otp_email.txt", context),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 to=[destination],
@@ -139,11 +145,99 @@ class GmailEmailOTP:
             raise OTPProviderError("Gmail could not send the verification email.") from error
         if sent != 1:
             raise OTPProviderError("Gmail did not accept the verification email.")
-        session[self.SESSION_KEY] = make_password(code)
 
-    def check(self, code, session):
+    @staticmethod
+    def _challenge_table_is_missing(error):
+        cause = getattr(error, "__cause__", None)
+        sqlstate = getattr(cause, "sqlstate", None)
+        message = str(error).lower()
+        return sqlstate == "42P01" or "no such table" in message or "does not exist" in message
+
+    def start(self, destination, session, recipient_name="there", *, user=None, purpose="sign_in", force_new=False):
+        if not destination or "@" not in destination:
+            raise OTPProviderError("The account has no usable email address.")
+
+        if user is not None:
+            from .models import EmailOTPChallenge
+
+            try:
+                with transaction.atomic():
+                    challenge, _ = EmailOTPChallenge.objects.get_or_create(user=user, purpose=purpose)
+                    challenge = EmailOTPChallenge.objects.select_for_update().get(pk=challenge.pk)
+                    now = timezone.now()
+                    if (
+                        force_new
+                        and challenge.sent_at
+                        and (now - challenge.sent_at).total_seconds() < 30
+                    ):
+                        challenge._email_sent = False
+                        return challenge
+                    if (
+                        not force_new
+                        and challenge.code_hash
+                        and challenge.expires_at
+                        and challenge.expires_at > now
+                        and not challenge.completed_at
+                    ):
+                        challenge._email_sent = False
+                        return challenge
+
+                    code = f"{secrets.randbelow(1_000_000):06d}"
+                    ttl_seconds = settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
+                    self._send_code(destination, code, recipient_name, purpose, ttl_seconds)
+                    sent_at = timezone.now()
+                    challenge.code_hash = make_password(code)
+                    challenge.sent_at = sent_at
+                    challenge.expires_at = sent_at + timedelta(seconds=ttl_seconds)
+                    challenge.attempts = 0
+                    challenge.completed_at = None
+                    challenge.save(update_fields=("code_hash", "sent_at", "expires_at", "attempts", "completed_at"))
+                    challenge._email_sent = True
+                    return challenge
+            except (OperationalError, ProgrammingError) as error:
+                if not self._challenge_table_is_missing(error):
+                    raise
+                if purpose == "password_reset":
+                    raise ImproperlyConfigured("Apply account migrations before enabling password reset codes.") from error
+
+        # Compatibility for isolated callers that do not have an authenticated user record.
+        session.pop(self.SESSION_KEY, None)
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        self._send_code(destination, code, recipient_name, purpose, settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS)
+        session[self.SESSION_KEY] = make_password(code)
+        return None
+
+    def check(self, code, session, *, user=None, purpose="sign_in"):
         if not re.fullmatch(r"[0-9]{6}", code or ""):
             return False
+        if user is not None:
+            from .models import EmailOTPChallenge
+
+            try:
+                with transaction.atomic():
+                    challenge = EmailOTPChallenge.objects.select_for_update().filter(
+                        user=user,
+                        purpose=purpose,
+                    ).first()
+                    now = timezone.now()
+                    if (
+                        not challenge
+                        or not challenge.code_hash
+                        or not challenge.expires_at
+                        or challenge.expires_at <= now
+                        or challenge.completed_at
+                        or not check_password(code, challenge.code_hash)
+                    ):
+                        return False
+                    challenge.code_hash = ""
+                    challenge.completed_at = now
+                    challenge.save(update_fields=("code_hash", "completed_at"))
+                    return True
+            except (OperationalError, ProgrammingError) as error:
+                if not self._challenge_table_is_missing(error):
+                    raise
+                if purpose == "password_reset":
+                    raise ImproperlyConfigured("Apply account migrations before enabling password reset codes.") from error
         code_hash = session.get(self.SESSION_KEY)
         if not code_hash or not check_password(code, code_hash):
             return False
@@ -157,14 +251,20 @@ def delivery_target(user, channel):
     return normalize_phone_number(user.phone_number)
 
 
-def start_otp(destination, channel, session, recipient_name="there"):
+def start_otp(destination, channel, session, recipient_name="there", *, user=None, purpose="sign_in", force_new=False):
     if channel == GmailEmailOTP.EMAIL_CHANNEL:
-        GmailEmailOTP().start(destination, session, recipient_name)
-        return
+        return GmailEmailOTP().start(
+            destination,
+            session,
+            recipient_name,
+            user=user,
+            purpose=purpose,
+            force_new=force_new,
+        )
     raise ImproperlyConfigured("SMS codes are sent and verified in the Firebase phone-auth page.")
 
 
-def check_otp(destination, channel, code, session):
+def check_otp(destination, channel, code, session, *, user=None, purpose="sign_in"):
     if channel == GmailEmailOTP.EMAIL_CHANNEL:
-        return GmailEmailOTP().check(code, session)
+        return GmailEmailOTP().check(code, session, user=user, purpose=purpose)
     return False

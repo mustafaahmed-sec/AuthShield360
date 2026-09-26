@@ -103,6 +103,13 @@ class RegistrationStatusForm(forms.Form):
     password = forms.CharField(widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}))
 
 
+class PasswordResetRequestForm(forms.Form):
+    email = forms.EmailField(
+        label="Account email",
+        widget=forms.EmailInput(attrs={"autocomplete": "email", "placeholder": "you@example.com"}),
+    )
+
+
 class EmailAuthenticationForm(AuthenticationForm):
     username = forms.EmailField(label="Email address", widget=forms.EmailInput(attrs={"autocomplete": "username"}))
     otp_channel = forms.ChoiceField(

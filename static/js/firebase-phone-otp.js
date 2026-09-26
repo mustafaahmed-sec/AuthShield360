@@ -87,7 +87,8 @@ if (root) {
       }
       await resetRecaptcha();
       confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
-      await postJson(sentUrl);
+      const sent = await postJson(sentUrl);
+      window.authShieldOtpCountdown?.update(sent.expiresAt, sent.resendAvailableAt);
       codeField.hidden = false;
       codeInput.disabled = false;
       codeInput.value = "";
@@ -106,7 +107,7 @@ if (root) {
     } finally {
       sending = false;
       sendButton.disabled = false;
-      resendButton.disabled = false;
+      if (!confirmationResult) resendButton.disabled = false;
     }
   }
 

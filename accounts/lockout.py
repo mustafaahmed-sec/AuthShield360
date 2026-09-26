@@ -13,8 +13,8 @@ from school.audit import record_auth_event, request_ip
 from school.models import PortalAuditEvent
 
 
-FAILURE_ACTIONS = ("login_failure", "registration_status_failure", "otp_failure")
-SUCCESS_ACTIONS = ("login_success", "registration_status_success")
+FAILURE_ACTIONS = ("login_failure", "registration_status_failure", "otp_failure", "password_reset_failure")
+SUCCESS_ACTIONS = ("login_success", "registration_status_success", "password_reset_completed")
 
 
 def normalized_email(value):

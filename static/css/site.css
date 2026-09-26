@@ -74,6 +74,8 @@ button { cursor: pointer; }
 .form-error { border-left: 3px solid #a62626; background: #fff2f2; padding: .7rem 1rem; }
 .field-error ul, .form-error ul { margin: .3rem 0; padding-left: 1.2rem; }
 .form-foot { margin: 1.4rem 0 0; }
+.otp-countdown { margin: 1.15rem 0; padding: .7rem .9rem; border-left: 3px solid #087c75; border-radius: .35rem; background: #eef8f7; color: #174a7a; font-weight: 700; font-variant-numeric: tabular-nums; }
+.button:disabled { cursor: not-allowed; opacity: .58; }
 .side-card { padding: 2rem; background: #f1f7fa; }
 .messages { margin-bottom: 1.5rem; }
 .message-success { border-color: #087c48; background: #eaf7ee; color: #164f31; }
