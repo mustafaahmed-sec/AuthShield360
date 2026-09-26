@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Student dashboard | AuthShield 360{% endblock %}
+{% block main_content_class %} student-dashboard-main{% endblock %}
 {% block content %}
   <div class="student-dashboard">
   <div class="eyebrow">Student portal</div><h1>Welcome, {{ request.user.full_name }}</h1>
