@@ -308,7 +308,7 @@ class OTPLoginTests(TestCase):
 @override_settings(
     AUTHSHIELD_LOCKOUT_ATTEMPTS=5,
     AUTHSHIELD_LOCKOUT_WINDOW_MINUTES=15,
-    AUTHSHIELD_LOCKOUT_MINUTES=30,
+    AUTHSHIELD_LOCKOUT_MINUTES=5,
     AUTHSHIELD_IP_FAILURE_LIMIT=30,
     AUTHSHIELD_IP_WINDOW_MINUTES=15,
     AUTHSHIELD_IP_THROTTLE_MINUTES=1,
@@ -327,7 +327,7 @@ class FailedLoginProtectionTests(TestCase):
             **extra,
         )
 
-    def test_five_failures_start_thirty_minute_lock_and_later_attempt_is_blocked(self):
+    def test_five_failures_start_five_minute_lock_and_later_attempt_is_blocked(self):
         for _ in range(5):
             response = self.post_login()
             self.assertEqual(response.status_code, 200)
@@ -338,7 +338,7 @@ class FailedLoginProtectionTests(TestCase):
         self.assertEqual(PortalAuditEvent.objects.filter(action="locked_out").count(), 1)
 
         blocked = self.post_login(password="FictionalDemo!2468")
-        self.assertContains(blocked, "Too many attempts. Try again in 30 minutes.")
+        self.assertContains(blocked, "Too many attempts. Try again in 5 minutes.")
         self.assertNotIn("_auth_user_id", self.client.session)
         self.assertEqual(PortalAuditEvent.objects.filter(action="locked_out").count(), 2)
 
