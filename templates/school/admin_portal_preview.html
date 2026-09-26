@@ -52,15 +52,37 @@
       <div class="stat"><strong>{{ enrollments|length }}</strong><span>students shown</span></div>
     </div>
     <div class="dashboard-grid">
-      <section class="panel">
-        <h2>Classes</h2>
-        {% if courses %}<ul class="item-list">{% for course in courses %}<li><strong>{{ course.code }} · {{ course.title }}</strong></li>{% endfor %}</ul>
-        {% else %}<p class="empty">No classes assigned.</p>{% endif %}
-      </section>
-      <section class="panel">
-        <h2>Students in these classes</h2>
-        {% if enrollments %}<ul class="item-list">{% for enrollment in enrollments %}<li><strong>{{ enrollment.student.full_name }}</strong><span>{{ enrollment.course.code }}{% if enrollment.student.student_record.grade %} · {{ enrollment.student.student_record.grade }}{% endif %}</span>{% if enrollment.course.expected_grade and enrollment.course.expected_grade != enrollment.student.student_record.grade %}<span class="placement-warning">Grade differs from this class. Confirm the placement.</span>{% endif %}</li>{% endfor %}</ul>
-        {% else %}<p class="empty">No students are enrolled.</p>{% endif %}
+      <section class="panel preview-rosters">
+        <div class="panel-heading">
+          <h2>Classes and student rosters</h2>
+          <span class="muted">Select a class to view its students.</span>
+        </div>
+        {% if course_rosters %}
+          {% for roster in course_rosters %}
+            <details class="course-roster-group" name="portal-course-rosters">
+              <summary class="course-roster-heading">
+                <span class="course-roster-code">{{ roster.course.code }}</span>
+                <span class="course-roster-title">{{ roster.course.title }}</span>
+                <span class="course-roster-count">{{ roster.students|length }} student{{ roster.students|length|pluralize }}</span>
+              </summary>
+              {% if roster.students %}
+                <ul class="item-list">
+                  {% for enrollment in roster.students %}
+                    <li>
+                      <strong>{{ enrollment.student.full_name }}</strong>
+                      <span>{{ enrollment.student.student_record.grade }}{% if enrollment.student.student_record.age %} · age {{ enrollment.student.student_record.age }}{% endif %}</span>
+                      {% if roster.course.expected_grade and roster.course.expected_grade != enrollment.student.student_record.grade %}<span class="placement-warning">Grade differs from this class. Confirm the placement.</span>{% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="empty">No students are enrolled in this class.</p>
+              {% endif %}
+            </details>
+          {% endfor %}
+        {% else %}
+          <p class="empty">No classes assigned.</p>
+        {% endif %}
       </section>
       <section class="panel">
         <h2>Assignments</h2>

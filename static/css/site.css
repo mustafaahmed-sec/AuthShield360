@@ -204,6 +204,8 @@ tr:last-child td { border-bottom: 0; }
 .course-roster-group .item-list { padding: 0 .75rem; }
 .course-roster-group .item-list li { padding: .5rem 0; }
 .course-roster-group .item-list li:last-child { padding-bottom: .6rem; }
+.preview-rosters { grid-column: 1 / -1; }
+.preview-rosters .panel-heading { margin-bottom: .8rem; }
 
 @media (min-width: 761px) {
   .main-content.student-dashboard-main { margin: 1.75rem auto; }

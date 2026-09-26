@@ -132,12 +132,23 @@ def preview_school_portal(request, user_id):
     )
     context = {"target": target}
     if target.role == User.Role.TEACHER:
-        courses = Course.objects.filter(teacher=target).order_by("code")
+        courses = list(Course.objects.filter(teacher=target).order_by("code"))
+        enrollments = list(
+            Enrollment.objects.filter(course__teacher=target)
+            .select_related("student", "course", "student__student_record")
+            .order_by("course__code", "student__full_name")[:60]
+        )
+        course_rosters = [
+            {
+                "course": course,
+                "students": [enrollment for enrollment in enrollments if enrollment.course_id == course.pk],
+            }
+            for course in courses
+        ]
         context.update({
             "courses": courses,
-            "enrollments": Enrollment.objects.filter(course__teacher=target)
-            .select_related("student", "course", "student__student_record")
-            .order_by("course__code", "student__full_name")[:60],
+            "enrollments": enrollments,
+            "course_rosters": course_rosters,
             "assignments": Assignment.objects.filter(course__teacher=target)
             .select_related("course").order_by("due_date", "pk")[:30],
             "results": ExamResult.objects.filter(course__teacher=target)
