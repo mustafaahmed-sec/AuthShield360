@@ -15,6 +15,9 @@ from school.models import PortalAuditEvent
 
 FAILURE_ACTIONS = ("login_failure", "registration_status_failure", "otp_failure", "password_reset_failure")
 SUCCESS_ACTIONS = ("login_success", "registration_status_success", "password_reset_completed")
+LOCKOUT_STARTED_DESCRIPTION = "Temporary account lock activated after repeated failed attempts."
+LOCKOUT_REPEAT_MINUTES = (15, 30)
+LOCKOUT_ESCALATION_WINDOW = timedelta(hours=24)
 
 
 def normalized_email(value):
@@ -70,11 +73,39 @@ def _failure_count_for_account(email, now):
     reset_events = PortalAuditEvent.objects.filter(created_at__gte=window_start).filter(
         Q(actor_email__iexact=email, action__in=SUCCESS_ACTIONS)
         | Q(action="account_unlocked", target_name__iexact=email)
+        | Q(
+            actor_email__iexact=email,
+            action="locked_out",
+            description=LOCKOUT_STARTED_DESCRIPTION,
+        )
     )
     reset_at = reset_events.aggregate(latest=Max("created_at"))["latest"]
     if reset_at:
         failures = failures.filter(created_at__gt=reset_at)
     return failures.count()
+
+
+def _next_account_lockout_minutes(email, now):
+    """Increase repeat lockouts within 24 hours, resetting after account recovery."""
+    email = normalized_email(email)
+    escalation_start = now - LOCKOUT_ESCALATION_WINDOW
+    reset_events = PortalAuditEvent.objects.filter(created_at__gte=escalation_start).filter(
+        Q(actor_email__iexact=email, action__in=SUCCESS_ACTIONS)
+        | Q(action="account_unlocked", target_name__iexact=email)
+    )
+    reset_at = reset_events.aggregate(latest=Max("created_at"))["latest"]
+    lockouts = PortalAuditEvent.objects.filter(
+        actor_email__iexact=email,
+        action="locked_out",
+        description=LOCKOUT_STARTED_DESCRIPTION,
+        created_at__gte=escalation_start,
+    )
+    if reset_at:
+        lockouts = lockouts.filter(created_at__gt=reset_at)
+
+    previous_lockouts = lockouts.count()
+    durations = (settings.AUTHSHIELD_LOCKOUT_MINUTES, *LOCKOUT_REPEAT_MINUTES)
+    return max(settings.AUTHSHIELD_LOCKOUT_MINUTES, durations[min(previous_lockouts, len(durations) - 1)])
 
 
 def record_failed_authentication(email, action, request, duration_ms=None, factor="password", description=None):
@@ -98,12 +129,13 @@ def record_failed_authentication(email, action, request, duration_ms=None, facto
         if not user or _failure_count_for_account(email, now) < settings.AUTHSHIELD_LOCKOUT_ATTEMPTS:
             return None
 
-        locked_until = now + timedelta(minutes=settings.AUTHSHIELD_LOCKOUT_MINUTES)
+        lockout_minutes = _next_account_lockout_minutes(email, now)
+        locked_until = now + timedelta(minutes=lockout_minutes)
         User.objects.filter(pk=user.pk).update(locked_until=locked_until)
         record_auth_event(
             "locked_out",
             email=email,
-            description="Temporary account lock activated after repeated failed attempts.",
+            description=LOCKOUT_STARTED_DESCRIPTION,
             request=request,
             factor=factor,
             outcome="failure",
