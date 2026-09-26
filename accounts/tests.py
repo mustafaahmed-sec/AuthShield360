@@ -4,13 +4,47 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.conf import settings
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from school.models import PortalAuditEvent, StudentRecord
 
 from .models import User
+
+
+class LoginPresentationTests(SimpleTestCase):
+    @override_settings(
+        DEBUG=True,
+        AUTHSHIELD_OTP_ENABLED=True,
+        AUTHSHIELD_EMAIL_STEP_UP=False,
+        TWILIO_API_KEY_SID="",
+        TWILIO_API_KEY_SECRET="",
+        TWILIO_VERIFY_SERVICE_SID="",
+    )
+    def test_email_only_login_hides_whatsapp_and_shows_otp_label(self):
+        response = self.client.get(reverse("login"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Email OTP sign-in")
+        self.assertNotContains(response, "Password-only baseline")
+        self.assertNotContains(response, "WhatsApp")
+        self.assertEqual(response.context["form"].fields["otp_channel"].choices, [("email", "Email")])
+
+    @override_settings(
+        DEBUG=True,
+        AUTHSHIELD_OTP_ENABLED=True,
+        AUTHSHIELD_EMAIL_STEP_UP=False,
+        TWILIO_API_KEY_SID="SK" + "a" * 32,
+        TWILIO_API_KEY_SECRET="test-secret",
+        TWILIO_VERIFY_SERVICE_SID="VA" + "b" * 32,
+    )
+    def test_whatsapp_choice_appears_when_mobile_provider_is_configured(self):
+        response = self.client.get(reverse("login"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "WhatsApp")
+        self.assertContains(response, "Email")
 
 
 class PublicAccountFlowTests(TestCase):

@@ -117,6 +117,8 @@ def dashboard(request):
             "assignments": Assignment.objects.filter(course__enrollments__student=user)
             .select_related("course").order_by("due_date", "id"),
             "results": ExamResult.objects.filter(student=user).select_related("course").order_by("course__code", "exam_name"),
+            "recent_results": ExamResult.objects.filter(student=user)
+            .select_related("course").order_by("-pk")[:5],
             "grade_average_percent": grade_average_percent,
             "graded_assessment_count": ExamResult.objects.filter(student=user).count(),
         }

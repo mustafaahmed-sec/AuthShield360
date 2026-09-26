@@ -5,6 +5,41 @@
   <div class="eyebrow">Student portal</div><h1>Welcome, {{ request.user.full_name }}</h1>
   <p class="intro">Your school information appears below. These records come from PostgreSQL and are filtered to your account.</p>
   {% include "school/partials/announcements.html" %}
+  <section class="panel progress-overview" aria-labelledby="progress-overview-title">
+    <div class="panel-heading">
+      <div>
+        <h2 id="progress-overview-title">Progress at a glance</h2>
+        <p class="muted">A quick summary of your attendance, grades, and upcoming work.</p>
+      </div>
+    </div>
+    <div class="progress-metrics">
+      <article class="progress-metric">
+        <span>Attendance</span>
+        <strong>{% if overall_attendance_percent is not None %}{{ overall_attendance_percent|floatformat:1 }}%{% else %}—{% endif %}</strong>
+        <small>{% if overall_attendance_percent is not None %}Across {{ attendance_days_counted }} marked, non-excused class days.{% else %}Attendance will appear after your teacher records a class day.{% endif %}</small>
+      </article>
+      <article class="progress-metric">
+        <span>Overall grade average</span>
+        <strong>{% if grade_average_percent is not None %}{{ grade_average_percent|floatformat:1 }}%{% else %}—{% endif %}</strong>
+        <small>{% if grade_average_percent is not None %}Across {{ graded_assessment_count }} recorded result{{ graded_assessment_count|pluralize }}.{% else %}Your average will appear after a result is posted.{% endif %}</small>
+      </article>
+      <article class="progress-metric">
+        <span>Due in the next 14 days</span>
+        <strong>{{ due_soon_count }}</strong>
+        <small>Upcoming assignments across your enrolled courses.</small>
+      </article>
+    </div>
+    <div class="recent-grade-summary">
+      <h3>Recent results</h3>
+      {% if recent_results %}
+        <ul class="item-list">
+          {% for result in recent_results %}
+            <li><strong>{{ result.exam_name }}</strong><span>{{ result.course.code }} · {{ result.score }} / {{ result.max_score }}</span></li>
+          {% endfor %}
+        </ul>
+      {% else %}<p class="empty">No results posted yet.</p>{% endif %}
+    </div>
+  </section>
   <div class="dashboard-grid">
     <section class="panel"><h2>My record</h2>{% if record %}<dl class="details"><dt>Admission number</dt><dd>{{ record.admission_number }}</dd><dt>Grade</dt><dd>{{ record.grade }}</dd>{% if record.age %}<dt>Age</dt><dd>{{ record.age }}</dd>{% endif %}{% if record.gender %}<dt>Gender</dt><dd>{{ record.get_gender_display }}</dd>{% endif %}</dl>{% else %}<p class="empty">Your school record has not been assigned yet.</p>{% endif %}</section>
     <section class="panel"><h2>My courses</h2>{% if courses %}<ul class="item-list">{% for course in courses %}<li><strong>{{ course.code }} · {{ course.title }}</strong><span>Teacher: {{ course.teacher.full_name }}</span></li>{% endfor %}</ul>{% else %}<p class="empty">No courses assigned yet.</p>{% endif %}</section>

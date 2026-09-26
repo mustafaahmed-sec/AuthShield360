@@ -591,6 +591,10 @@ class StudentDashboardProgressTests(TestCase):
         self.assertEqual(response.context["due_soon_count"], 1)
         self.assertEqual(response.context["recent_results"][0].exam_name, "Second result")
         self.assertContains(response, "Progress at a glance")
+        self.assertContains(response, "My record")
+        self.assertContains(response, "My courses")
+        self.assertContains(response, "My attendance")
+        self.assertContains(response, "Overall grade average")
         self.assertContains(response, "Upcoming work")
         self.assertNotContains(response, "Other student's result")
 
