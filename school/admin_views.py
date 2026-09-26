@@ -150,9 +150,9 @@ def preview_school_portal(request, user_id):
             "enrollments": enrollments,
             "course_rosters": course_rosters,
             "assignments": Assignment.objects.filter(course__teacher=target)
-            .select_related("course").order_by("due_date", "pk")[:30],
+            .select_related("course").order_by("course__code", "due_date", "pk")[:30],
             "results": ExamResult.objects.filter(course__teacher=target)
-            .select_related("student", "course").order_by("course__code", "student__full_name")[:40],
+            .select_related("student", "course").order_by("exam_name", "course__code", "student__full_name")[:40],
             "attendance_count": AttendanceRecord.objects.filter(course__teacher=target).count(),
         })
     else:

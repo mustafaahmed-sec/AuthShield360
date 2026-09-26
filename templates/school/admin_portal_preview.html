@@ -86,12 +86,41 @@
       </section>
       <section class="panel">
         <h2>Assignments</h2>
-        {% if assignments %}<ul class="item-list">{% for item in assignments %}<li><strong>{{ item.title }}</strong><span>{{ item.course.code }} · Due {{ item.due_date|date:"j M Y" }}</span></li>{% endfor %}</ul>
+        {% if assignments %}
+          {% regroup assignments by course as assignment_groups %}
+          {% for group in assignment_groups %}
+            <details class="course-roster-group" name="portal-assignment-groups">
+              <summary class="course-roster-heading">
+                <span class="course-roster-code">{{ group.grouper.code }}</span>
+                <span class="course-roster-title">{{ group.grouper.title }}</span>
+                <span class="course-roster-count">{{ group.list|length }} assignment{{ group.list|length|pluralize }}</span>
+              </summary>
+              <ul class="item-list">
+                {% for item in group.list %}
+                  <li><strong>{{ item.title }}</strong><span>Due {{ item.due_date|date:"j M Y" }}</span></li>
+                {% endfor %}
+              </ul>
+            </details>
+          {% endfor %}
         {% else %}<p class="empty">No assignments.</p>{% endif %}
       </section>
       <section class="panel">
         <h2>Exam results</h2>
-        {% if results %}<ul class="item-list">{% for item in results %}<li><strong>{{ item.student.full_name }} · {{ item.exam_name }}</strong><span>{{ item.course.code }} · {{ item.score }} / {{ item.max_score }}</span></li>{% endfor %}</ul>
+        {% if results %}
+          {% regroup results by exam_name as exam_groups %}
+          {% for group in exam_groups %}
+            <details class="course-roster-group" name="portal-exam-groups">
+              <summary class="course-roster-heading">
+                <span class="course-roster-title">{{ group.grouper }}</span>
+                <span class="course-roster-count">{{ group.list|length }} result{{ group.list|length|pluralize }}</span>
+              </summary>
+              <ul class="item-list">
+                {% for item in group.list %}
+                  <li><strong>{{ item.student.full_name }}</strong><span>{{ item.course.code }} · {{ item.score }} / {{ item.max_score }}</span></li>
+                {% endfor %}
+              </ul>
+            </details>
+          {% endfor %}
         {% else %}<p class="empty">No results recorded.</p>{% endif %}
       </section>
     </div>
