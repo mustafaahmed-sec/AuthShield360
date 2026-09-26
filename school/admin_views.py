@@ -271,6 +271,11 @@ def reset_school_account_password(request, user_id):
     messages.success(request, f"Temporary password for {account.full_name} ({account.email}): {temporary_password}. Share it privately; it will be replaced at first sign-in.")
     return redirect("admin_management")
 
+
+@login_required
+@require_POST
+@portal_admin_view
+@transaction.atomic
 def delete_school_account(request, user_id):
     account = get_object_or_404(
         User.objects.select_for_update(),

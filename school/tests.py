@@ -3,7 +3,8 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.test import TestCase, override_settings
+from django.db import connection
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 
 from accounts.models import User
@@ -49,6 +50,44 @@ class AccountApprovalFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Accounts and requests")
         self.assertContains(response, "New account requests")
+
+    def test_administrator_can_delete_student_account_and_school_record(self):
+        student = User.objects.create_user(
+            "muniba@example.test", "student-password", full_name="Muniba Khan",
+            role=User.Role.STUDENT,
+        )
+        StudentRecord.objects.create(
+            student=student, admission_number="DEL-0001", grade="Grade 8",
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(reverse("delete_school_account", args=[student.pk]))
+
+        self.assertRedirects(response, reverse("admin_management"))
+        self.assertFalse(User.objects.filter(pk=student.pk).exists())
+        self.assertFalse(StudentRecord.objects.filter(student_id=student.pk).exists())
+        event = PortalAuditEvent.objects.get(action="school_account_deleted", target_name="Muniba Khan")
+        self.assertEqual(event.actor, self.admin)
+
+    def test_account_deletion_requires_admin_and_post(self):
+        student = User.objects.create_user(
+            "protected-student@example.test", "student-password", full_name="Protected Student",
+            role=User.Role.STUDENT,
+        )
+        teacher = User.objects.create_user(
+            "teacher@example.test", "teacher-password", full_name="Teacher",
+            role=User.Role.TEACHER,
+        )
+        delete_url = reverse("delete_school_account", args=[student.pk])
+
+        self.client.force_login(teacher)
+        self.assertEqual(self.client.post(delete_url).status_code, 403)
+        self.assertTrue(User.objects.filter(pk=student.pk).exists())
+
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.get(delete_url).status_code, 405)
+        self.assertTrue(User.objects.filter(pk=student.pk).exists())
+
 
     def test_pending_accounts_are_paginated(self):
         for number in range(21):
@@ -234,6 +273,27 @@ class AccountApprovalFlowTests(TestCase):
         self.assertTrue(student.is_active)
         self.assertEqual(student.approval_status, User.ApprovalStatus.APPROVED)
         self.assertTrue(StudentRecord.objects.filter(student=student, grade="Unassigned").exists())
+
+
+class DeleteSchoolAccountTransactionTests(TransactionTestCase):
+    def test_account_delete_runs_within_a_database_transaction(self):
+        admin = User.objects.create_superuser(
+            "delete-admin@example.test", "admin-password", full_name="Delete Admin",
+        )
+        student = User.objects.create_user(
+            "transaction-student@example.test", "student-password", full_name="Transaction Student",
+            role=User.Role.STUDENT,
+        )
+        self.client.force_login(admin)
+
+        def assert_transaction(*args, **kwargs):
+            self.assertTrue(connection.in_atomic_block)
+
+        with patch("school.admin_views.record_event", side_effect=assert_transaction):
+            response = self.client.post(reverse("delete_school_account", args=[student.pk]))
+
+        self.assertRedirects(response, reverse("admin_management"))
+        self.assertFalse(User.objects.filter(pk=student.pk).exists())
 
 
 class TeacherRosterPermissionTests(TestCase):
