@@ -1,9 +1,11 @@
 import hashlib
+import re
 
 from datetime import timedelta
 from unittest.mock import patch
 
 from django.conf import settings
+from django.core import mail
 from django.contrib.auth.hashers import make_password
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -192,6 +194,13 @@ class EmailOTPChallengeAttemptTests(TestCase):
         self.assertFalse(challenge.code_hash)
         self.assertFalse(self.provider.check("123456", {}, user=self.user))
         send_code.assert_called_once()
+
+    @patch.object(GmailEmailOTP, "_send_code")
+    def test_delivered_code_is_accepted_by_a_fresh_provider_instance(self, send_code):
+        self.provider.start(self.user.email, {}, user=self.user)
+        sent_code = send_code.call_args.args[1]
+
+        self.assertTrue(GmailEmailOTP().check(sent_code, {}, user=self.user))
 
 
 @override_settings(
@@ -398,6 +407,65 @@ class OTPLoginTests(TestCase):
 
         self.assertRedirects(replay, reverse("login"), fetch_redirect_response=False)
         self.email_provider.check.assert_called_once()
+
+
+@override_settings(
+    AUTHSHIELD_BASELINE_LOGIN_ENABLED=True,
+    AUTHSHIELD_OTP_ENABLED=True,
+    AUTHSHIELD_EMAIL_STEP_UP=False,
+    AUTHSHIELD_FIREBASE_API_KEY="",
+    AUTHSHIELD_FIREBASE_AUTH_DOMAIN="",
+    AUTHSHIELD_FIREBASE_PROJECT_ID="",
+    AUTHSHIELD_FIREBASE_APP_ID="",
+    AUTHSHIELD_GMAIL_ADDRESS="authshield-test@example.test",
+    AUTHSHIELD_GMAIL_APP_PASSWORD="test-app-password",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
+class EmailOTPChallengeSessionSyncTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            "sync-user@example.test",
+            "FictionalDemo!2468",
+            full_name="Sync User",
+            role=User.Role.STUDENT,
+        )
+        self.client.post(reverse("login"), {
+            "username": self.user.email,
+            "password": "FictionalDemo!2468",
+            "otp_channel": "email",
+        })
+        self.challenge = EmailOTPChallenge.objects.get(user=self.user, purpose="sign_in")
+
+    def _code_from_latest_email(self):
+        match = re.search(r"(?m)^([0-9]{6})$", mail.outbox[-1].body)
+        self.assertIsNotNone(match)
+        return match.group(1)
+
+    def test_page_refreshes_expiry_when_another_sign_in_replaces_code(self):
+        session = self.client.session
+        original_sent_at = session["authshield_otp_sent_at"]
+        session_expiry = session["authshield_otp_expires_at"]
+        session.save()
+
+        self.challenge.sent_at = timezone.now() - timedelta(seconds=31)
+        self.challenge.save(update_fields=("sent_at",))
+        GmailEmailOTP().start(self.user.email, {}, user=self.user, force_new=True)
+        latest_code = self._code_from_latest_email()
+        self.assertEqual(len(mail.outbox), 2)
+
+        stale_page_submit = self.client.post(reverse("otp_verify"), {"code": latest_code})
+
+        self.assertEqual(stale_page_submit.status_code, 200)
+        self.assertContains(stale_page_submit, "A newer code replaced the one on this page")
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertGreater(self.client.session["authshield_otp_expires_at"], session_expiry)
+        self.assertNotEqual(self.client.session["authshield_otp_sent_at"], original_sent_at)
+        self.assertFalse(PortalAuditEvent.objects.filter(action="otp_failure").exists())
+
+        verified = self.client.post(reverse("otp_verify"), {"code": latest_code})
+
+        self.assertRedirects(verified, reverse("dashboard"), fetch_redirect_response=False)
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.user.pk)
 
 
 @override_settings(

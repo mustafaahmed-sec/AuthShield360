@@ -141,6 +141,32 @@ def _otp_duration_ms(request):
     return max(0, int((timezone.now().timestamp() - started_at) * 1000))
 
 
+def _sync_email_otp_challenge(request, user, phase):
+    """Keep tabs using the same account challenge on the current code and timer."""
+    purpose = "email_step_up" if phase == "email_step_up" else "sign_in"
+    challenge = EmailOTPChallenge.objects.filter(user=user, purpose=purpose).first()
+    if not challenge:
+        return False, False
+    if challenge.completed_at:
+        return False, True
+    if not challenge.sent_at or not challenge.expires_at:
+        return False, False
+
+    latest_sent_at = challenge.sent_at.timestamp()
+    session_sent_at = request.session.get("authshield_otp_sent_at")
+    replaced = (
+        session_sent_at is not None
+        and abs(float(session_sent_at) - latest_sent_at) > 0.001
+    )
+    if session_sent_at is None or replaced:
+        request.session["authshield_otp_sent_at"] = latest_sent_at
+        request.session["authshield_otp_expires_at"] = challenge.expires_at.timestamp()
+        request.session["authshield_otp_started_at"] = latest_sent_at
+        request.session["authshield_otp_attempts"] = challenge.attempts
+        request.session.pop("authshield_otp_expiry_logged", None)
+    return replaced, False
+
+
 def _otp_context(request, user, channel, phase):
     destination = delivery_target(user, channel)
     if channel == "email":
@@ -385,6 +411,16 @@ def otp_verify(request):
 
     channel = request.session.get("authshield_otp_channel", "")
     phase = request.session.get("authshield_otp_phase", "primary")
+    if channel == "email":
+        challenge_replaced, challenge_completed = _sync_email_otp_challenge(request, user, phase)
+        if challenge_completed:
+            _clear_otp_session(request)
+            messages.info(request, "That sign-in code has already been used. Start sign-in again for a new code.")
+            return redirect("login")
+        if challenge_replaced:
+            messages.info(request, "A newer code replaced the one on this page. Use the newest AuthShield email.")
+            if request.method == "POST":
+                return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase))
     if timezone.now().timestamp() >= request.session.get("authshield_otp_expires_at", 0):
         if not request.session.get("authshield_otp_expiry_logged"):
             record_auth_event(

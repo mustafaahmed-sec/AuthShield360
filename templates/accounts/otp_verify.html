@@ -28,7 +28,7 @@
           <button class="button full" id="verify-sms-code" type="submit" data-otp-verify disabled>Verify and sign in</button>
         </form>
       {% else %}
-        <p class="muted">We sent a one-time code by email to {{ destination }}. Enter it to finish signing in.</p>
+        <p class="muted">Enter the latest one-time code sent by email to {{ destination }}. If you requested a new code or started sign-in in another tab, only the newest code works.</p>
         <form method="post" action="{% url 'otp_verify' %}" data-busy-label="Verifying…">
           {% csrf_token %}
           <div class="form-field">
