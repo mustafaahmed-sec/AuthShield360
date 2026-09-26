@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 300" role="img" aria-labelledby="shield-title">
+  <title id="shield-title">AuthShield 360 animated shield</title>
+  <style>
+    .shield-ring-spin { transform-origin: 140px 150px; animation: ringRotate 18s linear infinite; }
+    .shield-scan { animation: scanPulse 3s ease-in-out infinite; }
+    .shield-glow-pulse { transform-origin: 140px 150px; animation: glowBreath 3s ease-in-out infinite; }
+    @keyframes ringRotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes scanPulse { 0%, 100% { opacity: 0; } 40%, 60% { opacity: 1; } }
+    @keyframes glowBreath { 0%, 100% { transform: scale(.9); opacity: .5; } 50% { transform: scale(1.1); opacity: 1; } }
+  </style>
+  <defs>
+    <radialGradient id="shieldGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#4A9EE0" stop-opacity=".16"/>
+      <stop offset="70%" stop-color="#4A9EE0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ringSpinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#4A9EE0" stop-opacity="0.7"/>
+                <stop offset="40%" stop-color="#1A4E8C" stop-opacity="0.4"/>
+                <stop offset="100%" stop-color="#4A9EE0" stop-opacity="0.7"/>
+              </linearGradient>
+    <linearGradient id="hb" x1="20%" y1="0%" x2="80%" y2="100%">
+                <stop offset="0%" stop-color="#1A3A6B"/>
+                <stop offset="40%" stop-color="#1E4D8C"/>
+                <stop offset="100%" stop-color="#0E2347"/>
+              </linearGradient>
+              <linearGradient id="hf" x1="15%" y1="0%" x2="85%" y2="100%">
+                <stop offset="0%" stop-color="#2A5BA8"/>
+                <stop offset="40%" stop-color="#1E4D8C"/>
+                <stop offset="100%" stop-color="#0D2855"/>
+              </linearGradient>
+              <linearGradient id="hs" x1="10%" y1="0%" x2="90%" y2="60%">
+                <stop offset="0%" stop-color="#fff" stop-opacity="0.2"/>
+                <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+              </linearGradient>
+              <linearGradient id="hg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#F0C860"/>
+                <stop offset="100%" stop-color="#A87800"/>
+              </linearGradient>
+              <linearGradient id="he" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#1A7A5E"/>
+                <stop offset="100%" stop-color="#0A4A35"/>
+              </linearGradient>
+              <!-- Scan sweep gradient -->
+              <linearGradient id="scanGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#4A9EE0" stop-opacity="0"/>
+                <stop offset="50%" stop-color="#4A9EE0" stop-opacity="0.18"/>
+                <stop offset="100%" stop-color="#4A9EE0" stop-opacity="0"/>
+              </linearGradient>
+              <filter id="hsh">
+                <feDropShadow dx="0" dy="8" stdDeviation="18" flood-color="#0A1E3D" flood-opacity="0.22"/>
+                <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0A1E3D" flood-opacity="0.15"/>
+              </filter>
+              <filter id="hgl">
+                <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#3A88D8" flood-opacity="0.4"/>
+              </filter>
+              <filter id="hgg">
+                <feDropShadow dx="0" dy="0" stdDeviation="2.5" flood-color="#D4A020" flood-opacity="0.5"/>
+              </filter>
+              <clipPath id="shieldClip">
+                <path d="M120 44 L202 66 L210 122 L210 168 C210 210 170 242 120 260 C70 242 30 210 30 168 L30 122 L38 66 Z"/>
+              </clipPath>
+  </defs>
+  <ellipse class="shield-glow-pulse" cx="140" cy="150" rx="128" ry="138" fill="url(#shieldGlow)"/>
+  <g class="shield-ring-spin"><!-- Main spinning ring - dashed for motion feel -->
+            <circle cx="140" cy="150" r="128" fill="none" stroke="url(#ringSpinGrad)" stroke-width="2.5"
+              stroke-dasharray="12 6" stroke-opacity="0.55"/>
+            <!-- Inner accent ring -->
+            <circle cx="140" cy="150" r="120" fill="none" stroke="#3A88D8" stroke-width="1" stroke-opacity="0.2"
+              stroke-dasharray="3 9"/>
+            <!-- Cardinal tick marks (these will rotate with the ring) -->
+            <line x1="140" y1="20"  x2="140" y2="30"  stroke="#4A9EE0" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.75"/>
+            <line x1="140" y1="270" x2="140" y2="280" stroke="#4A9EE0" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.75"/>
+            <line x1="10"  y1="150" x2="20"  y2="150" stroke="#4A9EE0" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.75"/>
+            <line x1="260" y1="150" x2="270" y2="150" stroke="#4A9EE0" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.75"/>
+            <!-- Bright leading dot to show rotation direction -->
+            <circle cx="140" cy="22" r="3.5" fill="#4A9EE0" opacity="0.9"/></g>
+  <g transform="translate(40 33) scale(.833333)"><!-- Shield depth -->
+            <path d="M120 44 L202 66 L210 122 L210 168 C210 210 170 242 120 260 C70 242 30 210 30 168 L30 122 L38 66 Z"
+                  fill="url(#hb)" opacity="0.5" transform="translate(2,3)"/>
+
+            <!-- Shield body -->
+            <g filter="url(#hsh)">
+              <path d="M120 44 L202 66 L210 122 L210 168 C210 210 170 242 120 260 C70 242 30 210 30 168 L30 122 L38 66 Z" fill="url(#hb)"/>
+              <path d="M120 44 L202 66 L210 122 L210 168 C210 210 170 242 120 260 C70 242 30 210 30 168 L30 122 L38 66 Z" fill="url(#hf)" opacity="0.9"/>
+              <path d="M120 44 L202 66 L210 122 L210 168 C210 210 170 242 120 260 C70 242 30 210 30 168 L30 122 L38 66 Z" fill="url(#hs)"/>
+              <!-- Rim lights -->
+              <path d="M30 122 L38 66 L120 44 L120 260 C70 242 30 210 30 168 Z" fill="#4A9EE0" opacity="0.12"/>
+              <path d="M210 122 L202 66 L120 44 L120 260 C170 242 210 210 210 168 Z" fill="#4A9EE0" opacity="0.1"/>
+              <!-- Border glow -->
+              <path d="M120 44 L202 66 L210 122 L210 168 C210 210 170 242 120 260 C70 242 30 210 30 168 L30 122 L38 66 Z"
+                    fill="none" stroke="#4A9EE0" stroke-width="1.5" stroke-opacity="0.5" filter="url(#hgl)"/>
+              <!-- Inner bevel -->
+              <path d="M120 54 L192 73 L198 124 L198 166 C198 204 163 232 120 248 C77 232 42 204 42 166 L42 124 L48 73 Z"
+                    fill="none" stroke="#fff" stroke-width="0.7" stroke-opacity="0.12"/>
+
+              <!-- Scan sweep (animated, clipped to shield) -->
+              <g clip-path="url(#shieldClip)" class="shield-scan">
+                <rect x="30" y="44" width="180" height="216" fill="url(#scanGrad)"/>
+              </g>
+            </g>
+
+            <!-- Gold top bar -->
+            <g filter="url(#hgg)">
+              <path d="M72 66 L120 52 L168 66 L164 73 L120 60 L76 73 Z" fill="url(#hg)" opacity="0.9"/>
+            </g>
+
+            <!-- Inner emerald panel -->
+            <path d="M120 90 L162 100 L168 130 L168 158 C168 182 148 198 120 208 C92 198 72 182 72 158 L72 130 L78 100 Z"
+                  fill="#0D2855" opacity="0.55"/>
+            <path d="M120 90 L162 100 L168 130 L168 158 C168 182 148 198 120 208 C92 198 72 182 72 158 L72 130 L78 100 Z"
+                  fill="none" stroke="url(#he)" stroke-width="1.8" opacity="0.5"/>
+
+            <!-- Grad cap -->
+            <path d="M120 116 L146 125 L120 134 L94 125 Z" fill="#fff" opacity="0.92"/>
+            <path d="M120 116 L146 125 L120 120 L94 125 Z" fill="#fff" opacity="0.35"/>
+            <path d="M120 116 L146 125 L120 134 L94 125 Z" fill="none" stroke="#D4A017" stroke-width="0.8" stroke-opacity="0.75"/>
+            <rect x="107" y="125" width="26" height="5" rx="1.5" fill="#1A3A6B" opacity="0.75" stroke="#fff" stroke-width="0.4" stroke-opacity="0.25"/>
+            <line x1="142" y1="124" x2="145" y2="136" stroke="#D4A017" stroke-width="1.2" stroke-linecap="round" opacity="0.85"/>
+            <circle cx="145" cy="137.5" r="1.8" fill="#D4A017" opacity="0.85"/>
+
+            <line x1="90" y1="148" x2="150" y2="148" stroke="#4A9EE0" stroke-width="0.7" stroke-opacity="0.22"/>
+
+            <!-- Lock -->
+            <rect x="110" y="158" width="20" height="16" rx="2.5" fill="#fff" opacity="0.1" stroke="#fff" stroke-width="0.7" stroke-opacity="0.2"/>
+            <path d="M113 158 L113 153 Q120 148 127 153 L127 158" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.22"/>
+            <circle cx="120" cy="164" r="2.8" fill="#1A3A6B" opacity="0.55"/>
+            <rect x="118.5" y="164" width="3" height="4" rx="0.8" fill="#1A3A6B" opacity="0.55"/>
+
+            <!-- Gold tip -->
+            <g filter="url(#hgg)">
+              <path d="M120 250 L125 256 L120 260 L115 256 Z" fill="url(#hg)" opacity="0.85"/>
+            </g></g>
+</svg>

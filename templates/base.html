@@ -5,14 +5,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}AuthShield 360{% endblock %}</title>
+  {% block extra_head %}{% endblock %}
   <link rel="icon" type="image/svg+xml" href="{% static 'img/authshield_360_favicon.svg' %}?v={{ static_version }}">
   <link rel="stylesheet" href="{% static 'css/site.css' %}?v={{ static_version }}">
   <script src="{% static 'js/password-tools.js' %}?v={{ static_version }}" defer></script>
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <a class="skip-link" href="#main">Skip to main content</a>
   <header class="site-header">
-    <a class="brand" href="{% url 'home' %}" aria-label="AuthShield 360 home"><img class="brand-mark" src="{% static 'img/authshield_360_favicon.svg' %}?v={{ static_version }}" alt=""><span>AuthShield <strong>360</strong></span></a>
+    <a class="brand" href="{% url 'home' %}" aria-label="AuthShield 360 home"><img class="brand-mark" src="{% static 'img/authshield_360_logomark.svg' %}?v={{ static_version }}" alt=""><span>AuthShield <strong>360</strong></span></a>
     <nav class="site-nav{% if not request.user.is_authenticated %} guest-nav{% endif %}" aria-label="Primary navigation">
       {% if request.user.is_authenticated %}
         <a href="{% url 'dashboard' %}">Dashboard</a>

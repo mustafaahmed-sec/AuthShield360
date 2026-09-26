@@ -1,13 +1,86 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}AuthShield 360 | School portal{% endblock %}
+{% block extra_head %}<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">{% endblock %}
+{% block body_class %}home-page{% endblock %}
+{% block main_content_class %} home-main{% endblock %}
 {% block content %}
-  <div class="eyebrow">AuthShield 360 school portal</div>
-  <h1>A place to learn, teach, and manage.</h1>
-  <p class="intro">Explore a demonstration school portal with separate views for students, teachers, and administrators. Follow coursework, manage classes, and review account requests.</p>
-  <p class="request-status-link">Already sent an access request? <a href="{% url 'registration_status' %}">Check its status</a>.</p>
-  <section class="stats" aria-label="Demonstration school records">
-    <div class="stat"><strong>{{ student_count }}</strong><span>student records</span></div>
-    <div class="stat"><strong>{{ course_count }}</strong><span>courses</span></div>
-    <div class="stat"><strong>{{ assignment_count }}</strong><span>assignments</span></div>
+  <div class="landing-status-bar" role="status" aria-label="Portal status and local time">
+    <div class="landing-status-left">
+      <p class="landing-status-label"><span class="landing-status-dot" aria-hidden="true"></span>Portal secured &amp; operational</p>
+      <span class="landing-status-divider" aria-hidden="true"></span>
+      <p class="landing-clock"><span>Local time</span><time id="home-clock-time"></time></p>
+    </div>
+    <time class="landing-date" id="home-clock-date"></time>
+  </div>
+
+  <section class="landing-hero" aria-labelledby="home-title">
+    <div class="landing-hero-grid">
+      <div class="landing-copy">
+        <p class="landing-eyebrow">AuthShield 360 school portal</p>
+        <h1 class="landing-title" id="home-title">A place to learn,<br>teach, and manage.</h1>
+        <p class="landing-description">A school portal for students, teachers, and administrators. Follow coursework, manage classes, and review account requests in one place.</p>
+        <div class="landing-actions">
+          <a class="button landing-primary" href="{% url 'login' %}">
+            Sign in
+            <svg class="landing-arrow" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <a class="button secondary landing-secondary" href="{% url 'signup' %}">Create account</a>
+        </div>
+        <p class="landing-request-link">Already sent an access request? <a href="{% url 'registration_status' %}">Check its status</a>.</p>
+      </div>
+
+      <div class="landing-art" aria-hidden="true">
+        <span class="landing-art-halo"></span>
+        <img src="{% static 'img/authshield_360_animated_shield.svg' %}?v={{ static_version }}" alt="" width="280" height="300" fetchpriority="high">
+      </div>
+    </div>
   </section>
+
+  <section class="landing-about" aria-labelledby="landing-about-title">
+    <span class="landing-about-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 11v5m0-8h.01"/></svg>
+    </span>
+    <div class="landing-about-copy">
+      <h2 id="landing-about-title">About this portal</h2>
+      <p>Each role has its own view: students follow coursework and assignments, teachers manage classes and grades, and administrators review account requests and school records.</p>
+      <div class="landing-roles" aria-label="Portal roles">
+        <span class="landing-role landing-role-student"><i></i>Students</span>
+        <span class="landing-role landing-role-teacher"><i></i>Teachers</span>
+        <span class="landing-role landing-role-admin"><i></i>Administrators</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="landing-stats" aria-label="Current school records">
+    <article class="landing-stat">
+      <span class="landing-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+      <strong>{{ student_count }}</strong><span>Student records</span>
+    </article>
+    <article class="landing-stat">
+      <span class="landing-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
+      <strong>{{ course_count }}</strong><span>Courses</span>
+    </article>
+    <article class="landing-stat">
+      <span class="landing-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+      <strong>{{ assignment_count }}</strong><span>Assignments</span>
+    </article>
+  </section>
+
+  <script>
+    (() => {
+      const time = document.getElementById("home-clock-time");
+      const date = document.getElementById("home-clock-date");
+      if (!time || !date) return;
+      const update = () => {
+        const now = new Date();
+        time.dateTime = now.toISOString();
+        time.textContent = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(now);
+        date.dateTime = now.toISOString().slice(0, 10);
+        date.textContent = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(now);
+      };
+      update();
+      window.setInterval(update, 1000);
+    })();
+  </script>
 {% endblock %}
