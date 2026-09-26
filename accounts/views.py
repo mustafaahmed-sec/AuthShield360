@@ -8,6 +8,7 @@ from django.contrib.auth.hashers import check_password
 from django.contrib.auth.views import LoginView, LogoutView
 from django.core.exceptions import ImproperlyConfigured, NON_FIELD_ERRORS, PermissionDenied
 from django.db import transaction
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
@@ -37,6 +38,7 @@ from django.contrib.auth.forms import SetPasswordForm
 from .models import EmailOTPChallenge
 from .otp import (
     OTPProviderError,
+    MAX_OTP_ATTEMPTS,
     check_otp,
     delivery_target,
     firebase_phone_auth_available,
@@ -61,6 +63,7 @@ OTP_SESSION_KEYS = (
     "authshield_otp_sms_sent_at",
     "authshield_otp_sms_send_authorized_at",
     "authshield_otp_sms_sent",
+    "authshield_otp_expiry_logged",
     "authshield_email_otp_hash",
 )
 
@@ -102,9 +105,12 @@ def _start_otp(request, user, channel, *, phase="primary", reset_resends=True, f
     request.session["authshield_otp_expires_at"] = expires_at
     request.session["authshield_otp_started_at"] = sent_at
     request.session["authshield_otp_attempts"] = 0
+    request.session.pop("authshield_otp_expiry_logged", None)
     if reset_resends:
         request.session["authshield_otp_resends"] = 0
-    request.session.set_expiry(max(1, int(expires_at - now)))
+    # Keep the pending sign-in session alive after a code expires so the user
+    # can request a replacement without entering their password again.
+    request.session.set_expiry(settings.SESSION_COOKIE_AGE)
     return challenge
 
 
@@ -124,7 +130,8 @@ def _prepare_firebase_sms_challenge(request, user):
     request.session["authshield_otp_attempts"] = 0
     request.session["authshield_otp_resends"] = 0
     request.session["authshield_otp_sms_sent"] = False
-    request.session.set_expiry(settings.AUTHSHIELD_SMS_OTP_TTL_SECONDS)
+    request.session.pop("authshield_otp_expiry_logged", None)
+    request.session.set_expiry(settings.SESSION_COOKIE_AGE)
 
 
 def _otp_duration_ms(request):
@@ -333,7 +340,7 @@ class BaselineLoginView(LoginView):
             email = normalized_email(self.request.POST.get("username", ""))
             now = timezone.now()
             account_until = account_lockout_until(email, now)
-            source_until = ip_throttle_until(self.request, now)
+            source_until = ip_throttle_until(self.request, now, email=email, exempt_admin=True)
             until = account_until or source_until
             if until:
                 context["lockout_until"] = until.timestamp()
@@ -371,7 +378,7 @@ def otp_verify(request):
         messages.info(request, "Start sign-in again to request a verification code.")
         return redirect("login")
     user = User.objects.filter(pk=user_id, is_active=True, approval_status=User.ApprovalStatus.APPROVED).first()
-    if not user or (user.locked_until and user.locked_until > timezone.now()):
+    if not user or (user.role != User.Role.ADMIN and user.locked_until and user.locked_until > timezone.now()):
         _clear_otp_session(request)
         messages.error(request, "Sign-in could not continue. Start again or contact the administrator.")
         return redirect("login")
@@ -379,30 +386,45 @@ def otp_verify(request):
     channel = request.session.get("authshield_otp_channel", "")
     phase = request.session.get("authshield_otp_phase", "primary")
     if timezone.now().timestamp() >= request.session.get("authshield_otp_expires_at", 0):
-        record_failed_authentication(
-            user.email,
-            "otp_failure",
+        if not request.session.get("authshield_otp_expiry_logged"):
+            record_auth_event(
+                "otp_expired",
+                email=user.email,
+                description="The sign-in code expired before verification completed.",
+                request=request,
+                factor="email_otp" if channel == "email" else "mobile_otp",
+                outcome="failure",
+                duration_ms=_otp_duration_ms(request),
+            )
+            request.session["authshield_otp_expiry_logged"] = True
+        if request.method == "POST":
+            messages.error(request, "That code has expired. Request a new code to continue.")
+        return render(
             request,
-            duration_ms=_otp_duration_ms(request),
-            factor="email_otp" if channel == "email" else "mobile_otp",
-            description="A one-time code was submitted after its verification window expired.",
+            "accounts/otp_verify.html",
+            _otp_context(request, user, channel, phase),
+            status=400 if request.method == "POST" else 200,
         )
-        _clear_otp_session(request)
-        messages.error(request, "That verification code has expired. Start sign-in again.")
-        return redirect("login")
     if request.method == "POST":
         now = timezone.now()
-        source_until = ip_throttle_until(request, now)
+        source_until = ip_throttle_until(request, now, email=user.email, exempt_admin=True)
         if source_until:
             record_blocked_attempt(user.email, request, action="ip_rate_limited")
             messages.error(request, f"Too many attempts. Try again in {retry_minutes(source_until, now)} minutes.")
             return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase), status=429)
         code = (request.POST.get("code") or "").strip()
         attempts = request.session.get("authshield_otp_attempts", 0)
-        if attempts >= 5:
-            _clear_otp_session(request)
-            messages.error(request, "Too many code attempts. Start sign-in again.")
-            return redirect("login")
+        purpose = "email_step_up" if phase == "email_step_up" else "sign_in"
+        if user.role != User.Role.ADMIN and attempts >= MAX_OTP_ATTEMPTS:
+            request.session["authshield_otp_expires_at"] = now.timestamp()
+            messages.error(request, "Too many incorrect codes. Request a new code to continue.")
+            return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase))
+        if channel == "email" and user.role != User.Role.ADMIN:
+            challenge = EmailOTPChallenge.objects.filter(user=user, purpose=purpose).only("attempts", "code_hash").first()
+            if challenge and (challenge.attempts >= MAX_OTP_ATTEMPTS or not challenge.code_hash):
+                request.session["authshield_otp_expires_at"] = now.timestamp()
+                messages.error(request, "This code has reached its attempt limit. Request a new code to continue.")
+                return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase))
         if channel == "sms":
             if not request.session.get("authshield_otp_sms_sent"):
                 messages.error(request, "Request the SMS code first, then enter it here.")
@@ -419,7 +441,6 @@ def otp_verify(request):
                 return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase), status=503)
         else:
             try:
-                purpose = "email_step_up" if phase == "email_step_up" else "sign_in"
                 approved = check_otp(
                     delivery_target(user, channel),
                     channel,
@@ -432,7 +453,8 @@ def otp_verify(request):
                 messages.error(request, "We could not verify that code right now. Try again shortly.")
                 return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase), status=503)
         if not approved:
-            request.session["authshield_otp_attempts"] = attempts + 1
+            attempts += 1
+            request.session["authshield_otp_attempts"] = attempts
             record_failed_authentication(
                 user.email,
                 "otp_failure",
@@ -442,10 +464,20 @@ def otp_verify(request):
                 description="An invalid or expired one-time code was submitted.",
             )
             user.refresh_from_db(fields=["locked_until"])
-            if user.locked_until and user.locked_until > timezone.now():
+            if user.role != User.Role.ADMIN and user.locked_until and user.locked_until > timezone.now():
                 _clear_otp_session(request)
                 messages.error(request, "Too many attempts. The account is temporarily locked.")
                 return redirect("login")
+            challenge_exhausted = False
+            if channel == "email" and user.role != User.Role.ADMIN:
+                challenge = EmailOTPChallenge.objects.filter(user=user, purpose=purpose).only("attempts", "code_hash").first()
+                challenge_exhausted = bool(
+                    challenge and (challenge.attempts >= MAX_OTP_ATTEMPTS or not challenge.code_hash)
+                )
+            if user.role != User.Role.ADMIN and (attempts >= MAX_OTP_ATTEMPTS or challenge_exhausted):
+                request.session["authshield_otp_expires_at"] = timezone.now().timestamp()
+                messages.error(request, "Too many incorrect codes. Request a new code to continue.")
+                return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase))
             messages.error(request, "That code is invalid or expired. Check it and try again.")
             return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase))
 
@@ -504,7 +536,7 @@ def otp_verify(request):
     return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase))
 
 
-def _pending_sms_user(request):
+def _pending_sms_user(request, *, allow_expired=False):
     user_id = request.session.get("authshield_otp_user_id")
     if (
         not settings.AUTHSHIELD_OTP_ENABLED
@@ -517,9 +549,9 @@ def _pending_sms_user(request):
         is_active=True,
         approval_status=User.ApprovalStatus.APPROVED,
     ).first()
-    if not user or (user.locked_until and user.locked_until > timezone.now()):
+    if not user or (user.role != User.Role.ADMIN and user.locked_until and user.locked_until > timezone.now()):
         return None
-    if timezone.now().timestamp() >= request.session.get("authshield_otp_expires_at", 0):
+    if not allow_expired and timezone.now().timestamp() >= request.session.get("authshield_otp_expires_at", 0):
         return None
     if not delivery_target(user, "sms"):
         return None
@@ -528,7 +560,7 @@ def _pending_sms_user(request):
 
 @require_POST
 def otp_sms_authorize_send(request):
-    user = _pending_sms_user(request)
+    user = _pending_sms_user(request, allow_expired=True)
     if not user:
         return JsonResponse({"error": "Restart sign-in before requesting an SMS code."}, status=400)
     now = timezone.now().timestamp()
@@ -549,7 +581,7 @@ def otp_sms_authorize_send(request):
 
 @require_POST
 def otp_sms_mark_sent(request):
-    user = _pending_sms_user(request)
+    user = _pending_sms_user(request, allow_expired=True)
     authorized_at = request.session.get("authshield_otp_sms_send_authorized_at", 0)
     if not user or not authorized_at or timezone.now().timestamp() - authorized_at > 120:
         return JsonResponse({"error": "The SMS request expired. Request a new code."}, status=400)
@@ -558,7 +590,8 @@ def otp_sms_mark_sent(request):
     request.session["authshield_otp_sent_at"] = now
     request.session["authshield_otp_started_at"] = now
     request.session["authshield_otp_expires_at"] = now + settings.AUTHSHIELD_SMS_OTP_TTL_SECONDS
-    request.session.set_expiry(settings.AUTHSHIELD_SMS_OTP_TTL_SECONDS)
+    request.session.pop("authshield_otp_expiry_logged", None)
+    request.session.set_expiry(settings.SESSION_COOKIE_AGE)
     request.session.save()
     record_auth_event(
         "otp_sent", email=user.email,
@@ -589,11 +622,14 @@ def otp_sms_record_failure(request):
         description="Firebase rejected an SMS verification code.",
     )
     user.refresh_from_db(fields=["locked_until"])
-    if (user.locked_until and user.locked_until > timezone.now()) or attempts >= 5:
+    if user.role != User.Role.ADMIN and (
+        (user.locked_until and user.locked_until > timezone.now()) or attempts >= MAX_OTP_ATTEMPTS
+    ):
         _clear_otp_session(request)
+        messages.error(request, "Too many incorrect SMS codes. Restart sign-in to request a new code.")
         return JsonResponse({"error": "Too many code attempts. Restart sign-in later."}, status=429)
     request.session.save()
-    return JsonResponse({"ok": True, "remainingAttempts": 5 - attempts})
+    return JsonResponse({"ok": True, "remainingAttempts": max(0, 5 - attempts)})
 
 
 @require_http_methods(["POST"])
@@ -607,10 +643,6 @@ def otp_resend(request):
         messages.error(request, "Start sign-in again to request a verification code.")
         return redirect("login")
     sent_at = request.session.get("authshield_otp_sent_at", 0)
-    if timezone.now().timestamp() >= request.session.get("authshield_otp_expires_at", 0):
-        _clear_otp_session(request)
-        messages.error(request, "That verification request has expired. Start sign-in again.")
-        return redirect("login")
     resend_cooldown_seconds = 30
     if timezone.now().timestamp() - sent_at < resend_cooldown_seconds:
         messages.info(request, "Wait 30 seconds before requesting another email code.")
@@ -646,6 +678,17 @@ def _clear_password_reset_session(request):
     request.session.pop("authshield_password_reset_started_at", None)
 
 
+def _password_reset_user(**lookup):
+    eligible_users = User.objects.filter(
+        Q(is_active=True, approval_status=User.ApprovalStatus.APPROVED)
+        | Q(
+            role__in=(User.Role.STUDENT, User.Role.TEACHER),
+            approval_status=User.ApprovalStatus.PENDING,
+        )
+    )
+    return eligible_users.filter(**lookup).first()
+
+
 @require_http_methods(["GET", "POST"])
 def password_reset_request(request):
     form = PasswordResetRequestForm(request.POST or None)
@@ -659,11 +702,7 @@ def password_reset_request(request):
         request.session["authshield_password_reset_resends"] = 0
         request.session.set_expiry(settings.SESSION_COOKIE_AGE)
         email = normalized_email(form.cleaned_data["email"])
-        user = User.objects.filter(
-            email__iexact=email,
-            is_active=True,
-            approval_status=User.ApprovalStatus.APPROVED,
-        ).first()
+        user = _password_reset_user(email__iexact=email)
         if user:
             # Keep the eligible account in this browser session so a transient
             # mail-delivery failure can be retried from the same generic page.
@@ -724,11 +763,7 @@ def password_reset_request(request):
 @require_http_methods(["GET", "POST"])
 def password_reset_verify(request):
     user_id = request.session.get("authshield_password_reset_user_id")
-    user = User.objects.filter(
-        pk=user_id,
-        is_active=True,
-        approval_status=User.ApprovalStatus.APPROVED,
-    ).first() if user_id else None
+    user = _password_reset_user(pk=user_id) if user_id else None
     challenge = EmailOTPChallenge.objects.filter(
         user=user,
         purpose=EmailOTPChallenge.Purpose.PASSWORD_RESET,
@@ -752,12 +787,12 @@ def password_reset_verify(request):
         if user and challenge and active:
             with transaction.atomic():
                 challenge = EmailOTPChallenge.objects.select_for_update().get(pk=challenge.pk)
-                if challenge.attempts >= 5 or not challenge.code_hash or not challenge.expires_at or challenge.expires_at <= timezone.now():
+                if challenge.attempts >= MAX_OTP_ATTEMPTS or not challenge.code_hash or not challenge.expires_at or challenge.expires_at <= timezone.now():
                     challenge.code_hash = ""
                     challenge.save(update_fields=("code_hash",))
                 elif not check_password(code, challenge.code_hash):
                     challenge.attempts += 1
-                    if challenge.attempts >= 5:
+                    if challenge.attempts >= MAX_OTP_ATTEMPTS:
                         challenge.code_hash = ""
                     challenge.save(update_fields=("attempts", "code_hash"))
                     failed_code = True
@@ -796,7 +831,7 @@ def password_reset_verify(request):
                 factor="email_otp",
                 description="An invalid password recovery code was submitted.",
             )
-            if challenge.attempts >= 5:
+            if challenge.attempts >= MAX_OTP_ATTEMPTS:
                 failure_message = "That code is invalid or expired. Check your email and try again."
         if not password_invalid:
             messages.error(request, failure_message)
@@ -835,11 +870,7 @@ def password_reset_verify(request):
 @require_POST
 def password_reset_resend(request):
     user_id = request.session.get("authshield_password_reset_user_id")
-    user = User.objects.filter(
-        pk=user_id,
-        is_active=True,
-        approval_status=User.ApprovalStatus.APPROVED,
-    ).first() if user_id else None
+    user = _password_reset_user(pk=user_id) if user_id else None
     challenge = EmailOTPChallenge.objects.filter(
         user=user,
         purpose=EmailOTPChallenge.Purpose.PASSWORD_RESET,

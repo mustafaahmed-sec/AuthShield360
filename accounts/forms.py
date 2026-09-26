@@ -129,7 +129,7 @@ class EmailAuthenticationForm(AuthenticationForm):
     def clean(self):
         email = self.data.get(self.add_prefix(self.username_field), "").strip().lower()
         now = timezone.now()
-        ip_until = ip_throttle_until(self.request, now)
+        ip_until = ip_throttle_until(self.request, now, email=email, exempt_admin=True)
         if ip_until:
             raise forms.ValidationError(
                 f"Too many attempts. Try again in {retry_minutes(ip_until, now)} minutes.",

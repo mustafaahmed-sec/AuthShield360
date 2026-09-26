@@ -17,6 +17,9 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2.id_token import verify_firebase_token
 
 
+MAX_OTP_ATTEMPTS = 5
+
+
 class OTPProviderError(Exception):
     """A provider request failed without exposing provider details to the user."""
 
@@ -208,10 +211,9 @@ class GmailEmailOTP:
         return None
 
     def check(self, code, session, *, user=None, purpose="sign_in"):
-        if not re.fullmatch(r"[0-9]{6}", code or ""):
-            return False
+        code_has_valid_format = bool(re.fullmatch(r"[0-9]{6}", code or ""))
         if user is not None:
-            from .models import EmailOTPChallenge
+            from .models import EmailOTPChallenge, User
 
             try:
                 with transaction.atomic():
@@ -226,8 +228,21 @@ class GmailEmailOTP:
                         or not challenge.expires_at
                         or challenge.expires_at <= now
                         or challenge.completed_at
-                        or not check_password(code, challenge.code_hash)
                     ):
+                        return False
+                    if user.role != User.Role.ADMIN and challenge.attempts >= MAX_OTP_ATTEMPTS:
+                        challenge.code_hash = ""
+                        challenge.save(update_fields=("code_hash",))
+                        return False
+                    if not code_has_valid_format or not check_password(code, challenge.code_hash):
+                        if user.role == User.Role.ADMIN:
+                            return False
+                        challenge.attempts += 1
+                        update_fields = ["attempts"]
+                        if challenge.attempts >= MAX_OTP_ATTEMPTS:
+                            challenge.code_hash = ""
+                            update_fields.append("code_hash")
+                        challenge.save(update_fields=update_fields)
                         return False
                     challenge.code_hash = ""
                     challenge.completed_at = now
@@ -238,6 +253,8 @@ class GmailEmailOTP:
                     raise
                 if purpose == "password_reset":
                     raise ImproperlyConfigured("Apply account migrations before enabling password reset codes.") from error
+        if not code_has_valid_format:
+            return False
         code_hash = session.get(self.SESSION_KEY)
         if not code_hash or not check_password(code, code_hash):
             return False

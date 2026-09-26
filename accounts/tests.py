@@ -4,13 +4,15 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.conf import settings
+from django.contrib.auth.hashers import make_password
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from school.models import PortalAuditEvent, StudentRecord
 
-from .models import User
+from .models import EmailOTPChallenge, User
+from .otp import GmailEmailOTP, MAX_OTP_ATTEMPTS
 
 
 class LoginPresentationTests(SimpleTestCase):
@@ -162,6 +164,37 @@ class AuthenticationAuditTests(TestCase):
 
 
 @override_settings(
+    AUTHSHIELD_GMAIL_ADDRESS="authshield-test@example.test",
+    AUTHSHIELD_GMAIL_APP_PASSWORD="test-app-password",
+)
+class EmailOTPChallengeAttemptTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            "email-code-user@example.test",
+            "FictionalDemo!2468",
+            full_name="Email Code User",
+            role=User.Role.STUDENT,
+        )
+        self.provider = GmailEmailOTP()
+
+    @patch.object(GmailEmailOTP, "_send_code")
+    def test_email_code_is_disabled_after_five_wrong_guesses_across_requests(self, send_code):
+        self.provider.start(self.user.email, {}, user=self.user)
+        challenge = EmailOTPChallenge.objects.get(user=self.user, purpose="sign_in")
+        challenge.code_hash = make_password("123456")
+        challenge.save(update_fields=("code_hash",))
+
+        for attempt in range(1, MAX_OTP_ATTEMPTS + 1):
+            self.assertFalse(self.provider.check("000000", {}, user=self.user))
+            challenge.refresh_from_db()
+            self.assertEqual(challenge.attempts, attempt)
+
+        self.assertFalse(challenge.code_hash)
+        self.assertFalse(self.provider.check("123456", {}, user=self.user))
+        send_code.assert_called_once()
+
+
+@override_settings(
     AUTHSHIELD_BASELINE_LOGIN_ENABLED=True,
     AUTHSHIELD_OTP_ENABLED=True,
     AUTHSHIELD_EMAIL_STEP_UP=False,
@@ -249,7 +282,7 @@ class OTPLoginTests(TestCase):
         self.assertEqual(failure.factor, PortalAuditEvent.Factor.EMAIL_OTP)
         self.assertEqual(failure.outcome, PortalAuditEvent.Outcome.FAILURE)
 
-    def test_expired_challenge_is_denied_and_audited(self):
+    def test_expired_challenge_is_denied_without_counting_as_a_bad_code(self):
         self.submit_password()
         session = self.client.session
         session["authshield_otp_expires_at"] = timezone.now().timestamp() - 1
@@ -257,13 +290,75 @@ class OTPLoginTests(TestCase):
 
         response = self.client.post(reverse("otp_verify"), {"code": "123456"})
 
-        self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
+        self.assertEqual(response.status_code, 400)
         self.assertNotIn("_auth_user_id", self.client.session)
-        event = PortalAuditEvent.objects.get(action="otp_failure")
+        self.assertIn("authshield_otp_user_id", self.client.session)
+        event = PortalAuditEvent.objects.get(action="otp_expired")
         self.assertIn("expired", event.description)
         self.assertEqual(event.factor, PortalAuditEvent.Factor.MOBILE_OTP)
         self.assertIsNotNone(event.duration_ms)
+        self.assertFalse(PortalAuditEvent.objects.filter(action="otp_failure").exists())
         self.verify_firebase_token.assert_not_called()
+
+    def test_opening_an_expired_code_page_does_not_count_as_a_failed_attempt(self):
+        self.submit_password(channel="email")
+        session = self.client.session
+        session["authshield_otp_expires_at"] = timezone.now().timestamp() - 1
+        session.save()
+
+        response = self.client.get(reverse("otp_verify"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertFalse(PortalAuditEvent.objects.filter(action="otp_failure").exists())
+        self.assertEqual(PortalAuditEvent.objects.filter(action="otp_expired").count(), 1)
+
+    def test_expired_email_code_can_be_resent_without_restarting_password_sign_in(self):
+        self.submit_password(channel="email")
+        session = self.client.session
+        session["authshield_otp_sent_at"] = timezone.now().timestamp() - 61
+        session["authshield_otp_expires_at"] = timezone.now().timestamp() - 1
+        session.save()
+
+        page = self.client.get(reverse("otp_verify"))
+        response = self.client.post(reverse("otp_resend"), {})
+
+        self.assertEqual(page.status_code, 200)
+        self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
+        self.assertGreater(self.client.session["authshield_otp_expires_at"], timezone.now().timestamp())
+        self.assertEqual(self.email_provider.start.call_count, 2)
+
+    def test_five_wrong_email_codes_do_not_trigger_a_password_lockout(self):
+        self.email_provider.check.return_value = False
+        self.submit_password(channel="email")
+
+        for _ in range(5):
+            response = self.client.post(reverse("otp_verify"), {"code": "000000"})
+
+        self.user.refresh_from_db()
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(self.user.locked_until)
+        self.assertEqual(PortalAuditEvent.objects.filter(action="otp_failure").count(), 5)
+        self.assertContains(response, "Too many incorrect codes")
+        self.assertLessEqual(
+            self.client.session["authshield_otp_expires_at"],
+            timezone.now().timestamp(),
+        )
+
+    def test_one_wrong_email_code_does_not_turn_four_password_errors_into_a_lockout(self):
+        for _ in range(4):
+            self.client.post(reverse("login"), {
+                "username": self.user.email,
+                "password": "wrong-password",
+                "otp_channel": "email",
+            })
+        self.email_provider.check.return_value = False
+        self.submit_password(channel="email")
+
+        self.client.post(reverse("otp_verify"), {"code": "000000"})
+
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.locked_until)
 
     @override_settings(AUTHSHIELD_EMAIL_STEP_UP=True)
     def test_email_step_up_requires_a_second_code_after_sms(self):
@@ -334,6 +429,9 @@ class FailedLoginProtectionTests(TestCase):
 
         self.user.refresh_from_db()
         self.assertGreater(self.user.locked_until, timezone.now())
+        self.assertAlmostEqual(
+            (self.user.locked_until - timezone.now()).total_seconds(), 300, delta=2,
+        )
         self.assertEqual(PortalAuditEvent.objects.filter(action="login_failure").count(), 5)
         self.assertEqual(PortalAuditEvent.objects.filter(action="locked_out").count(), 1)
 
@@ -341,6 +439,16 @@ class FailedLoginProtectionTests(TestCase):
         self.assertContains(blocked, "05:00")
         self.assertNotIn("_auth_user_id", self.client.session)
         self.assertEqual(PortalAuditEvent.objects.filter(action="locked_out").count(), 2)
+
+    def test_repeat_password_lockouts_increase_to_fifteen_then_thirty_minutes(self):
+        for expected_minutes in (5, 15, 30):
+            for _ in range(5):
+                self.post_login()
+            self.user.refresh_from_db()
+            remaining = (self.user.locked_until - timezone.now()).total_seconds()
+            self.assertAlmostEqual(remaining, expected_minutes * 60, delta=2)
+            self.user.locked_until = timezone.now() - timedelta(seconds=1)
+            self.user.save(update_fields=("locked_until",))
 
     def test_successful_login_resets_failure_counter(self):
         for _ in range(4):

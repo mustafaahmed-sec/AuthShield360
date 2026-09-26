@@ -14,6 +14,7 @@ from school.models import PortalAuditEvent
 
 
 FAILURE_ACTIONS = ("login_failure", "registration_status_failure", "otp_failure", "password_reset_failure")
+ACCOUNT_LOCKOUT_FAILURE_ACTIONS = ("login_failure", "registration_status_failure")
 SUCCESS_ACTIONS = ("login_success", "registration_status_success", "password_reset_completed")
 LOCKOUT_STARTED_DESCRIPTION = "Temporary account lock activated after repeated failed attempts."
 LOCKOUT_REPEAT_MINUTES = (15, 30)
@@ -41,7 +42,13 @@ def account_lockout_until(email, now=None):
     return None
 
 
-def ip_throttle_until(request, now=None):
+def ip_throttle_until(request, now=None, *, email=None, exempt_admin=False):
+    if exempt_admin and email and User.objects.filter(
+        email__iexact=normalized_email(email),
+        role=User.Role.ADMIN,
+    ).exists():
+        return None
+
     address = request_ip(request)
     limit = settings.AUTHSHIELD_IP_FAILURE_LIMIT
     if not address or limit <= 0:
@@ -67,7 +74,7 @@ def _failure_count_for_account(email, now):
     window_start = now - timedelta(minutes=settings.AUTHSHIELD_LOCKOUT_WINDOW_MINUTES)
     failures = PortalAuditEvent.objects.filter(
         actor_email__iexact=email,
-        action__in=FAILURE_ACTIONS,
+        action__in=ACCOUNT_LOCKOUT_FAILURE_ACTIONS,
         created_at__gte=window_start,
     )
     reset_events = PortalAuditEvent.objects.filter(created_at__gte=window_start).filter(
@@ -126,7 +133,11 @@ def record_failed_authentication(email, action, request, duration_ms=None, facto
             duration_ms=duration_ms,
         )
 
-        if not user or _failure_count_for_account(email, now) < settings.AUTHSHIELD_LOCKOUT_ATTEMPTS:
+        if (
+            not user
+            or action not in ACCOUNT_LOCKOUT_FAILURE_ACTIONS
+            or _failure_count_for_account(email, now) < settings.AUTHSHIELD_LOCKOUT_ATTEMPTS
+        ):
             return None
 
         lockout_minutes = _next_account_lockout_minutes(email, now)
