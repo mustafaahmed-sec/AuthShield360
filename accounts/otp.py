@@ -194,7 +194,11 @@ class GmailEmailOTP:
                         return challenge
 
                     code = f"{secrets.randbelow(1_000_000):06d}"
-                    ttl_seconds = settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
+                    ttl_seconds = (
+                        settings.AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS
+                        if purpose == "password_reset"
+                        else settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
+                    )
                     self._send_code(destination, code, recipient_name, purpose, ttl_seconds)
                     sent_at = timezone.now()
                     challenge.code_hash = make_password(code)
@@ -214,7 +218,12 @@ class GmailEmailOTP:
         # Compatibility for isolated callers that do not have an authenticated user record.
         session.pop(self.SESSION_KEY, None)
         code = f"{secrets.randbelow(1_000_000):06d}"
-        self._send_code(destination, code, recipient_name, purpose, settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS)
+        ttl_seconds = (
+            settings.AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS
+            if purpose == "password_reset"
+            else settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
+        )
+        self._send_code(destination, code, recipient_name, purpose, ttl_seconds)
         session[self.SESSION_KEY] = make_password(code)
         return None
 
