@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load school_extras %}
 {% block title %}{% if can_manage_all_students %}All students{% else %}My students{% endif %} | AuthShield 360{% endblock %}
 {% block content %}
   <div class="eyebrow">Teacher portal</div>
@@ -98,7 +99,7 @@
         <ul class="item-list">
           {% for event in recent_changes %}
             <li>
-              <strong>{{ event.action|cut:"_" }}</strong>
+              <strong>{{ event.action|spaced_words }}</strong>
               <span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.target_name }}</span>
               <p>{{ event.description }}</p>
             </li>
