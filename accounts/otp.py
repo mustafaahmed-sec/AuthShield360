@@ -47,10 +47,15 @@ class GmailEmailOTP:
             raise OTPProviderError("The account has no usable email address.")
         session.pop(self.SESSION_KEY, None)
         code = f"{secrets.randbelow(1_000_000):06d}"
-        minutes = max(1, settings.AUTHSHIELD_OTP_TTL_SECONDS // 60)
+        ttl_seconds = settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
+        if ttl_seconds % 60 == 0:
+            minutes = ttl_seconds // 60
+            expiration = f"{minutes} minute{'s' if minutes != 1 else ''}"
+        else:
+            expiration = f"{ttl_seconds} seconds"
         message = (
             f"Your AuthShield 360 sign-in code is {code}.\n\n"
-            f"It expires in {minutes} minutes. If you did not request this code, ignore this email."
+            f"It expires in {expiration}. If you did not request this code, ignore this email."
         )
         try:
             sent = send_mail(

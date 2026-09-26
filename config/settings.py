@@ -146,11 +146,15 @@ def _positive_integer_setting(name, default):
 
 AUTHSHIELD_LOCKOUT_ATTEMPTS = _positive_integer_setting("AUTHSHIELD_LOCKOUT_ATTEMPTS", 5)
 AUTHSHIELD_LOCKOUT_WINDOW_MINUTES = _positive_integer_setting("AUTHSHIELD_LOCKOUT_WINDOW_MINUTES", 15)
-AUTHSHIELD_LOCKOUT_MINUTES = _positive_integer_setting("AUTHSHIELD_LOCKOUT_MINUTES", 15)
+AUTHSHIELD_LOCKOUT_MINUTES = max(
+    30,
+    _positive_integer_setting("AUTHSHIELD_LOCKOUT_MINUTES", 30),
+)
 AUTHSHIELD_IP_FAILURE_LIMIT = _positive_integer_setting("AUTHSHIELD_IP_FAILURE_LIMIT", 30)
 AUTHSHIELD_IP_WINDOW_MINUTES = _positive_integer_setting("AUTHSHIELD_IP_WINDOW_MINUTES", 15)
 AUTHSHIELD_IP_THROTTLE_MINUTES = _positive_integer_setting("AUTHSHIELD_IP_THROTTLE_MINUTES", 1)
 AUTHSHIELD_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_OTP_TTL_SECONDS", 600)
+AUTHSHIELD_EMAIL_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_EMAIL_OTP_TTL_SECONDS", 60)
 
 # Password-only access remains a controlled lab stage. For a Vercel demo it
 # requires a separately configured protected deployment; ordinary users never

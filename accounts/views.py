@@ -50,6 +50,12 @@ def _clear_otp_session(request):
         request.session.pop(key, None)
 
 
+def _otp_ttl_seconds(channel):
+    if channel == "email":
+        return settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
+    return settings.AUTHSHIELD_OTP_TTL_SECONDS
+
+
 def _start_otp(request, user, channel, *, phase="primary", reset_resends=True):
     started_at = timezone.now().timestamp() if phase == "primary" else request.session.get("authshield_otp_started_at")
     start_otp(delivery_target(user, channel), channel, request.session)
@@ -60,13 +66,14 @@ def _start_otp(request, user, channel, *, phase="primary", reset_resends=True):
         request.session["authshield_otp_primary_channel"] = channel
     now = timezone.now().timestamp()
     request.session["authshield_otp_sent_at"] = now
-    request.session["authshield_otp_expires_at"] = now + settings.AUTHSHIELD_OTP_TTL_SECONDS
+    ttl_seconds = _otp_ttl_seconds(channel)
+    request.session["authshield_otp_expires_at"] = now + ttl_seconds
     if phase == "primary":
         request.session["authshield_otp_started_at"] = started_at
     request.session["authshield_otp_attempts"] = 0
     if reset_resends:
         request.session["authshield_otp_resends"] = 0
-    request.session.set_expiry(settings.AUTHSHIELD_OTP_TTL_SECONDS)
+    request.session.set_expiry(ttl_seconds)
 
 
 def _otp_duration_ms(request):
@@ -396,8 +403,12 @@ def otp_resend(request):
         _clear_otp_session(request)
         messages.error(request, "That verification request has expired. Start sign-in again.")
         return redirect("login")
-    if timezone.now().timestamp() - sent_at < 60:
-        messages.info(request, "Wait one minute before requesting another code.")
+    resend_cooldown_seconds = 30 if channel == "email" else 60
+    if timezone.now().timestamp() - sent_at < resend_cooldown_seconds:
+        if channel == "email":
+            messages.info(request, "Wait 30 seconds before requesting another email code.")
+        else:
+            messages.info(request, "Wait one minute before requesting another code.")
         return redirect("otp_verify")
     if request.session.get("authshield_otp_resends", 0) >= 3:
         messages.error(request, "You have reached the resend limit. Start sign-in again later.")
