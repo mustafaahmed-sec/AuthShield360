@@ -7,6 +7,9 @@
     @keyframes ringRotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     @keyframes scanPulse { 0%, 100% { opacity: 0; } 40%, 60% { opacity: 1; } }
     @keyframes glowBreath { 0%, 100% { transform: scale(.9); opacity: .5; } 50% { transform: scale(1.1); opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) {
+      .shield-ring-spin, .shield-scan, .shield-glow-pulse { animation: none !important; }
+    }
   </style>
   <defs>
     <radialGradient id="shieldGlow" cx="50%" cy="50%" r="50%">
