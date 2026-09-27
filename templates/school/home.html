@@ -5,11 +5,11 @@
 {% block body_class %}home-page{% endblock %}
 {% block main_content_class %} home-main{% endblock %}
 {% block content %}
-  <div class="landing-status-bar" role="status" aria-label="Portal status and local time">
+  <div class="landing-status-bar" role="status" aria-label="Portal status and Pakistan Standard Time">
     <div class="landing-status-left">
       <p class="landing-status-label"><span class="landing-status-dot" aria-hidden="true"></span>Portal secured &amp; operational</p>
       <span class="landing-status-divider" aria-hidden="true"></span>
-      <p class="landing-clock"><span>Local time</span><time id="home-clock-time"></time></p>
+      <p class="landing-clock"><span title="Pakistan Standard Time">PKT</span><time id="home-clock-time"></time></p>
     </div>
     <time class="landing-date" id="home-clock-date"></time>
   </div>
@@ -75,9 +75,10 @@
       const update = () => {
         const now = new Date();
         time.dateTime = now.toISOString();
-        time.textContent = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(now);
-        date.dateTime = now.toISOString().slice(0, 10);
-        date.textContent = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(now);
+        time.textContent = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Karachi", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(now);
+        const dateParts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now).map(part => [part.type, part.value]));
+        date.dateTime = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+        date.textContent = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Karachi", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(now);
       };
       update();
       window.setInterval(update, 1000);

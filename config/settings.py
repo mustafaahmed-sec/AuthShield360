@@ -111,8 +111,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-# The fictional demonstration school uses US Eastern time for displayed events.
-TIME_ZONE = "America/New_York"
+# Keep audit events and portal-facing dates in the school's Pakistan time zone.
+TIME_ZONE = "Asia/Karachi"
 USE_I18N = True
 USE_TZ = True
 

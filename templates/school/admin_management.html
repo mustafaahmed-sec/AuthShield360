@@ -179,7 +179,7 @@
               {% for event in student_events %}
                 <li>
                   <strong>{{ event.action|spaced_words }}</strong>
-                  <span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.actor_email }} · {{ event.get_auth_mode_display }} · {{ event.get_factor_display }} · {{ event.get_outcome_display }} · IP {{ event.ip_address|default:"not available" }}{% if event.session_hint %} · session {{ event.session_hint }}{% endif %}</span>
+                  <span>{{ event.created_at|date:"j M Y, H:i" }} PKT · {{ event.actor_email }} · {{ event.get_auth_mode_display }} · {{ event.get_factor_display }} · {{ event.get_outcome_display }} · IP {{ event.ip_address|default:"not available" }}{% if event.session_hint %} · session {{ event.session_hint }}{% endif %}</span>
                   <p>{{ event.description }}</p>
                 </li>
               {% endfor %}
@@ -193,7 +193,7 @@
               {% for event in teacher_events %}
                 <li>
                   <strong>{{ event.action|spaced_words }}</strong>
-                  <span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.actor_email }} · {{ event.get_auth_mode_display }} · {{ event.get_factor_display }} · {{ event.get_outcome_display }} · IP {{ event.ip_address|default:"not available" }}{% if event.session_hint %} · session {{ event.session_hint }}{% endif %}</span>
+                  <span>{{ event.created_at|date:"j M Y, H:i" }} PKT · {{ event.actor_email }} · {{ event.get_auth_mode_display }} · {{ event.get_factor_display }} · {{ event.get_outcome_display }} · IP {{ event.ip_address|default:"not available" }}{% if event.session_hint %} · session {{ event.session_hint }}{% endif %}</span>
                   <p>{{ event.description }}</p>
                 </li>
               {% endfor %}
@@ -207,7 +207,7 @@
               {% for event in admin_events %}
                 <li>
                   <strong>{{ event.action|spaced_words }}</strong>
-                  <span>{{ event.created_at|date:"j M Y, H:i" }} · {{ event.actor_email }} · {{ event.get_auth_mode_display }} · {{ event.get_factor_display }} · {{ event.get_outcome_display }} · IP {{ event.ip_address|default:"not available" }}{% if event.session_hint %} · session {{ event.session_hint }}{% endif %}</span>
+                  <span>{{ event.created_at|date:"j M Y, H:i" }} PKT · {{ event.actor_email }} · {{ event.get_auth_mode_display }} · {{ event.get_factor_display }} · {{ event.get_outcome_display }} · IP {{ event.ip_address|default:"not available" }}{% if event.session_hint %} · session {{ event.session_hint }}{% endif %}</span>
                   <p>{{ event.description }}</p>
                 </li>
               {% endfor %}

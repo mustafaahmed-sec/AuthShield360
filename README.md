@@ -89,7 +89,7 @@ See [the requirement map](docs/REQUIREMENTS.md) for the full SRS checklist and t
 | `docs/REQUIREMENTS.md` | Tracks SRS obligations, teacher clarifications, and open decisions. |
 | `.github/workflows/checks.yml`, `requirements-dev.txt`, `ruff.toml` | Run all tests, check migrations, and lint Python on pushes and pull requests. |
 
-The fictional school displays dates in the `America/New_York` time zone. Change `TIME_ZONE` if the demonstrated school is assigned elsewhere. Application audit events are also written to server logs without credentials.
+The portal displays dates and audit activity in Pakistan Standard Time (`Asia/Karachi`). Application audit events are also written to server logs without credentials.
 
 ## Next milestones
 
