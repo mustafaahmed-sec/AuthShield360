@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import connection
 from django.test import TestCase, TransactionTestCase, override_settings
+from django.utils import timezone
 from django.urls import reverse
 
 from accounts.models import User
@@ -94,6 +95,70 @@ class AccountApprovalFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Accounts and requests")
         self.assertContains(response, "New account requests")
+
+    def test_admin_can_find_locked_student_and_teacher_and_see_remaining_time(self):
+        expires_at = timezone.now() + timedelta(minutes=4, seconds=12)
+        student = User.objects.create_user(
+            "locked-student@example.test", "student-password", full_name="Locked Student",
+            role=User.Role.STUDENT, locked_until=expires_at,
+        )
+        teacher = User.objects.create_user(
+            "locked-teacher@example.test", "teacher-password", full_name="Locked Teacher",
+            role=User.Role.TEACHER, locked_until=expires_at,
+        )
+        unlocked = User.objects.create_user(
+            "open-student@example.test", "student-password", full_name="Open Student",
+            role=User.Role.STUDENT,
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("admin_management"), {"status": "locked"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, student.email)
+        self.assertContains(response, teacher.email)
+        self.assertNotContains(response, unlocked.email)
+        self.assertContains(response, "04:12")
+        self.assertContains(response, 'data-admin-lockout-countdown')
+        self.assertContains(response, "Unlock account")
+
+    def test_admin_unlock_clears_active_lock_and_audits_action(self):
+        student = User.objects.create_user(
+            "locked-student@example.test", "student-password", full_name="Locked Student",
+            role=User.Role.STUDENT, locked_until=timezone.now() + timedelta(minutes=5),
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(reverse("unlock_school_account", args=[student.pk]), follow=True)
+
+        self.assertRedirects(response, reverse("admin_management"))
+        student.refresh_from_db()
+        self.assertIsNone(student.locked_until)
+        self.assertContains(response, "Sign-in lockout cleared for Locked Student")
+        self.assertNotContains(response, 'data-admin-lockout-countdown')
+        event = PortalAuditEvent.objects.get(action="account_unlocked", target_name=student.email)
+        self.assertEqual(event.actor, self.admin)
+        self.assertEqual(event.factor, PortalAuditEvent.Factor.ACCESS)
+        self.assertEqual(event.outcome, PortalAuditEvent.Outcome.SUCCESS)
+
+    def test_unlock_action_is_admin_only_post_only_and_rejects_unlocked_accounts(self):
+        student = User.objects.create_user(
+            "unlocked-student@example.test", "student-password", full_name="Open Student",
+            role=User.Role.STUDENT,
+        )
+        self.client.force_login(student)
+        url = reverse("unlock_school_account", args=[student.pk])
+        self.assertEqual(self.client.post(url).status_code, 403)
+        self.assertTrue(PortalAuditEvent.objects.filter(
+            actor=student, action="role_access_denied", target_name="administrator management",
+        ).exists())
+
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.get(url).status_code, 405)
+        response = self.client.post(url, follow=True)
+        self.assertRedirects(response, reverse("admin_management"))
+        self.assertContains(response, "does not have an active sign-in lockout")
+        self.assertFalse(PortalAuditEvent.objects.filter(action="account_unlocked").exists())
 
     def test_administrator_can_delete_student_account_and_school_record(self):
         student = User.objects.create_user(

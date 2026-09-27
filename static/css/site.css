@@ -150,6 +150,10 @@ button { cursor: pointer; }
 .panel-heading > a { font-weight: 650; }
 .management-section { margin-top: 1.4rem; }
 .management-section h2 { margin: 0 0 1rem; font-size: 1.3rem; }
+.account-lockout-status { display: grid; justify-items: start; gap: .4rem; min-width: 9rem; }
+.account-lockout-status > strong { color: #9a2929; font-size: .84rem; }
+.account-lockout-status .account-lockout-countdown { display: inline-block; min-width: 3.2em; color: #7d2020; font-weight: 750; font-variant-numeric: tabular-nums; }
+.account-lockout-status .account-lockout-ended { color: #176244; font-weight: 650; }
 .security-log-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
 .security-log-column { min-width: 0; padding: 1rem; border: 1px solid #dce7ed; border-radius: .75rem; background: #fbfdff; }
 .security-log-column h3 { margin: 0 0 .75rem; color: #124a78; font-size: 1rem; }

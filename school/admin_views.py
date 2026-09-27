@@ -1,5 +1,6 @@
 """Administrator-only account, roster, and activity controls."""
 
+from math import ceil
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -36,6 +37,7 @@ def admin_management(request):
     search = request.GET.get("q", "").strip()
     role = request.GET.get("role", "")
     status = request.GET.get("status", "")
+    now = timezone.now()
     accounts = User.objects.filter(role__in=(User.Role.STUDENT, User.Role.TEACHER)).order_by("role", "full_name")
     if role in (User.Role.STUDENT, User.Role.TEACHER):
         accounts = accounts.filter(role=role)
@@ -47,8 +49,16 @@ def admin_management(request):
         accounts = accounts.filter(is_active=False).exclude(approval_status=User.ApprovalStatus.PENDING)
     elif status == "active":
         accounts = accounts.filter(is_active=True)
+    elif status == "locked":
+        accounts = accounts.filter(locked_until__gt=now)
     if search:
         accounts = accounts.filter(Q(full_name__icontains=search) | Q(email__icontains=search))
+    account_page = Paginator(accounts.select_related("student_record"), 40).get_page(request.GET.get("page"))
+    for account in account_page.object_list:
+        if account.locked_until and account.locked_until > now:
+            account.lockout_remaining_seconds = max(0, ceil((account.locked_until - now).total_seconds()))
+            minutes, seconds = divmod(account.lockout_remaining_seconds, 60)
+            account.lockout_remaining_display = f"{minutes:02d}:{seconds:02d}"
     context = {
         "pending_accounts": Paginator(
             User.objects.filter(
@@ -57,7 +67,7 @@ def admin_management(request):
             ).order_by("date_joined", "pk"),
             20,
         ).get_page(request.GET.get("pending_page")),
-        "accounts": Paginator(accounts.select_related("student_record"), 40).get_page(request.GET.get("page")),
+        "accounts": account_page,
         "duplicate_names": set(accounts.values("full_name").annotate(total=Count("id")).filter(total__gt=1).values_list("full_name", flat=True)),
         "pending_changes": Paginator(
             EnrollmentChangeRequest.objects.filter(
@@ -79,8 +89,41 @@ def admin_management(request):
             is_active=True,
             approval_status=User.ApprovalStatus.APPROVED,
         ).count(),
+        "active_lockout_count": User.objects.filter(
+            role__in=(User.Role.STUDENT, User.Role.TEACHER),
+            locked_until__gt=now,
+        ).count(),
     }
     return render(request, "school/admin_management.html", context)
+
+
+@login_required
+@require_POST
+@portal_admin_view
+@transaction.atomic
+def unlock_school_account(request, user_id):
+    account = get_object_or_404(
+        User.objects.select_for_update(),
+        pk=user_id,
+        role__in=(User.Role.STUDENT, User.Role.TEACHER),
+    )
+    if not account.locked_until or account.locked_until <= timezone.now():
+        messages.error(request, f"{account.full_name} does not have an active sign-in lockout.")
+        return redirect("admin_management")
+
+    account.locked_until = None
+    account.save(update_fields=("locked_until",))
+    record_event(
+        request.user,
+        "account_unlocked",
+        "Cleared an active failed-login lock so the account holder can try signing in again.",
+        target_name=account.email,
+        request=request,
+        factor=PortalAuditEvent.Factor.ACCESS,
+        outcome=PortalAuditEvent.Outcome.SUCCESS,
+    )
+    messages.success(request, f"Sign-in lockout cleared for {account.full_name}. They can try signing in again.")
+    return redirect("admin_management")
 
 
 @login_required
