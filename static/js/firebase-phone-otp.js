@@ -133,7 +133,7 @@ if (root) {
     resendButton.addEventListener("click", requestSms);
     codeInput.addEventListener("input", () => {
       codeInput.value = codeInput.value.replace(/\D/g, "").slice(0, 6);
-      verifyButton.disabled = codeInput.value.length !== 6;
+      verifyButton.disabled = !confirmationResult || codeInput.value.length !== 6;
     });
 
     verifyForm.addEventListener("submit", async (event) => {

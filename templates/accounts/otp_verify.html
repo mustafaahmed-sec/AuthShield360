@@ -20,9 +20,9 @@
         </div>
         <form id="firebase-sms-verify-form" method="post" action="{% url 'otp_verify' %}" data-busy-label="Verifying…">
           {% csrf_token %}
-          <div class="form-field" id="sms-code-field" hidden>
+          <div class="form-field" id="sms-code-field">
             <label for="id_code">One-time code</label>
-            <input id="id_code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" disabled required>
+            <input id="id_code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="Enter your 6-digit code" required>
           </div>
           <input type="hidden" name="firebase_id_token" id="firebase-id-token">
           <button class="button full" id="verify-sms-code" type="submit" data-otp-verify disabled>Verify and sign in</button>
