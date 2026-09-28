@@ -63,13 +63,23 @@ if (root) {
   function explainFirebaseError(error) {
     const knownMessages = {
       "auth/invalid-phone-number": "This account’s phone number is not in a valid international format. Ask an administrator to update it.",
+      "auth/missing-phone-number": "This account does not have a phone number for SMS verification. Ask an administrator to update it.",
       "auth/invalid-verification-code": "That code is incorrect. Check the text and try again.",
       "auth/code-expired": "That code expired. Request a new SMS code.",
       "auth/too-many-requests": "Firebase has temporarily limited requests for this number. Wait before trying again.",
       "auth/captcha-check-failed": "The security check did not complete. Try again.",
+      "auth/invalid-app-credential": "Firebase could not validate the security check. Confirm this portal’s domain is authorized in Firebase Authentication, then try again.",
+      "auth/unauthorized-domain": "This portal domain is not authorized in Firebase Authentication. Add it under Authentication settings → Authorized domains.",
+      "auth/app-not-authorized": "Firebase does not authorize this portal to use phone sign-in. Check the Firebase web app and API key configuration.",
+      "auth/invalid-api-key": "The Firebase API key is invalid. Check the web app configuration in Firebase.",
+      "auth/operation-not-allowed": "Phone sign-in is not enabled for this Firebase project.",
+      "auth/billing-not-enabled": "Firebase SMS sending requires the project to be linked to a Cloud Billing account.",
+      "auth/region-not-allowed": "Firebase’s SMS region policy does not allow messages to this country.",
       "auth/quota-exceeded": "Firebase’s SMS quota has been reached. Try later or check the project’s billing and SMS limits.",
+      "auth/network-request-failed": "The browser could not reach Firebase. Check the internet connection and try again.",
     };
-    return knownMessages[error?.code] || "Firebase could not send or verify the text message. Please try again later.";
+    const code = typeof error?.code === "string" ? error.code : "";
+    return knownMessages[code] || `Firebase could not send or verify the text message${code ? ` (${code})` : ""}. Please try again later.`;
   }
 
   async function requestSms() {
@@ -100,7 +110,11 @@ if (root) {
     } catch (error) {
       setStatus(error.status ? error.message : explainFirebaseError(error), true);
       if (recaptchaVerifier && error?.code?.startsWith("auth/")) {
-        await recaptchaVerifier.clear().catch(() => {});
+        try {
+          recaptchaVerifier.clear();
+        } catch {
+          // The failed verifier may already have been disposed by Firebase.
+        }
         recaptchaVerifier = null;
         recaptchaContainer.replaceChildren();
       }
