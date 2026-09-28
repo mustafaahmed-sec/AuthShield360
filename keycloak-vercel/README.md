@@ -23,11 +23,13 @@ Use a managed PostgreSQL database with backups and TLS. Give Keycloak a dedicate
 | --- | --- |
 | `PORT` | `8080` |
 | `KC_HOSTNAME` | `https://<your-keycloak-domain>` |
-| `KC_DB_URL` | `jdbc:postgresql://<database-host>:5432/<database-name>?sslmode=require` |
-| `KC_DB_USERNAME` | Dedicated Keycloak PostgreSQL user |
-| `KC_DB_PASSWORD` | Dedicated PostgreSQL password; if it contains `$`, use `KCRAW_DB_PASSWORD` instead |
+| `KC_DB_URL` | Connect the dedicated Neon database to this Vercel project with the `KC_DB` prefix; the integration supplies `KC_DB_URL` as a PostgreSQL URI, which the entrypoint converts to JDBC in memory. For other providers, use `jdbc:postgresql://<database-host>:5432/<database-name>?sslmode=require`. |
+| `KC_DB_USERNAME` | Required only when `KC_DB_URL` is already a JDBC URL; a Neon URI supplies the username. |
+| `KC_DB_PASSWORD` | Required only when `KC_DB_URL` is already a JDBC URL; a Neon URI supplies the password in process memory. If a manually configured password contains `$`, use `KCRAW_DB_PASSWORD` instead. |
 | `KC_BOOTSTRAP_ADMIN_USERNAME` | A new, private Keycloak administrator username |
 | `KC_BOOTSTRAP_ADMIN_PASSWORD` | A long, unique Keycloak administrator password |
+
+For the Neon integration, connect the resource to the Keycloak project in Production only, set the custom prefix to `KC_DB`, and keep its generated environment variable marked sensitive. The entrypoint extracts the database credentials at startup without logging or saving them to the repository.
 
 `KC_DB=postgres`, HTTP behind the Vercel TLS proxy, forwarded-header handling, and strict hostname validation are set in the image. Do not add `start-dev` or turn off hostname validation.
 
