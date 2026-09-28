@@ -15,7 +15,7 @@ class AccountSignupForm(UserCreationForm):
     phone_number = forms.CharField(
         label="Phone number",
         max_length=32,
-        validators=[RegexValidator(r"^\+?[0-9][0-9\s().-]{6,30}$", "Enter a valid test phone number.")],
+        validators=[RegexValidator(r"^\+?[0-9][0-9\s().-]{6,30}$", "Enter a valid phone number.")],
         help_text="For SMS sign-in, use an international number such as +923001234567. Pakistani 03xx numbers are converted automatically. Firebase processes the number for verification, and carrier rates may apply.",
         widget=forms.TextInput(attrs={"autocomplete": "tel", "placeholder": "e.g. +92 300 1234567"}),
     )
@@ -99,6 +99,29 @@ class StudentSignupForm(AccountSignupForm):
 
 class TeacherSignupForm(AccountSignupForm):
     requested_role = User.Role.TEACHER
+
+
+class KeycloakAccessRequestForm(forms.Form):
+    full_name = forms.CharField(
+        label="Full name",
+        max_length=150,
+        widget=forms.TextInput(attrs={"autocomplete": "name", "placeholder": "Your full name"}),
+    )
+    phone_number = forms.CharField(
+        label="Phone number",
+        max_length=32,
+        validators=[RegexValidator(r"^\+?[0-9][0-9\s().-]{6,30}$", "Enter a valid test phone number.")],
+        help_text="For SMS sign-in, use an international number such as +923001234567. Pakistani 03xx numbers are converted automatically.",
+        widget=forms.TextInput(attrs={"autocomplete": "tel", "placeholder": "e.g. +92 300 1234567"}),
+    )
+
+    def clean_phone_number(self):
+        phone_number = normalize_phone_number(self.cleaned_data["phone_number"])
+        if not phone_number:
+            raise forms.ValidationError(
+                "Enter a valid international phone number. Pakistani 03xx numbers are also accepted."
+            )
+        return phone_number
 
 
 class RegistrationStatusForm(forms.Form):

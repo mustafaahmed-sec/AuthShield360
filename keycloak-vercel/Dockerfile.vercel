@@ -1,0 +1,24 @@
+# Vercel Container Images entrypoint for a separate AuthShield Keycloak project.
+# Keep this version aligned with the Keycloak 26.7.4 distribution already selected
+# for this project; update both stages together when upgrading Keycloak.
+FROM quay.io/keycloak/keycloak:26.7.4 AS builder
+
+ENV KC_DB=postgres
+
+# Stateless mode is a Keycloak preview feature. It persists authentication
+# sessions and other volatile flow state in PostgreSQL, which is important for
+# a serverless platform where requests can reach different container instances.
+RUN /opt/keycloak/bin/kc.sh build --db=postgres --features=stateless
+
+FROM quay.io/keycloak/keycloak:26.7.4
+
+COPY --from=builder /opt/keycloak/ /opt/keycloak/
+COPY --chmod=755 start-vercel.sh /opt/keycloak/bin/start-vercel.sh
+
+ENV KC_DB=postgres \
+    KC_HTTP_ENABLED=true \
+    KC_PROXY_HEADERS=xforwarded \
+    KC_HEALTH_ENABLED=true \
+    KC_HOSTNAME_STRICT=true
+
+ENTRYPOINT ["/opt/keycloak/bin/start-vercel.sh"]

@@ -28,3 +28,4 @@ media/
 .agents/
 .vercel-deploy-credentials.txt
 skills-lock.json
+.vercel

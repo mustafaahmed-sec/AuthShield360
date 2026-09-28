@@ -135,13 +135,13 @@
                 <td>{{ account.get_approval_status_display }}</td>
                 <td>{% if account.is_active %}Active{% else %}Inactive{% endif %}</td>
                 <td>
-                  {% if account.lockout_remaining_display %}
+                  {% if account.lockout_remaining_display or keycloak_admin_api_enabled and account.keycloak_subject %}
                     <div class="account-lockout-status" data-account-lockout>
-                      <strong data-lockout-state>Locked</strong>
-                      <span><time class="account-lockout-countdown" data-admin-lockout-countdown data-until="{{ account.locked_until|date:'U' }}" role="timer" aria-label="Sign-in lockout time remaining">{{ account.lockout_remaining_display }}</time> remaining</span>
+                      {% if account.lockout_remaining_display %}<strong data-lockout-state>Locked</strong>
+                      <span><time class="account-lockout-countdown" data-admin-lockout-countdown data-until="{{ account.locked_until|date:'U' }}" role="timer" aria-label="Sign-in lockout time remaining">{{ account.lockout_remaining_display }}</time> remaining</span>{% else %}<strong>Clear Keycloak sign-in failures</strong>{% endif %}
                       <form method="post" action="{% url 'unlock_school_account' account.pk %}" onsubmit="return confirm('Clear this account lockout now and allow another sign-in attempt?');">
                         {% csrf_token %}
-                        <button class="button compact secondary" type="submit">Unlock account</button>
+                        <button class="button compact secondary" type="submit">{% if account.lockout_remaining_display %}Unlock account{% else %}Reset sign-in lockout{% endif %}</button>
                       </form>
                     </div>
                   {% elif account.locked_until %}

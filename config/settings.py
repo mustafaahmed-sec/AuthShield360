@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -170,8 +170,45 @@ AUTHSHIELD_BASELINE_LOGIN_ENABLED = (
     and (DEBUG or AUTHSHIELD_PROTECTED_DEMO)
 )
 AUTHSHIELD_OTP_ENABLED = os.environ.get("AUTHSHIELD_OTP_ENABLED", "false").lower() == "true"
+AUTHSHIELD_KEYCLOAK_ENABLED = os.environ.get("AUTHSHIELD_KEYCLOAK_ENABLED", "false").lower() == "true"
+AUTHSHIELD_KEYCLOAK_SERVER_URL = os.environ.get("AUTHSHIELD_KEYCLOAK_SERVER_URL", "").strip().rstrip("/")
+AUTHSHIELD_KEYCLOAK_REALM = os.environ.get("AUTHSHIELD_KEYCLOAK_REALM", "").strip()
+AUTHSHIELD_KEYCLOAK_CLIENT_ID = os.environ.get("AUTHSHIELD_KEYCLOAK_CLIENT_ID", "").strip()
+AUTHSHIELD_KEYCLOAK_CLIENT_SECRET = os.environ.get("AUTHSHIELD_KEYCLOAK_CLIENT_SECRET", "").strip()
+AUTHSHIELD_KEYCLOAK_ADMIN_CLIENT_ID = os.environ.get("AUTHSHIELD_KEYCLOAK_ADMIN_CLIENT_ID", "").strip()
+AUTHSHIELD_KEYCLOAK_ADMIN_CLIENT_SECRET = os.environ.get("AUTHSHIELD_KEYCLOAK_ADMIN_CLIENT_SECRET", "").strip()
+AUTHSHIELD_KEYCLOAK_ADMIN_API_ENABLED = bool(
+    AUTHSHIELD_KEYCLOAK_ENABLED
+    and AUTHSHIELD_KEYCLOAK_ADMIN_CLIENT_ID
+    and AUTHSHIELD_KEYCLOAK_ADMIN_CLIENT_SECRET
+)
+AUTHSHIELD_KEYCLOAK_ISSUER = (
+    f"{AUTHSHIELD_KEYCLOAK_SERVER_URL}/realms/{quote(AUTHSHIELD_KEYCLOAK_REALM, safe='')}"
+    if AUTHSHIELD_KEYCLOAK_SERVER_URL and AUTHSHIELD_KEYCLOAK_REALM
+    else ""
+)
+AUTHSHIELD_KEYCLOAK_ADMIN_CONSOLE_URL = (
+    f"{AUTHSHIELD_KEYCLOAK_SERVER_URL}/admin/{quote(AUTHSHIELD_KEYCLOAK_REALM, safe='')}/console/"
+    if AUTHSHIELD_KEYCLOAK_SERVER_URL and AUTHSHIELD_KEYCLOAK_REALM
+    else ""
+)
+if AUTHSHIELD_KEYCLOAK_ENABLED and not all((
+    AUTHSHIELD_KEYCLOAK_ISSUER,
+    AUTHSHIELD_KEYCLOAK_CLIENT_ID,
+    AUTHSHIELD_KEYCLOAK_CLIENT_SECRET,
+)):
+    raise ImproperlyConfigured(
+        "Keycloak sign-in is enabled but its server URL, realm, client ID, or client secret is missing."
+    )
+if AUTHSHIELD_KEYCLOAK_ENABLED and not DEBUG and urlparse(AUTHSHIELD_KEYCLOAK_SERVER_URL).scheme != "https":
+    raise ImproperlyConfigured("Keycloak must use an HTTPS server URL outside local development.")
+AUTHSHIELD_OTP_EXEMPT_EMAILS = frozenset(
+    email.strip().lower()
+    for email in os.environ.get("AUTHSHIELD_OTP_EXEMPT_EMAILS", "").split(",")
+    if email.strip()
+)
 AUTHSHIELD_LOGIN_ENABLED = (
-    (AUTHSHIELD_BASELINE_LOGIN_ENABLED or AUTHSHIELD_OTP_ENABLED)
+    (AUTHSHIELD_BASELINE_LOGIN_ENABLED or AUTHSHIELD_OTP_ENABLED or AUTHSHIELD_KEYCLOAK_ENABLED)
     and (DEBUG or AUTHSHIELD_PROTECTED_DEMO)
 )
 AUTHSHIELD_EMAIL_STEP_UP = os.environ.get("AUTHSHIELD_EMAIL_STEP_UP", "false").lower() == "true"
@@ -190,6 +227,15 @@ AUTHSHIELD_FIREBASE_API_KEY = os.environ.get("AUTHSHIELD_FIREBASE_API_KEY", "").
 AUTHSHIELD_FIREBASE_AUTH_DOMAIN = os.environ.get("AUTHSHIELD_FIREBASE_AUTH_DOMAIN", "").strip()
 AUTHSHIELD_FIREBASE_PROJECT_ID = os.environ.get("AUTHSHIELD_FIREBASE_PROJECT_ID", "").strip()
 AUTHSHIELD_FIREBASE_APP_ID = os.environ.get("AUTHSHIELD_FIREBASE_APP_ID", "").strip()
+if AUTHSHIELD_KEYCLOAK_ENABLED and not AUTHSHIELD_OTP_ENABLED:
+    raise ImproperlyConfigured("Enable AuthShield OTP before switching the portal to Keycloak sign-in.")
+if AUTHSHIELD_KEYCLOAK_ENABLED and not all((
+    AUTHSHIELD_FIREBASE_API_KEY,
+    AUTHSHIELD_FIREBASE_AUTH_DOMAIN,
+    AUTHSHIELD_FIREBASE_PROJECT_ID,
+    AUTHSHIELD_FIREBASE_APP_ID,
+)):
+    raise ImproperlyConfigured("Keycloak sign-in requires the Firebase Phone Auth web-app configuration.")
 
 LOGGING = {
     "version": 1,

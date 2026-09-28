@@ -45,6 +45,7 @@ class User(AbstractUser):
 
     username = None
     email = models.EmailField(unique=True)
+    keycloak_subject = models.CharField(max_length=255, blank=True, null=True, unique=True)
     full_name = models.CharField(max_length=150)
     phone_number = models.CharField(max_length=32, blank=True)
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.STUDENT)

@@ -15,6 +15,22 @@
           <span data-lockout-message>Try again in <span class="lockout-clock" data-lockout-countdown data-until="{{ lockout_until }}" role="timer">{{ lockout_clock_initial }}</span>.</span>
         </div>
       {% elif form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+      {% if keycloak_enabled %}
+        <p class="muted">Continue to the AuthShield identity service to enter your account credentials.</p>
+        {% if otp_enabled and email_step_up %}
+          <a class="button full" href="{% url 'keycloak_login' %}?channel=sms{% if next %}&amp;next={{ next|urlencode }}{% endif %}">Continue with Keycloak</a>
+          <p class="help-text">After your password, verify by SMS and then confirm the code sent to your email.</p>
+        {% elif otp_enabled and mobile_otp_enabled %}
+          <a class="button full" href="{% url 'keycloak_login' %}?channel=sms{% if next %}&amp;next={{ next|urlencode }}{% endif %}">Sign in with SMS verification</a>
+          <a class="button secondary full" href="{% url 'keycloak_login' %}?channel=email{% if next %}&amp;next={{ next|urlencode }}{% endif %}">Use email verification</a>
+          <p class="help-text">Keycloak checks your password. AuthShield then verifies the selected one-time code.</p>
+        {% elif otp_enabled %}
+          <a class="button full" href="{% url 'keycloak_login' %}?channel=email{% if next %}&amp;next={{ next|urlencode }}{% endif %}">Continue with Keycloak</a>
+          <p class="help-text">After your password, AuthShield sends a verification code to your account email.</p>
+        {% else %}
+          <a class="button full" href="{% url 'keycloak_login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Continue with Keycloak</a>
+        {% endif %}
+      {% else %}
       <form method="post" action="{% url 'login' %}" novalidate data-busy-label="Signing in…">
         {% csrf_token %}
         {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
@@ -25,10 +41,11 @@
         {% endfor %}
         <button class="button full" type="submit">{% if otp_enabled %}Continue to verification{% else %}Sign in{% endif %}</button>
       </form>
+      {% endif %}
       <p class="form-foot"><a href="{% url 'password_reset_request' %}">Forgot your password?</a></p>
       <p class="form-foot">Waiting for access approval? <a href="{% url 'registration_status' %}">Check your request status</a>.</p>
     </section>
-    <aside class="side-card"><span class="eyebrow">{% if otp_enabled %}{% if email_step_up %}SMS + email verification{% elif mobile_otp_enabled %}SMS and email verification{% else %}Email verification{% endif %}{% else %}Password sign-in{% endif %}</span><h2>{% if otp_enabled %}Verify it’s you{% else %}Your school portal{% endif %}</h2><p>{% if otp_enabled %}{% if email_step_up %}After your password, verify with an SMS code and then confirm with a second code sent to your email.{% elif mobile_otp_enabled %}After your password is accepted, we’ll send a one-time code using your selected method.{% else %}After your password is accepted, we’ll send a one-time code to your account email.{% endif %} You will not be signed in until verification succeeds.{% else %}Enter your account email and password to open the dashboard for your role.{% endif %}</p></aside>
+    <aside class="side-card"><span class="eyebrow">{% if keycloak_enabled %}Keycloak identity{% elif otp_enabled %}{% if email_step_up %}SMS + email verification{% elif mobile_otp_enabled %}SMS and email verification{% else %}Email verification{% endif %}{% else %}Password sign-in{% endif %}</span><h2>{% if otp_enabled %}Verify it’s you{% else %}Your school portal{% endif %}</h2><p>{% if keycloak_enabled %}Keycloak checks your password and account identity. AuthShield then verifies the configured one-time code before opening your school dashboard.{% elif otp_enabled %}{% if email_step_up %}After your password, verify with an SMS code and then confirm with a second code sent to your email.{% elif mobile_otp_enabled %}After your password is accepted, we’ll send a one-time code using your selected method.{% else %}After your password is accepted, we’ll send a one-time code to your account email.{% endif %} You will not be signed in until verification succeeds.{% else %}Enter your account email and password to open the dashboard for your role.{% endif %}</p></aside>
   </div>
   {% if lockout_until %}<script src="{% static 'js/otp-countdown.js' %}?v={{ static_version }}" defer></script>{% endif %}
 {% endblock %}

@@ -3,6 +3,7 @@
 from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
+from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count, ExpressionWrapper, F, FloatField, Q, Sum
@@ -162,6 +163,10 @@ def dashboard(request):
     if user.is_portal_admin:
         context = {
             "announcements": active_announcements_for(user),
+            "keycloak_admin_console_url": (
+                settings.AUTHSHIELD_KEYCLOAK_ADMIN_CONSOLE_URL
+                if settings.AUTHSHIELD_KEYCLOAK_ENABLED else ""
+            ),
             "attendance_count": AttendanceRecord.objects.count(),
             "teacher_attendance_count": TeacherAttendanceRecord.objects.count(),
             "student_count": StudentRecord.objects.count(),

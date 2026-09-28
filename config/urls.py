@@ -16,6 +16,8 @@ from accounts.views import (
     signup,
     signup_options,
     password_change,
+    keycloak_login,
+    keycloak_callback,
 )
 from school.admin_views import (
     admin_management,
@@ -52,6 +54,8 @@ urlpatterns = [
     path("password/reset/verify/", password_reset_verify, name="password_reset_verify"),
     path("password/reset/resend/", password_reset_resend, name="password_reset_resend"),
     path("login/", BaselineLoginView.as_view(), name="login"),
+    path("login/keycloak/", keycloak_login, name="keycloak_login"),
+    path("login/keycloak/callback/", keycloak_callback, name="keycloak_callback"),
     path("login/verify/", otp_verify, name="otp_verify"),
     path("login/verify/resend/", otp_resend, name="otp_resend"),
     path("login/verify/sms/authorize/", otp_sms_authorize_send, name="otp_sms_authorize_send"),

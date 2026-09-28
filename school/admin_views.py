@@ -4,6 +4,7 @@ from math import ceil
 from urllib.parse import urlencode
 
 from django.contrib import messages
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
@@ -15,6 +16,13 @@ from django.utils.crypto import get_random_string
 from django.views.decorators.http import require_http_methods, require_POST
 
 from accounts.models import User
+from accounts.keycloak import (
+    KeycloakAdminError,
+    keycloak_clear_user_login_failures,
+    keycloak_delete_user,
+    keycloak_send_password_reset,
+    keycloak_set_user_enabled,
+)
 
 from .access import portal_admin_view, require_portal_admin
 from .audit import record_event
@@ -60,6 +68,9 @@ def admin_management(request):
             minutes, seconds = divmod(account.lockout_remaining_seconds, 60)
             account.lockout_remaining_display = f"{minutes:02d}:{seconds:02d}"
     context = {
+        "keycloak_enabled": settings.AUTHSHIELD_KEYCLOAK_ENABLED,
+        "keycloak_admin_api_enabled": settings.AUTHSHIELD_KEYCLOAK_ADMIN_API_ENABLED,
+        "keycloak_admin_console_url": settings.AUTHSHIELD_KEYCLOAK_ADMIN_CONSOLE_URL,
         "pending_accounts": Paginator(
             User.objects.filter(
                 approval_status=User.ApprovalStatus.PENDING,
@@ -107,16 +118,28 @@ def unlock_school_account(request, user_id):
         pk=user_id,
         role__in=(User.Role.STUDENT, User.Role.TEACHER),
     )
-    if not account.locked_until or account.locked_until <= timezone.now():
+    local_lockout_active = bool(account.locked_until and account.locked_until > timezone.now())
+    can_clear_keycloak_failures = bool(
+        settings.AUTHSHIELD_KEYCLOAK_ADMIN_API_ENABLED and account.keycloak_subject
+    )
+    if not local_lockout_active and not can_clear_keycloak_failures:
         messages.error(request, f"{account.full_name} does not have an active sign-in lockout.")
         return redirect("admin_management")
 
-    account.locked_until = None
-    account.save(update_fields=("locked_until",))
+    if can_clear_keycloak_failures:
+        try:
+            keycloak_clear_user_login_failures(account.keycloak_subject)
+        except KeycloakAdminError:
+            messages.error(request, "Keycloak could not clear this user's sign-in failures. No portal lockout was changed.")
+            return redirect("admin_management")
+
+    if account.locked_until:
+        account.locked_until = None
+        account.save(update_fields=("locked_until",))
     record_event(
         request.user,
         "account_unlocked",
-        "Cleared an active failed-login lock so the account holder can try signing in again.",
+        "Cleared portal and Keycloak failed-login lock state so the account holder can try signing in again.",
         target_name=account.email,
         request=request,
         factor=PortalAuditEvent.Factor.ACCESS,
@@ -252,6 +275,15 @@ def review_account_request(request, user_id):
         approval_status__in=(User.ApprovalStatus.PENDING, User.ApprovalStatus.REJECTED),
     )
     action = request.POST.get("action")
+    if action == "approve" and settings.AUTHSHIELD_KEYCLOAK_ADMIN_API_ENABLED:
+        if not account.keycloak_subject:
+            messages.error(request, "This request has no linked Keycloak identity. Have the applicant register through Keycloak first.")
+            return redirect("admin_management")
+        try:
+            keycloak_set_user_enabled(account.keycloak_subject, True)
+        except KeycloakAdminError:
+            messages.error(request, "Keycloak could not enable this identity. The access request was not changed.")
+            return redirect("admin_management")
     if action == "approve":
         account.approval_status = User.ApprovalStatus.APPROVED
         account.is_active = True
@@ -301,6 +333,12 @@ def change_account_access(request, user_id):
     else:
         messages.error(request, "Choose deactivate or reactivate.")
         return redirect("admin_management")
+    if settings.AUTHSHIELD_KEYCLOAK_ADMIN_API_ENABLED and account.keycloak_subject:
+        try:
+            keycloak_set_user_enabled(account.keycloak_subject, action == "reactivate")
+        except KeycloakAdminError:
+            messages.error(request, "Keycloak could not update this account. Its access was not changed.")
+            return redirect("admin_management")
     account.save(update_fields=("is_active",))
     record_event(request.user, f"account_{status_label}", summary, target_name=account.full_name, request=request)
     messages.success(request, f"Access for {account.full_name} was {status_label}.")
@@ -318,6 +356,20 @@ def change_account_access(request, user_id):
 @transaction.atomic
 def reset_school_account_password(request, user_id):
     account = get_object_or_404(User.objects.select_for_update(), pk=user_id, role__in=(User.Role.STUDENT, User.Role.TEACHER), is_active=True)
+    if settings.AUTHSHIELD_KEYCLOAK_ENABLED:
+        if not settings.AUTHSHIELD_KEYCLOAK_ADMIN_API_ENABLED or not account.keycloak_subject:
+            messages.error(request, "Connect the Keycloak admin service account before resetting this password.")
+            return redirect("admin_management")
+        try:
+            keycloak_send_password_reset(account.keycloak_subject)
+        except KeycloakAdminError:
+            messages.error(request, "Keycloak could not send the password update email.")
+            return redirect("admin_management")
+        account.must_change_password = False
+        account.save(update_fields=("must_change_password",))
+        record_event(request.user, "account_password_reset", "Sent a Keycloak password update email.", target_name=account.full_name, request=request, factor="password", outcome="success")
+        messages.success(request, f"Keycloak sent a password update email to {account.email}.")
+        return redirect("admin_management")
     temporary_password = get_random_string(20, allowed_chars="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789") + "!"
     account.set_password(temporary_password)
     account.must_change_password = True
@@ -340,6 +392,12 @@ def delete_school_account(request, user_id):
     label = account.full_name
     email = account.email
     role_label = account.get_role_display().lower()
+    if settings.AUTHSHIELD_KEYCLOAK_ADMIN_API_ENABLED and account.keycloak_subject:
+        try:
+            keycloak_delete_user(account.keycloak_subject)
+        except KeycloakAdminError:
+            messages.error(request, "Keycloak could not delete this identity. The portal account was not removed.")
+            return redirect("admin_management")
     record_event(
         request.user,
         "school_account_deleted",

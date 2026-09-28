@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 import time
 from datetime import timedelta
 
@@ -10,11 +11,11 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password
 from django.contrib.auth.views import LoginView, LogoutView
 from django.core.exceptions import ImproperlyConfigured, NON_FIELD_ERRORS, PermissionDenied
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
@@ -32,11 +33,13 @@ from .lockout import (
 
 from .forms import (
     EmailAuthenticationForm,
+    KeycloakAccessRequestForm,
     PasswordResetRequestForm,
     RegistrationStatusForm,
     StudentSignupForm,
     TeacherSignupForm,
 )
+from .keycloak import keycloak_client
 from django.contrib.auth.forms import SetPasswordForm
 from .models import EmailOTPChallenge, PasswordResetRequestLimit
 from .otp import (
@@ -54,6 +57,7 @@ from school.audit import record_auth_event, request_ip
 
 
 User = get_user_model()
+logger = logging.getLogger("authshield.keycloak")
 OTP_SESSION_KEYS = (
     "authshield_otp_user_id",
     "authshield_otp_channel",
@@ -210,6 +214,78 @@ def signup(request, role="student"):
     }.get(role, (None, None))
     if form_class is None:
         raise PermissionDenied("Public registration is available for Student and Teacher requests only.")
+
+    if settings.AUTHSHIELD_KEYCLOAK_ENABLED:
+        identity = request.session.get("authshield_keycloak_signup") or {}
+        if (
+            identity.get("role") != role
+            or not identity.get("sub")
+            or not identity.get("email")
+            or identity.get("expires_at", 0) < timezone.now().timestamp()
+        ):
+            request.session.pop("authshield_keycloak_signup", None)
+            return redirect(f"{reverse('keycloak_login')}?flow=register&role={role}")
+
+        existing = User.objects.filter(email__iexact=identity["email"]).first()
+        if existing and existing.approval_status != User.ApprovalStatus.REJECTED:
+            request.session["authshield_registration_result"] = (
+                "approved" if existing.is_active and existing.approval_status == User.ApprovalStatus.APPROVED
+                else "pending" if existing.approval_status == User.ApprovalStatus.PENDING
+                else "not_approved"
+            )
+            request.session.pop("authshield_keycloak_signup", None)
+            return redirect("registration_status")
+
+        form = KeycloakAccessRequestForm(
+            request.POST or None,
+            initial={"full_name": identity.get("full_name", "")},
+        )
+        if request.method == "POST" and form.is_valid():
+            try:
+                with transaction.atomic():
+                    existing = User.objects.select_for_update().filter(email__iexact=identity["email"]).first()
+                    if existing:
+                        if existing.keycloak_subject != identity["sub"] or existing.role != role:
+                            raise IntegrityError("The existing request is linked to another account.")
+                        existing.full_name = form.cleaned_data["full_name"].strip()
+                        existing.phone_number = form.cleaned_data["phone_number"]
+                        existing.is_active = False
+                        existing.approval_status = User.ApprovalStatus.PENDING
+                        existing.reviewed_at = None
+                        existing.reviewed_by = None
+                        existing.save(update_fields=(
+                            "full_name", "phone_number", "is_active", "approval_status", "reviewed_at", "reviewed_by"
+                        ))
+                    else:
+                        user = User(
+                            email=identity["email"],
+                            full_name=form.cleaned_data["full_name"].strip(),
+                            phone_number=form.cleaned_data["phone_number"],
+                            role=role,
+                            approval_status=User.ApprovalStatus.PENDING,
+                            is_active=False,
+                            keycloak_subject=identity["sub"],
+                        )
+                        user.set_unusable_password()
+                        user.save()
+            except IntegrityError:
+                form.add_error(None, "We could not link this sign-in to your request. Contact the portal administrator.")
+            else:
+                request.session.pop("authshield_keycloak_signup", None)
+                messages.success(
+                    request,
+                    f"Your {role_label} access request was submitted. An administrator must approve it before you can sign in.",
+                )
+                return redirect("registration_status")
+
+        return render(request, "accounts/signup.html", {
+            "form": form,
+            "role": role,
+            "role_label": role_label,
+            "keycloak_enabled": True,
+            "keycloak_email": identity["email"],
+        })
+
     form = form_class(request.POST or None)
     if request.method == "POST" and form.is_valid():
         form.save()
@@ -227,7 +303,246 @@ def signup_options(request):
     return render(request, "accounts/signup_options.html")
 
 
+def _keycloak_identity_user(email, subject):
+    """Resolve a local portal account by linked subject, or link a verified email once."""
+    user = User.objects.filter(keycloak_subject=subject).first()
+    if user:
+        return (user, None) if normalized_email(user.email) == email else (None, "identity_mismatch")
+
+    user = User.objects.filter(email__iexact=email).first()
+    if not user:
+        return None, None
+    if user.keycloak_subject:
+        return (user, None) if user.keycloak_subject == subject else (None, "identity_mismatch")
+
+    try:
+        user.keycloak_subject = subject
+        user.save(update_fields=("keycloak_subject",))
+    except IntegrityError:
+        user.refresh_from_db()
+        if user.keycloak_subject != subject:
+            return None, "identity_mismatch"
+    return user, None
+
+
+@require_http_methods(["GET"])
+def keycloak_login(request):
+    if not settings.AUTHSHIELD_KEYCLOAK_ENABLED:
+        return redirect("login")
+
+    flow = request.GET.get("flow", "login")
+    role = request.GET.get("role", "")
+    if flow not in {"login", "register", "status"}:
+        flow = "login"
+    if flow == "register" and role not in {User.Role.STUDENT, User.Role.TEACHER}:
+        messages.error(request, "Choose Student or Teacher access before registering.")
+        return redirect("signup")
+
+    request.session["authshield_keycloak_flow"] = flow
+    request.session["authshield_keycloak_signup_role"] = role if flow == "register" else ""
+    channel = request.GET.get("channel", "sms")
+    request.session["authshield_keycloak_channel"] = channel if channel in {"sms", "email"} else "sms"
+    requested_next = request.GET.get("next", "")
+    if requested_next and url_has_allowed_host_and_scheme(
+        requested_next, {request.get_host()}, require_https=request.is_secure()
+    ):
+        request.session["authshield_keycloak_next"] = requested_next
+    else:
+        request.session.pop("authshield_keycloak_next", None)
+    request.session.set_expiry(settings.SESSION_COOKIE_AGE)
+
+    try:
+        client = keycloak_client()
+        prompt = "create" if flow == "register" else "login"
+        return client.authorize_redirect(
+            request,
+            request.build_absolute_uri(reverse("keycloak_callback")),
+            prompt=prompt,
+        )
+    except Exception as error:
+        logger.warning("Could not start Keycloak sign-in (%s).", type(error).__name__)
+        messages.error(request, "The identity service is unavailable. Try again later or contact the administrator.")
+        return redirect("login")
+
+
+def _finish_keycloak_sign_in(request, user, channel, next_url):
+    otp_exempt = user.is_portal_admin and normalized_email(user.email) in settings.AUTHSHIELD_OTP_EXEMPT_EMAILS
+    if settings.AUTHSHIELD_OTP_ENABLED and not otp_exempt:
+        if settings.AUTHSHIELD_EMAIL_STEP_UP:
+            channel = "sms"
+        elif channel == "sms" and not firebase_phone_auth_available():
+            channel = "email"
+
+        if channel == "sms":
+            try:
+                _prepare_firebase_sms_challenge(request, user)
+            except (OTPProviderError, ImproperlyConfigured):
+                record_auth_event(
+                    "otp_delivery_failure", email=user.email,
+                    description="Firebase SMS sign-in could not be prepared after Keycloak authentication.",
+                    request=request, factor="mobile_otp", outcome="failure",
+                )
+                messages.error(request, "We could not start SMS verification. Try email verification or contact the administrator.")
+                return redirect("login")
+        else:
+            try:
+                _start_otp(request, user, "email")
+            except (OTPProviderError, ImproperlyConfigured):
+                record_auth_event(
+                    "otp_delivery_failure", email=user.email,
+                    description="Email OTP could not be started after Keycloak authentication.",
+                    request=request, factor="email_otp", outcome="failure",
+                )
+                messages.error(request, "We could not send a verification code. Try again or contact the administrator.")
+                return redirect("login")
+            record_auth_event(
+                "otp_sent", email=user.email,
+                description="A sign-in verification code was requested after Keycloak authentication.",
+                request=request, factor="email_otp", outcome="success",
+            )
+
+        if next_url and url_has_allowed_host_and_scheme(
+            next_url, {request.get_host()}, require_https=request.is_secure()
+        ):
+            request.session["authshield_otp_next"] = next_url
+        return redirect("otp_verify")
+
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    clear_expired_or_successful_lock(user)
+    record_auth_event(
+        "login_success",
+        email=user.email,
+        actor=user,
+        description="Successful Keycloak sign-in without an additional portal OTP.",
+        request=request,
+        factor="password",
+        outcome="success",
+        auth_mode="password",
+    )
+    if user.must_change_password:
+        return redirect("password_change")
+    if next_url and url_has_allowed_host_and_scheme(
+        next_url, {request.get_host()}, require_https=request.is_secure()
+    ):
+        return redirect(next_url)
+    return redirect(settings.LOGIN_REDIRECT_URL)
+
+
+@require_http_methods(["GET"])
+def keycloak_callback(request):
+    if not settings.AUTHSHIELD_KEYCLOAK_ENABLED:
+        return redirect("login")
+
+    try:
+        token = keycloak_client().authorize_access_token(request)
+        claims = token.get("userinfo") or {}
+    except Exception as error:
+        logger.warning("Keycloak callback failed (%s).", type(error).__name__)
+        for key in (
+            "authshield_keycloak_flow", "authshield_keycloak_signup_role",
+            "authshield_keycloak_channel", "authshield_keycloak_next",
+        ):
+            request.session.pop(key, None)
+        messages.error(request, "Keycloak could not verify this sign-in. Start again.")
+        return redirect("login")
+
+    email = normalized_email(claims.get("email", ""))
+    subject = claims.get("sub", "")
+    if not email or not subject or claims.get("email_verified") is not True:
+        messages.error(request, "Verify your email in Keycloak before using this school portal account.")
+        return redirect("login")
+
+    flow = request.session.pop("authshield_keycloak_flow", "login")
+    role = request.session.pop("authshield_keycloak_signup_role", "")
+    channel = request.session.pop("authshield_keycloak_channel", "sms")
+    next_url = request.session.pop("authshield_keycloak_next", "")
+
+    if flow == "register":
+        user, issue = _keycloak_identity_user(email, subject)
+        if issue:
+            messages.error(request, "This identity is already linked to another portal account. Contact the administrator.")
+            return redirect("login")
+        if user:
+            if user.role not in (User.Role.STUDENT, User.Role.TEACHER):
+                messages.error(request, "This account cannot submit a Student or Teacher access request.")
+                return redirect("login")
+            if user.approval_status != User.ApprovalStatus.REJECTED:
+                request.session["authshield_registration_result"] = (
+                    "approved" if user.is_active and user.approval_status == User.ApprovalStatus.APPROVED
+                    else "pending" if user.approval_status == User.ApprovalStatus.PENDING
+                    else "not_approved"
+                )
+                return redirect("registration_status")
+        if role not in (User.Role.STUDENT, User.Role.TEACHER):
+            messages.error(request, "Choose Student or Teacher access before registering.")
+            return redirect("signup")
+        request.session["authshield_keycloak_signup"] = {
+            "sub": subject,
+            "email": email,
+            "full_name": str(claims.get("name") or "").strip()[:150],
+            "role": role,
+            "expires_at": timezone.now().timestamp() + 600,
+        }
+        return redirect("student_signup" if role == User.Role.STUDENT else "teacher_signup")
+
+    user, issue = _keycloak_identity_user(email, subject)
+    if flow == "status":
+        if user and user.role in (User.Role.STUDENT, User.Role.TEACHER):
+            request.session["authshield_registration_result"] = (
+                "approved" if user.is_active and user.approval_status == User.ApprovalStatus.APPROVED
+                else "pending" if user.approval_status == User.ApprovalStatus.PENDING
+                else "not_approved"
+            )
+        else:
+            request.session["authshield_registration_error"] = True
+        return redirect("registration_status")
+
+    if issue or not user:
+        messages.error(request, "No matching portal account is linked to this Keycloak identity. Request Student or Teacher access first.")
+        return redirect("login")
+    if flow == "update_password":
+        expected_user_id = request.session.pop("authshield_keycloak_password_user_id", None)
+        if request.GET.get("kc_action_status") == "cancelled":
+            messages.info(request, "Password change was cancelled. Your current password remains active.")
+            return redirect("password_change")
+        if (
+            not expected_user_id
+            or user.pk != expected_user_id
+            or request.GET.get("kc_action_status") != "success"
+        ):
+            messages.error(request, "Keycloak did not confirm the password change. Start the change again.")
+            return redirect("password_change")
+        user.must_change_password = False
+        user.save(update_fields=("must_change_password",))
+        record_auth_event(
+            "password_reset_completed", email=user.email, actor=user,
+            description="The account holder completed a required password change in Keycloak.",
+            request=request, factor="password", outcome="success",
+        )
+        messages.success(request, "Your Keycloak password has been changed.")
+        return redirect("dashboard")
+    if not user.is_active or user.approval_status != User.ApprovalStatus.APPROVED:
+        messages.info(request, "This account is waiting for administrator approval. Check your access-request status.")
+        return redirect("registration_status")
+    if user.locked_until and user.locked_until > timezone.now():
+        record_blocked_attempt(user.email, request, action="locked_out")
+        messages.error(request, f"This account is temporarily locked. Try again in {retry_minutes(user.locked_until)} minutes.")
+        return redirect("login")
+
+    return _finish_keycloak_sign_in(request, user, channel, next_url)
+
+
 def registration_status(request):
+    if settings.AUTHSHIELD_KEYCLOAK_ENABLED:
+        if request.method == "POST":
+            return redirect(f"{reverse('keycloak_login')}?flow=status")
+        return render(request, "accounts/registration_status.html", {
+            "keycloak_enabled": True,
+            "result": request.session.pop("authshield_registration_result", None),
+            "status_error": request.session.pop("authshield_registration_error", False),
+            "form": None,
+        })
+
     form = RegistrationStatusForm(request.POST or None)
     result = None
     started_at = time.monotonic()
@@ -295,6 +610,18 @@ class BaselineLoginView(LoginView):
         self._auth_started_at = time.monotonic()
         if not settings.AUTHSHIELD_LOGIN_ENABLED:
             raise PermissionDenied("Sign-in is disabled until the authentication stage is configured.")
+        if settings.AUTHSHIELD_KEYCLOAK_ENABLED:
+            if request.user.is_authenticated:
+                return redirect("dashboard")
+            if request.method != "GET":
+                return redirect("keycloak_login")
+            return render(request, self.template_name, {
+                "keycloak_enabled": True,
+                "otp_enabled": settings.AUTHSHIELD_OTP_ENABLED,
+                "email_step_up": settings.AUTHSHIELD_EMAIL_STEP_UP,
+                "mobile_otp_enabled": firebase_phone_auth_available(),
+                "next": request.GET.get("next", ""),
+            })
         return super().dispatch(request, *args, **kwargs)
 
     def _duration_ms(self):
@@ -302,7 +629,11 @@ class BaselineLoginView(LoginView):
 
     def form_valid(self, form):
         user = form.get_user()
-        if settings.AUTHSHIELD_OTP_ENABLED:
+        account_requires_otp = settings.AUTHSHIELD_OTP_ENABLED and not (
+            user.is_portal_admin
+            and normalized_email(user.email) in settings.AUTHSHIELD_OTP_EXEMPT_EMAILS
+        )
+        if account_requires_otp:
             if settings.AUTHSHIELD_EMAIL_STEP_UP:
                 channel = "sms"
             elif firebase_phone_auth_available():
@@ -355,6 +686,7 @@ class BaselineLoginView(LoginView):
             request=self.request,
             factor="password",
             outcome="success",
+            auth_mode="password",
             duration_ms=self._duration_ms(),
         )
         if user.must_change_password:
@@ -800,6 +1132,10 @@ def _wait_for_password_reset_response(started_at):
 
 @require_http_methods(["GET", "POST"])
 def password_reset_request(request):
+    if settings.AUTHSHIELD_KEYCLOAK_ENABLED:
+        messages.info(request, "Use ‘Forgot password?’ on the Keycloak sign-in page to reset your password.")
+        return redirect("keycloak_login")
+
     response_started_at = time.monotonic()
     form = PasswordResetRequestForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -1077,6 +1413,23 @@ class BaselineLogoutView(LogoutView):
 def password_change(request):
     if not request.user.must_change_password:
         return redirect("dashboard")
+    if settings.AUTHSHIELD_KEYCLOAK_ENABLED:
+        if not request.user.keycloak_subject:
+            messages.error(request, "This account is not linked to Keycloak yet. Contact the portal administrator.")
+            return redirect("login")
+        request.session["authshield_keycloak_flow"] = "update_password"
+        request.session["authshield_keycloak_password_user_id"] = request.user.pk
+        try:
+            return keycloak_client().authorize_redirect(
+                request,
+                request.build_absolute_uri(reverse("keycloak_callback")),
+                prompt="login",
+                kc_action="UPDATE_PASSWORD",
+            )
+        except Exception as error:
+            logger.warning("Could not start Keycloak password change (%s).", type(error).__name__)
+            messages.error(request, "Keycloak is unavailable. Try again later or contact the administrator.")
+            return redirect("dashboard")
     form = SetPasswordForm(request.user, request.POST or None)
     if request.method == "POST" and form.is_valid():
         user = form.save(commit=False)

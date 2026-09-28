@@ -11,6 +11,7 @@
         <span class="review-chip">Admin review required</span>
       </div>
       <p class="muted">{% if role == 'teacher' %}Send a teacher access request. An administrator reviews it before the account can sign in.{% else %}Create a student access request. An administrator must approve it before you can sign in.{% endif %}</p>
+      {% if keycloak_enabled %}<div class="status-banner status-pending" role="status"><strong>Identity verified with Keycloak</strong><span>Requesting access for {{ keycloak_email }}. Your Keycloak password stays with Keycloak.</span></div>{% endif %}
 
       {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
       <form method="post" action="{% if role == 'teacher' %}{% url 'teacher_signup' %}{% else %}{% url 'student_signup' %}{% endif %}" data-busy-label="Submitting request…">
@@ -32,9 +33,9 @@
       <span class="eyebrow">A clear path to access</span>
       <h2 id="signup-steps-title">Request. Review. Sign in.</h2>
       <ol class="signup-steps">
-        <li><span class="step-number">1</span><div><strong>Send your request</strong><p>Use fictional contact details and choose a unique password for this demonstration.</p></div></li>
+        <li><span class="step-number">1</span><div><strong>Send your request</strong><p>{% if keycloak_enabled %}Your password and email identity are managed by Keycloak. Add the contact number that should receive SMS codes.{% else %}Use fictional contact details and choose a unique password for this demonstration.{% endif %}</p></div></li>
         <li><span class="step-number">2</span><div><strong>Wait for administrator approval</strong><p>New Student and Teacher accounts cannot sign in while a request is pending.</p></div></li>
-        <li><span class="step-number">3</span><div><strong>Check your status</strong><p>Use your email and password on the status page. Once approved, sign in normally.</p></div></li>
+        <li><span class="step-number">3</span><div><strong>Check your status</strong><p>{% if keycloak_enabled %}Sign in through Keycloak to see the request status. Once approved, use the same identity to continue to SMS verification.{% else %}Use your email and password on the status page. Once approved, sign in normally.{% endif %}</p></div></li>
       </ol>
       <div class="privacy-note"><strong>Fictional data only</strong><p>Never enter a real school email, phone number, student record, or password here.</p></div>
     </aside>
