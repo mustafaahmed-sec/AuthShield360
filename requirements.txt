@@ -4,3 +4,5 @@ google-auth[requests]==2.58.0
 requests==2.34.2
 psycopg[binary]==3.3.6
 python-dotenv==1.2.3
+gunicorn==26.2.0
+whitenoise==6.12.0

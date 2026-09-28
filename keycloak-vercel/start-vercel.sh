@@ -2,6 +2,9 @@
 set -euo pipefail
 
 : "${KC_HOSTNAME:?Set KC_HOSTNAME to the stable public HTTPS URL}"
+# The Vercel Neon integration uses a KC_DB_ prefix. Prefer its direct URL
+# for Keycloak's long-lived JDBC connections and schema initialization.
+KC_DB_URL="${KC_DB_URL:-${KC_DB_DATABASE_URL_UNPOOLED:-${KC_DB_POSTGRES_URL_NON_POOLING:-${KC_DB_DATABASE_URL:-}}}}"
 : "${KC_DB_URL:?Set KC_DB_URL to the dedicated PostgreSQL connection URL}"
 : "${KC_BOOTSTRAP_ADMIN_USERNAME:?Set KC_BOOTSTRAP_ADMIN_USERNAME in Vercel}"
 : "${KC_BOOTSTRAP_ADMIN_PASSWORD:?Set KC_BOOTSTRAP_ADMIN_PASSWORD in Vercel}"

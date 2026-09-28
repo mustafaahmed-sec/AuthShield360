@@ -14,7 +14,7 @@
         {% for field in name_form %}{% include "school/partials/form_field.html" %}{% endfor %}
         {% for field in record_form %}{% include "school/partials/form_field.html" %}{% endfor %}
         <div class="actions">
-          <button class="button" type="submit">Save recorded changes</button>
+          <button class="button" type="submit">Save changes</button>
           <a class="button secondary" href="{% url 'teacher_students' %}">Cancel</a>
         </div>
       </form>

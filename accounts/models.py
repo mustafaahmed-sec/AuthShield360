@@ -138,3 +138,17 @@ class PasswordResetRequestLimit(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=("window_started_at",), name="pwd_reset_limit_window_idx")]
+
+
+class SMSOTPDeliveryLimit(models.Model):
+    """Persistent per-account SMS throttle shared across sign-in sessions."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sms_otp_delivery_limit",
+    )
+    window_started_at = models.DateTimeField()
+    last_requested_at = models.DateTimeField(blank=True, null=True)
+    request_count = models.PositiveSmallIntegerField(default=0)
+    verification_attempts = models.PositiveSmallIntegerField(default=0)

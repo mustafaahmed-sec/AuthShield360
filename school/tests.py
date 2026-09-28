@@ -118,7 +118,7 @@ class AccountApprovalFlowTests(TestCase):
         self.assertContains(response, student.email)
         self.assertContains(response, teacher.email)
         self.assertNotContains(response, unlocked.email)
-        self.assertContains(response, "04:12")
+        self.assertRegex(response.content.decode(), r">\d{2}:\d{2}</time>")
         self.assertContains(response, 'data-admin-lockout-countdown')
         self.assertContains(response, "Unlock account")
 
@@ -455,6 +455,38 @@ class TeacherRosterPermissionTests(TestCase):
         )
         self.assertIn("name, grade, age, gender", event.description)
 
+    def test_teacher_student_roster_hides_pending_and_inactive_accounts(self):
+        pending = User.objects.create_user(
+            "pending-roster@example.test", "student-password", full_name="Pending Student",
+            role=User.Role.STUDENT, approval_status=User.ApprovalStatus.PENDING,
+        )
+        inactive = User.objects.create_user(
+            "inactive-roster@example.test", "student-password", full_name="Inactive Student",
+            role=User.Role.STUDENT, is_active=False,
+        )
+        for number, student in enumerate((pending, inactive), start=3):
+            StudentRecord.objects.create(
+                student=student, admission_number=f"TST-{number:04}", grade="Grade 8",
+            )
+            Enrollment.objects.create(student=student, course=self.course)
+
+        self.client.force_login(self.teacher)
+        response = self.client.get(reverse("teacher_students"))
+
+        self.assertContains(response, "Assigned Student")
+        self.assertNotContains(response, "Pending Student")
+        self.assertNotContains(response, "Inactive Student")
+        self.assertEqual(response.context["students"].paginator.count, 1)
+
+    def test_teacher_roster_does_not_allow_teacher_to_reset_student_passwords(self):
+        self.client.force_login(self.teacher)
+        response = self.client.get(reverse("teacher_students"))
+        self.assertContains(response, "Edit record")
+        self.assertNotContains(response, "Reset password")
+        self.student.refresh_from_db()
+        self.assertFalse(self.student.must_change_password)
+        self.assertTrue(self.student.check_password("student-password"))
+
     def test_sara_can_view_and_manage_a_new_student_outside_any_course(self):
         sara = User.objects.create_user(
             "sara.ahmed.authshield@gmail.com", "sara-password", full_name="Sara Ahmed",
@@ -766,6 +798,33 @@ class StudentDashboardProgressTests(TestCase):
         self.assertContains(response, "Overall grade average")
         self.assertContains(response, "Upcoming work")
         self.assertNotContains(response, "Other student's result")
+
+    def test_assignments_and_exam_results_paginate_independently(self):
+        for number in range(6):
+            Assignment.objects.create(
+                course=self.course, title=f"Paged assignment {number}", due_date=date(2026, 10, number + 1),
+            )
+        for number in range(9):
+            ExamResult.objects.create(
+                student=self.student,
+                course=self.course,
+                exam_name=f"Paged result {number}",
+                score=70,
+                max_score=100,
+            )
+        self.client.force_login(self.student)
+
+        first = self.client.get(reverse("dashboard"))
+        second = self.client.get(reverse("dashboard") + "?assignments_page=2&results_page=2")
+
+        self.assertEqual(len(first.context["assignments"]), 5)
+        self.assertEqual(len(first.context["results"]), 10)
+        self.assertEqual(len(second.context["assignments"]), 1)
+        self.assertEqual(len(second.context["results"]), 1)
+        self.assertEqual(second.context["assignment_page_url"], "?results_page=2&assignments_page=")
+        self.assertEqual(second.context["results_page_url"], "?assignments_page=2&results_page=")
+        self.assertContains(second, 'aria-label="Assignment pages"')
+        self.assertContains(second, 'aria-label="Exam result pages"')
 
 
 class DjangoAdminRoleBoundaryTests(TestCase):

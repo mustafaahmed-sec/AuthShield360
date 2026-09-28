@@ -24,14 +24,14 @@
             {% if field.errors %}<div class="field-error" role="alert">{{ field.errors }}</div>{% endif %}
           </div>
         {% endfor %}
-        <button class="button full signup-submit" type="submit">Submit {% if role == 'teacher' %}teacher{% else %}student{% endif %} request</button>
+        <button class="button full signup-submit" type="submit">Send access request</button>
       </form>
-      <p class="form-foot">Already submitted a request? <a href="{% url 'registration_status' %}">Check its status</a>.</p>
+      <p class="form-foot">Already sent a request? <a href="{% url 'registration_status' %}">Check its status</a>.</p>
     </section>
 
     <aside class="side-card signup-aside" aria-labelledby="signup-steps-title">
-      <span class="eyebrow">A clear path to access</span>
-      <h2 id="signup-steps-title">Request. Review. Sign in.</h2>
+      <span class="eyebrow">What happens next</span>
+      <h2 id="signup-steps-title">Three steps to get access</h2>
       <ol class="signup-steps">
         <li><span class="step-number">1</span><div><strong>Send your request</strong><p>{% if keycloak_enabled %}Your password and email identity are managed by Keycloak. Add the contact number that should receive SMS codes.{% else %}Use fictional contact details and choose a unique password for this demonstration.{% endif %}</p></div></li>
         <li><span class="step-number">2</span><div><strong>Wait for administrator approval</strong><p>New Student and Teacher accounts cannot sign in while a request is pending.</p></div></li>

@@ -4,7 +4,7 @@
 {% block content %}
   <div class="eyebrow">Administrator controls</div>
   <h1>Accounts and requests</h1>
-  <p class="intro">Approve fictional Student and Teacher accounts, manage access, and review class roster requests.</p>
+  <p class="intro">Review student and teacher access requests, manage accounts, and handle class roster requests.</p>
   <div class="actions">
     <a class="button" href="{% url 'add_student' %}">Add a student</a>
     <a class="button secondary" href="{% url 'admin_attendance' %}">View attendance</a>
@@ -169,7 +169,7 @@
                         <button class="button compact secondary" type="submit">Reapprove</button>
                       </form>
                     {% endif %}
-                    <form method="post" action="{% url 'delete_school_account' account.pk %}" onsubmit="return confirm('Permanently delete this fictional school account and linked records?');">
+                    <form method="post" action="{% url 'delete_school_account' account.pk %}" onsubmit="return confirm('Permanently delete this demo account and all linked school records?');">
                       {% csrf_token %}
                       <button class="button compact danger" type="submit">Delete</button>
                     </form>

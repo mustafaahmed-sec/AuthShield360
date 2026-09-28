@@ -13,3 +13,5 @@ media
 .vercel-deploy-credentials.txt
 skills-lock.json
 docs/evidence/
+tmp/
+output/

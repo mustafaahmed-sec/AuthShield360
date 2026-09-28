@@ -4,7 +4,7 @@
 {% block content %}
   <div class="student-dashboard">
   <div class="eyebrow">Student portal</div><h1>Welcome, {{ request.user.full_name }}</h1>
-  <p class="intro">Your school information appears below. These records come from PostgreSQL and are filtered to your account.</p>
+  <p class="intro">Here’s your school information, including your courses, attendance, assignments, and results.</p>
   {% include "school/partials/announcements.html" %}
   <section class="panel progress-overview" aria-labelledby="progress-overview-title">
     <div class="panel-heading">
@@ -111,10 +111,10 @@
             <li><strong>{{ assignment.title }}</strong><span>{{ assignment.course.code }} · Due {{ assignment.due_date|date:"j M Y" }}</span><p>{{ assignment.description }}</p></li>
           {% endfor %}
         </ul>
-        {% include "school/partials/pagination.html" with page_obj=assignments page_url="?assignments_page=" label="Assignment pages" %}
+        {% include "school/partials/pagination.html" with page_obj=assignments page_url=assignment_page_url label="Assignment pages" %}
       {% else %}<p class="empty">No assignments yet.</p>{% endif %}
     </section>
-    <section class="panel"><h2>Exam results</h2>{% if results %}<ul class="item-list">{% for result in results %}<li><strong>{{ result.exam_name }}</strong><span>{{ result.course.code }} · {{ result.score }} / {{ result.max_score }}</span></li>{% endfor %}</ul>{% else %}<p class="empty">No results posted yet.</p>{% endif %}</section>
+    <section class="panel"><h2>Exam results</h2>{% if results %}<ul class="item-list">{% for result in results %}<li><strong>{{ result.exam_name }}</strong><span>{{ result.course.code }} · {{ result.score }} / {{ result.max_score }}</span></li>{% endfor %}</ul>{% include "school/partials/pagination.html" with page_obj=results page_url=results_page_url label="Exam result pages" %}{% else %}<p class="empty">No results posted yet.</p>{% endif %}</section>
   </div>
   </div>
 {% endblock %}

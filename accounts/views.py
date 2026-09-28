@@ -3,10 +3,12 @@ import hmac
 import logging
 import time
 from datetime import timedelta
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login, update_session_auth_hash
+from django.contrib.auth import logout as auth_logout
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password
 from django.contrib.auth.views import LoginView, LogoutView
@@ -41,7 +43,7 @@ from .forms import (
 )
 from .keycloak import keycloak_client
 from django.contrib.auth.forms import SetPasswordForm
-from .models import EmailOTPChallenge, PasswordResetRequestLimit
+from .models import EmailOTPChallenge, PasswordResetRequestLimit, SMSOTPDeliveryLimit
 from .otp import (
     OTPChallengeChanged,
     OTPChallengeExpired,
@@ -70,7 +72,6 @@ OTP_SESSION_KEYS = (
     "authshield_otp_attempts",
     "authshield_otp_resends",
     "authshield_otp_sms_sent_at",
-    "authshield_otp_sms_send_authorized_at",
     "authshield_otp_sms_sent",
     "authshield_otp_expiry_logged",
     "authshield_email_otp_hash",
@@ -325,13 +326,14 @@ def _keycloak_identity_user(email, subject):
     return user, None
 
 
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "POST"])
 def keycloak_login(request):
-    if not settings.AUTHSHIELD_KEYCLOAK_ENABLED:
+    if not settings.AUTHSHIELD_KEYCLOAK_ENABLED or not settings.AUTHSHIELD_LOGIN_ENABLED:
         return redirect("login")
 
-    flow = request.GET.get("flow", "login")
-    role = request.GET.get("role", "")
+    values = request.POST if request.method == "POST" else request.GET
+    flow = values.get("flow", "login")
+    role = values.get("role", "")
     if flow not in {"login", "register", "status"}:
         flow = "login"
     if flow == "register" and role not in {User.Role.STUDENT, User.Role.TEACHER}:
@@ -340,9 +342,13 @@ def keycloak_login(request):
 
     request.session["authshield_keycloak_flow"] = flow
     request.session["authshield_keycloak_signup_role"] = role if flow == "register" else ""
-    channel = request.GET.get("channel", "sms")
-    request.session["authshield_keycloak_channel"] = channel if channel in {"sms", "email"} else "sms"
-    requested_next = request.GET.get("next", "")
+    channel = values.get("otp_channel", values.get("channel", "email"))
+    if channel not in {"sms", "email"}:
+        channel = "email"
+    if channel == "sms" and not firebase_phone_auth_available() and not settings.AUTHSHIELD_EMAIL_STEP_UP:
+        channel = "email"
+    request.session["authshield_keycloak_channel"] = channel
+    requested_next = values.get("next", "")
     if requested_next and url_has_allowed_host_and_scheme(
         requested_next, {request.get_host()}, require_https=request.is_secure()
     ):
@@ -417,7 +423,7 @@ def _finish_keycloak_sign_in(request, user, channel, next_url):
         request=request,
         factor="password",
         outcome="success",
-        auth_mode="password",
+        auth_mode="keycloak",
     )
     if user.must_change_password:
         return redirect("password_change")
@@ -529,6 +535,7 @@ def keycloak_callback(request):
         messages.error(request, f"This account is temporarily locked. Try again in {retry_minutes(user.locked_until)} minutes.")
         return redirect("login")
 
+    request.session["authshield_keycloak_id_token"] = str(token.get("id_token") or "")
     return _finish_keycloak_sign_in(request, user, channel, next_url)
 
 
@@ -598,7 +605,15 @@ def registration_status(request):
                 duration_ms=duration_ms,
             )
             form.add_error(None, "We could not check this request. Verify the details and try again.")
-    return render(request, "accounts/registration_status.html", {"form": form, "result": result})
+    return render(
+        request,
+        "accounts/registration_status.html",
+        {
+            "form": form,
+            "result": result,
+            "keycloak_enabled": settings.AUTHSHIELD_KEYCLOAK_ENABLED and settings.AUTHSHIELD_LOGIN_ENABLED,
+        },
+    )
 
 
 class BaselineLoginView(LoginView):
@@ -641,6 +656,17 @@ class BaselineLoginView(LoginView):
             else:
                 channel = "email"
             if channel == "sms":
+                if not firebase_phone_auth_available():
+                    record_auth_event(
+                        "otp_delivery_failure", email=user.email,
+                        description="Firebase SMS sign-in is not configured.",
+                        request=self.request, factor="mobile_otp", outcome="failure",
+                    )
+                    form.add_error(None, "SMS sign-in is not configured yet. Choose Email or contact the administrator.")
+                    return self.render_to_response(self.get_context_data(form=form))
+                if not delivery_target(user, "sms"):
+                    form.add_error(None, "This account needs a valid international mobile number for SMS. Choose Email or ask an administrator to update it.")
+                    return self.render_to_response(self.get_context_data(form=form))
                 try:
                     _prepare_firebase_sms_challenge(self.request, user)
                 except (OTPProviderError, ImproperlyConfigured) as error:
@@ -697,6 +723,7 @@ class BaselineLoginView(LoginView):
         context = super().get_context_data(**kwargs)
         context["otp_enabled"] = settings.AUTHSHIELD_OTP_ENABLED
         context["email_step_up"] = settings.AUTHSHIELD_EMAIL_STEP_UP
+        context["keycloak_enabled"] = settings.AUTHSHIELD_KEYCLOAK_ENABLED
         context["mobile_otp_enabled"] = firebase_phone_auth_available()
         context["lockout_until"] = 0
         if self.request.method == "POST":
@@ -788,11 +815,11 @@ def otp_verify(request):
         code = (request.POST.get("code") or "").strip()
         attempts = request.session.get("authshield_otp_attempts", 0)
         purpose = "email_step_up" if phase == "email_step_up" else "sign_in"
-        if user.role != User.Role.ADMIN and attempts >= MAX_OTP_ATTEMPTS:
+        if attempts >= MAX_OTP_ATTEMPTS:
             request.session["authshield_otp_expires_at"] = now.timestamp()
             messages.error(request, "Too many incorrect codes. Request a new code to continue.")
             return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase))
-        if channel == "email" and user.role != User.Role.ADMIN:
+        if channel == "email":
             challenge = EmailOTPChallenge.objects.filter(user=user, purpose=purpose).only("attempts", "code_hash").first()
             if challenge and (challenge.attempts >= MAX_OTP_ATTEMPTS or not challenge.code_hash):
                 request.session["authshield_otp_expires_at"] = now.timestamp()
@@ -821,9 +848,7 @@ def otp_verify(request):
                     request.session,
                     user=user,
                     purpose=purpose,
-                    expected_sent_at=(
-                        request.session.get("authshield_otp_sent_at") if channel == "email" else None
-                    ),
+                    expected_sent_at=request.session.get("authshield_otp_sent_at"),
                 )
             except OTPChallengeChanged:
                 challenge_replaced, challenge_completed = _sync_email_otp_challenge(request, user, phase)
@@ -866,18 +891,25 @@ def otp_verify(request):
                 duration_ms=_otp_duration_ms(request),
                 description="An invalid or expired one-time code was submitted.",
             )
+            sms_allowed, sms_attempts = (True, 0)
+            if channel == "sms":
+                sms_allowed, sms_attempts = _record_sms_otp_failure(user)
             user.refresh_from_db(fields=["locked_until"])
             if user.role != User.Role.ADMIN and user.locked_until and user.locked_until > timezone.now():
                 _clear_otp_session(request)
                 messages.error(request, "Too many attempts. The account is temporarily locked.")
                 return redirect("login")
             challenge_exhausted = False
-            if channel == "email" and user.role != User.Role.ADMIN:
+            if channel == "email":
                 challenge = EmailOTPChallenge.objects.filter(user=user, purpose=purpose).only("attempts", "code_hash").first()
                 challenge_exhausted = bool(
                     challenge and (challenge.attempts >= MAX_OTP_ATTEMPTS or not challenge.code_hash)
                 )
-            if user.role != User.Role.ADMIN and (attempts >= MAX_OTP_ATTEMPTS or challenge_exhausted):
+            if not sms_allowed or sms_attempts >= MAX_OTP_ATTEMPTS:
+                _clear_otp_session(request)
+                messages.error(request, "Too many incorrect SMS codes. Restart sign-in later.")
+                return redirect("login")
+            if attempts >= MAX_OTP_ATTEMPTS or challenge_exhausted:
                 request.session["authshield_otp_expires_at"] = timezone.now().timestamp()
                 messages.error(request, "Too many incorrect codes. Request a new code to continue.")
                 return render(request, "accounts/otp_verify.html", _otp_context(request, user, channel, phase))
@@ -915,17 +947,24 @@ def otp_verify(request):
             messages.success(request, "SMS verified. Enter the additional code sent to your email.")
             return redirect("otp_verify")
 
-        auth_mode = "otp_email" if phase == "email_step_up" else "otp"
+        keycloak_primary = bool(request.session.get("authshield_keycloak_id_token"))
+        auth_mode = "keycloak_otp_email" if keycloak_primary and phase == "email_step_up" else (
+            "keycloak_otp" if keycloak_primary else ("otp_email" if phase == "email_step_up" else "otp")
+        )
         duration_ms = _otp_duration_ms(request)
         next_url = request.session.get("authshield_otp_next") or settings.LOGIN_REDIRECT_URL
         _clear_otp_session(request)
         clear_expired_or_successful_lock(user)
-        login(request, user, backend=settings.AUTHENTICATION_BACKENDS[0])
+        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+        request.session.pop("authshield_keycloak_login", None)
         record_auth_event(
             "login_success",
             email=user.email,
             actor=user,
-            description="Successful password and one-time-code sign-in.",
+            description=(
+                "Successful Keycloak password and one-time-code sign-in."
+                if keycloak_primary else "Successful password and one-time-code sign-in."
+            ),
             request=request,
             factor="email_otp" if channel == "email" else "mobile_otp",
             outcome="success",
@@ -961,6 +1000,28 @@ def _pending_sms_user(request, *, allow_expired=False):
     return user
 
 
+def _record_sms_otp_failure(user):
+    """Count invalid SMS codes persistently across browser sessions."""
+    now = timezone.now()
+    window = timedelta(minutes=settings.AUTHSHIELD_SMS_OTP_ACCOUNT_WINDOW_MINUTES)
+    with transaction.atomic():
+        limit, _ = SMSOTPDeliveryLimit.objects.get_or_create(
+            user=user,
+            defaults={"window_started_at": now},
+        )
+        limit = SMSOTPDeliveryLimit.objects.select_for_update().get(pk=limit.pk)
+        if now - limit.window_started_at >= window:
+            limit.window_started_at = now
+            limit.request_count = 0
+            limit.verification_attempts = 0
+            limit.last_requested_at = None
+        if limit.verification_attempts >= MAX_OTP_ATTEMPTS:
+            return False, limit.verification_attempts
+        limit.verification_attempts += 1
+        limit.save(update_fields=("window_started_at", "last_requested_at", "request_count", "verification_attempts"))
+        return True, limit.verification_attempts
+
+
 @require_POST
 def otp_sms_authorize_send(request):
     user = _pending_sms_user(request, allow_expired=True)
@@ -974,6 +1035,33 @@ def otp_sms_authorize_send(request):
             return JsonResponse({"error": f"Wait {remaining} seconds before requesting another SMS."}, status=429)
         if request.session.get("authshield_otp_resends", 0) >= 3:
             return JsonResponse({"error": "You have reached the SMS resend limit. Restart sign-in later."}, status=429)
+    now_dt = timezone.now()
+    window = timedelta(minutes=settings.AUTHSHIELD_SMS_OTP_ACCOUNT_WINDOW_MINUTES)
+    with transaction.atomic():
+        limit, _ = SMSOTPDeliveryLimit.objects.get_or_create(
+            user=user,
+            defaults={"window_started_at": now_dt},
+        )
+        limit = SMSOTPDeliveryLimit.objects.select_for_update().get(pk=limit.pk)
+        if now_dt - limit.window_started_at >= window:
+            limit.window_started_at = now_dt
+            limit.request_count = 0
+            limit.verification_attempts = 0
+            limit.last_requested_at = None
+        if limit.last_requested_at:
+            remaining = 60 - int((now_dt - limit.last_requested_at).total_seconds())
+            if remaining > 0:
+                return JsonResponse({"error": f"Wait {remaining} seconds before requesting another SMS."}, status=429)
+        if limit.verification_attempts >= MAX_OTP_ATTEMPTS:
+            retry_after = max(1, int((limit.window_started_at + window - now_dt).total_seconds()))
+            return JsonResponse({"error": "Too many incorrect SMS codes were entered for this account. Try again later."}, status=429, headers={"Retry-After": str(retry_after)})
+        if limit.request_count >= settings.AUTHSHIELD_SMS_OTP_ACCOUNT_LIMIT:
+            retry_after = max(1, int((limit.window_started_at + window - now_dt).total_seconds()))
+            return JsonResponse({"error": "The SMS request limit was reached for this account. Try again later."}, status=429, headers={"Retry-After": str(retry_after)})
+        limit.request_count += 1
+        limit.last_requested_at = now_dt
+        limit.save(update_fields=("window_started_at", "last_requested_at", "request_count"))
+    if sent_at:
         request.session["authshield_otp_resends"] = request.session.get("authshield_otp_resends", 0) + 1
     request.session["authshield_otp_sms_sent_at"] = now
     request.session["authshield_otp_sms_send_authorized_at"] = now
@@ -1011,8 +1099,8 @@ def otp_sms_mark_sent(request):
 
 @require_POST
 def otp_sms_record_failure(request):
-    user = _pending_sms_user(request)
-    if not user:
+    user = _pending_sms_user(request, allow_expired=True)
+    if not user or not request.session.get("authshield_otp_sms_sent"):
         return JsonResponse({"error": "The SMS sign-in has expired. Restart sign-in."}, status=400)
     attempts = request.session.get("authshield_otp_attempts", 0) + 1
     request.session["authshield_otp_attempts"] = attempts
@@ -1024,15 +1112,14 @@ def otp_sms_record_failure(request):
         duration_ms=_otp_duration_ms(request),
         description="Firebase rejected an SMS verification code.",
     )
+    allowed, account_attempts = _record_sms_otp_failure(user)
     user.refresh_from_db(fields=["locked_until"])
-    if user.role != User.Role.ADMIN and (
-        (user.locked_until and user.locked_until > timezone.now()) or attempts >= MAX_OTP_ATTEMPTS
-    ):
+    if not allowed or (user.role != User.Role.ADMIN and user.locked_until and user.locked_until > timezone.now()) or attempts >= MAX_OTP_ATTEMPTS or account_attempts >= MAX_OTP_ATTEMPTS:
         _clear_otp_session(request)
         messages.error(request, "Too many incorrect SMS codes. Restart sign-in to request a new code.")
         return JsonResponse({"error": "Too many code attempts. Restart sign-in later."}, status=429)
     request.session.save()
-    return JsonResponse({"ok": True, "remainingAttempts": max(0, 5 - attempts)})
+    return JsonResponse({"ok": True, "remainingAttempts": max(0, MAX_OTP_ATTEMPTS - account_attempts)})
 
 
 @require_http_methods(["POST"])
@@ -1396,6 +1483,7 @@ class BaselineLogoutView(LogoutView):
     next_page = reverse_lazy("home")
 
     def post(self, request, *args, **kwargs):
+        keycloak_id_token = request.session.get("authshield_keycloak_id_token", "")
         if request.user.is_authenticated:
             record_auth_event(
                 "logout_success",
@@ -1407,6 +1495,18 @@ class BaselineLogoutView(LogoutView):
                 outcome="success",
             )
             messages.success(request, "You have signed out. This session can no longer be used.")
+        if settings.AUTHSHIELD_KEYCLOAK_ENABLED and keycloak_id_token:
+            auth_logout(request)
+            end_session = (
+                f"{settings.AUTHSHIELD_KEYCLOAK_SERVER_URL}/realms/"
+                f"{settings.AUTHSHIELD_KEYCLOAK_REALM}/protocol/openid-connect/logout"
+            )
+            logout_parameters = urlencode({
+                "client_id": settings.AUTHSHIELD_KEYCLOAK_CLIENT_ID,
+                "id_token_hint": keycloak_id_token,
+                "post_logout_redirect_uri": request.build_absolute_uri(reverse_lazy("home")),
+            })
+            return redirect(f"{end_session}?{logout_parameters}")
         return super().post(request, *args, **kwargs)
 @login_required
 @require_http_methods(["GET", "POST"])

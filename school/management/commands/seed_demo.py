@@ -20,6 +20,7 @@ ADMIN_TARGET = 3
 ACADEMIC_YEAR = "2026-27"
 COURSE_PREFIX = "D26-"
 STUDENT_EMAIL = "ali.khan.authshield@gmail.com"
+STUDENT_PHONE_NUMBER = "+923082540606"
 TEACHER_EMAIL = "sara.ahmed.authshield@gmail.com"
 ADMIN_EMAIL = "mina.rahman.authshield@gmail.com"
 LEGACY_STUDENT_EMAIL_TEMPLATE = "demo.student.{number:04d}@example.test"
@@ -181,7 +182,14 @@ class Command(BaseCommand):
                 email__in=seeded_admin_emails, role=User.Role.ADMIN, password__startswith="!"
             ).delete()
 
-        self._ensure_primary_account(User, STUDENT_EMAIL, "Ali Khan", User.Role.STUDENT, options["reset"])
+        self._ensure_primary_account(
+            User,
+            STUDENT_EMAIL,
+            "Ali Khan",
+            User.Role.STUDENT,
+            options["reset"],
+            phone_number=STUDENT_PHONE_NUMBER,
+        )
         self._ensure_primary_account(User, TEACHER_EMAIL, "Sara Ahmed", User.Role.TEACHER, options["reset"])
         self._ensure_primary_account(User, ADMIN_EMAIL, "Mina Rahman", User.Role.ADMIN, options["reset"])
 
@@ -204,10 +212,10 @@ class Command(BaseCommand):
             )
         )
 
-    def _ensure_primary_account(self, User, email, name, role, reset_existing=False):
+    def _ensure_primary_account(self, User, email, name, role, reset_existing=False, phone_number=""):
         user, created = User.objects.get_or_create(
             email=email,
-            defaults={"full_name": name, "role": role},
+            defaults={"full_name": name, "role": role, "phone_number": phone_number},
         )
         if user.role != role:
             raise CommandError(f"The reserved demo account {email} already exists with a different role.")
@@ -218,6 +226,9 @@ class Command(BaseCommand):
         elif reset_existing and user.full_name != name:
             user.full_name = name
             user.save(update_fields=["full_name"])
+        if phone_number and not user.phone_number:
+            user.phone_number = phone_number
+            user.save(update_fields=["phone_number"])
         if role == User.Role.ADMIN and (not user.is_staff or not user.is_superuser):
             user.is_staff = True
             user.is_superuser = True

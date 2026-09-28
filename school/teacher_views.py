@@ -2,7 +2,6 @@
 
 from urllib.parse import urlencode
 
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -11,11 +10,9 @@ from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.crypto import get_random_string
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_http_methods
 
 from accounts.models import User
-from accounts.keycloak import KeycloakAdminError, keycloak_send_password_reset
 
 from .access import portal_teacher_view, require_portal_teacher
 from .audit import record_event
@@ -155,6 +152,7 @@ def teacher_students(request):
     roster = User.objects.filter(
         role=User.Role.STUDENT,
         is_active=True,
+        approval_status=User.ApprovalStatus.APPROVED,
         student_record__isnull=False,
     )
     if not request.user.can_manage_all_students:
@@ -209,40 +207,11 @@ def teacher_students(request):
 @require_http_methods(["GET", "POST"])
 @portal_teacher_view
 @transaction.atomic
-
-@login_required
-@require_POST
-@portal_teacher_view
-@transaction.atomic
-def reset_assigned_student_password(request, student_id):
-    students = User.objects.filter(role=User.Role.STUDENT, is_active=True, student_record__isnull=False)
-    if not request.user.can_manage_all_students:
-        students = students.filter(enrollments__course__teacher=request.user).distinct()
-    student = get_object_or_404(students, pk=student_id)
-    if settings.AUTHSHIELD_KEYCLOAK_ENABLED:
-        if not settings.AUTHSHIELD_KEYCLOAK_ADMIN_API_ENABLED or not student.keycloak_subject:
-            messages.error(request, "Connect the Keycloak admin service account before resetting this student's password.")
-            return redirect("teacher_students")
-        try:
-            keycloak_send_password_reset(student.keycloak_subject)
-        except KeycloakAdminError:
-            messages.error(request, "Keycloak could not send this student a password update email.")
-            return redirect("teacher_students")
-        record_event(request.user, "student_password_reset", "Sent a Keycloak password update email.", target_name=student.full_name, request=request, factor="password", outcome="success")
-        messages.success(request, f"Keycloak sent a password update email to {student.email}.")
-        return redirect("teacher_students")
-    temporary_password = get_random_string(20, allowed_chars="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789") + "!"
-    student.set_password(temporary_password)
-    student.must_change_password = True
-    student.save(update_fields=("password", "must_change_password"))
-    record_event(request.user, "student_password_reset", "Generated a one-time temporary password; the student must replace it at next sign-in.", target_name=student.full_name, request=request, factor="password", outcome="success")
-    messages.success(request, f"Temporary password for {student.full_name} ({student.email}): {temporary_password}. Share it privately; it will be replaced at first sign-in.")
-    return redirect("teacher_students")
-
 def edit_assigned_student(request, student_id):
     students = User.objects.filter(
         role=User.Role.STUDENT,
         is_active=True,
+        approval_status=User.ApprovalStatus.APPROVED,
         student_record__isnull=False,
     )
     if not request.user.can_manage_all_students:

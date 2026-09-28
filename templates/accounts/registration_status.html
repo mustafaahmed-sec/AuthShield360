@@ -7,11 +7,11 @@
       <h1 id="status-title">Check request status</h1>
       <p class="muted">{% if keycloak_enabled %}Sign in with the Keycloak identity used for your Student or Teacher request.{% else %}Enter the email and password you used when requesting Student or Teacher access.{% endif %}</p>
       {% if result == 'pending' %}
-        <div class="status-banner status-pending" role="status"><strong>Waiting for review</strong><span>Your request is pending administrator approval. Check again after it has been reviewed.</span></div>
+        <div class="status-banner status-pending" role="status"><strong>Waiting for review</strong><span>An administrator hasn’t reviewed your request yet. Check back later.</span></div>
       {% elif result == 'approved' %}
-        <div class="status-banner status-approved" role="status"><strong>Request approved</strong><span>Your account is ready. You can now <a href="{% url 'login' %}">sign in</a>.</span></div>
+        <div class="status-banner status-approved" role="status"><strong>Request approved</strong><span>Your account is ready. <a href="{% url 'login' %}">Sign in</a> to continue.</span></div>
       {% elif result == 'not_approved' %}
-        <div class="status-banner status-rejected" role="status"><strong>Your request was not approved</strong><span>You cannot sign in with this request. Review your details, then submit a new Student or Teacher access request using the same email, or contact the portal administrator for help.</span></div>
+        <div class="status-banner status-rejected" role="status"><strong>Your request was not approved</strong><span>You can’t sign in with this request. Contact the portal administrator if you have questions.</span></div>
       {% endif %}
       {% if status_error %}<div class="form-error" role="alert">We could not check this request. Verify your Keycloak identity and try again.</div>{% endif %}
       {% if keycloak_enabled %}
@@ -26,7 +26,7 @@
         <button class="button full" type="submit">Check status</button>
       </form>
       {% endif %}
-      <p class="form-foot">Forgot your password? <a href="{% url 'password_reset_request' %}">Reset it using your account email</a>.</p>
+      {% if not keycloak_enabled %}<p class="form-foot">Forgot your password? <a href="{% url 'password_reset_request' %}">Reset it using your account email</a>.</p>{% endif %}
     </section>
     <aside class="side-card status-aside"><span class="eyebrow">Protected lookup</span><h2>{% if keycloak_enabled %}Your identity stays protected{% else %}Your password stays private{% endif %}</h2><p>{% if keycloak_enabled %}Keycloak verifies the identity used for the access request. This page does not sign you into the school portal.{% else %}Only the correct email and password can view the request status. This page does not sign you in or reveal whether another email address has an account.{% endif %}</p></aside>
   </div>

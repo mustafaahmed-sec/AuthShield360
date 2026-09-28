@@ -230,7 +230,7 @@ class GmailEmailOTP:
     def check(self, code, session, *, user=None, purpose="sign_in", expected_sent_at=None):
         code_has_valid_format = bool(re.fullmatch(r"[0-9]{6}", code or ""))
         if user is not None:
-            from .models import EmailOTPChallenge, User
+            from .models import EmailOTPChallenge
 
             try:
                 with transaction.atomic():
@@ -263,13 +263,11 @@ class GmailEmailOTP:
                         or challenge.completed_at
                     ):
                         return False
-                    if user.role != User.Role.ADMIN and challenge.attempts >= MAX_OTP_ATTEMPTS:
+                    if challenge.attempts >= MAX_OTP_ATTEMPTS:
                         challenge.code_hash = ""
                         challenge.save(update_fields=("code_hash",))
                         return False
                     if not code_has_valid_format or not check_password(code, challenge.code_hash):
-                        if user.role == User.Role.ADMIN:
-                            return False
                         challenge.attempts += 1
                         update_fields = ["attempts"]
                         if challenge.attempts >= MAX_OTP_ATTEMPTS:

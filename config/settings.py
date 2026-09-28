@@ -18,9 +18,13 @@ ALLOWED_HOSTS = [host.strip() for host in os.environ.get("DJANGO_ALLOWED_HOSTS",
 AUTHSHIELD_SCHOOLWIDE_TEACHER_EMAIL = os.environ.get(
     "AUTHSHIELD_SCHOOLWIDE_TEACHER_EMAIL", "sara.ahmed.authshield@gmail.com"
 ).strip().lower()
-for vercel_host in (os.environ.get("VERCEL_URL"), os.environ.get("VERCEL_PROJECT_PRODUCTION_URL")):
-    if vercel_host and vercel_host not in ALLOWED_HOSTS:
-        ALLOWED_HOSTS.append(vercel_host)
+for deployment_host in (
+    os.environ.get("VERCEL_URL"),
+    os.environ.get("VERCEL_PROJECT_PRODUCTION_URL"),
+    os.environ.get("RENDER_EXTERNAL_HOSTNAME"),
+):
+    if deployment_host and deployment_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(deployment_host)
 
 CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in ALLOWED_HOSTS if host != "localhost" and host != "127.0.0.1"]
 if not DEBUG:
@@ -50,6 +54,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 
 ROOT_URLCONF = "config.urls"
 TEMPLATES = [
@@ -119,6 +125,11 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+    }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "login"
@@ -151,6 +162,10 @@ AUTHSHIELD_IP_WINDOW_MINUTES = _positive_integer_setting("AUTHSHIELD_IP_WINDOW_M
 AUTHSHIELD_IP_THROTTLE_MINUTES = _positive_integer_setting("AUTHSHIELD_IP_THROTTLE_MINUTES", 1)
 AUTHSHIELD_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_OTP_TTL_SECONDS", 600)
 AUTHSHIELD_SMS_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_SMS_OTP_TTL_SECONDS", 300)
+AUTHSHIELD_SMS_OTP_ACCOUNT_LIMIT = _positive_integer_setting("AUTHSHIELD_SMS_OTP_ACCOUNT_LIMIT", 4)
+AUTHSHIELD_SMS_OTP_ACCOUNT_WINDOW_MINUTES = _positive_integer_setting(
+    "AUTHSHIELD_SMS_OTP_ACCOUNT_WINDOW_MINUTES", 15
+)
 AUTHSHIELD_EMAIL_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_EMAIL_OTP_TTL_SECONDS", 60)
 AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS = _positive_integer_setting("AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS", 300)
 AUTHSHIELD_PASSWORD_RESET_IP_LIMIT = _positive_integer_setting("AUTHSHIELD_PASSWORD_RESET_IP_LIMIT", 30)
@@ -165,12 +180,12 @@ AUTHSHIELD_PASSWORD_RESET_RESPONSE_FLOOR_SECONDS = _positive_integer_setting(
 # requires a separately configured protected deployment; ordinary users never
 # choose the authentication mode from the portal.
 AUTHSHIELD_PROTECTED_DEMO = os.environ.get("AUTHSHIELD_PROTECTED_DEMO", "false").lower() == "true"
+AUTHSHIELD_KEYCLOAK_ENABLED = os.environ.get("AUTHSHIELD_KEYCLOAK_ENABLED", "false").lower() == "true"
 AUTHSHIELD_BASELINE_LOGIN_ENABLED = (
     os.environ.get("AUTHSHIELD_BASELINE_LOGIN", "false").lower() == "true"
     and (DEBUG or AUTHSHIELD_PROTECTED_DEMO)
 )
 AUTHSHIELD_OTP_ENABLED = os.environ.get("AUTHSHIELD_OTP_ENABLED", "false").lower() == "true"
-AUTHSHIELD_KEYCLOAK_ENABLED = os.environ.get("AUTHSHIELD_KEYCLOAK_ENABLED", "false").lower() == "true"
 AUTHSHIELD_KEYCLOAK_SERVER_URL = os.environ.get("AUTHSHIELD_KEYCLOAK_SERVER_URL", "").strip().rstrip("/")
 AUTHSHIELD_KEYCLOAK_REALM = os.environ.get("AUTHSHIELD_KEYCLOAK_REALM", "").strip()
 AUTHSHIELD_KEYCLOAK_CLIENT_ID = os.environ.get("AUTHSHIELD_KEYCLOAK_CLIENT_ID", "").strip()

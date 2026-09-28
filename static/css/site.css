@@ -88,6 +88,7 @@ button { cursor: pointer; }
 .message-warning { border-color: #9b6a16; background: #fff8e9; color: #6e4b12; }
 .dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin-top: 2rem; }
 .student-dashboard { min-width: 0; }
+.student-dashboard .pagination { gap: .65rem; padding-top: .55rem; }
 .student-dashboard .dashboard-summary { display: grid; gap: .25rem; margin: 0 0 .9rem; padding: .8rem .9rem; border-left: 3px solid #087c75; border-radius: .3rem; background: #f1f7fa; }
 .student-dashboard .dashboard-summary strong { color: #124a78; }
 .student-dashboard .dashboard-summary span { color: #50647b; line-height: 1.45; }
@@ -444,18 +445,18 @@ body.home-page .main-content.home-main > .messages { margin-bottom: 0; }
   .main-content.student-dashboard-main { margin: 1.75rem auto; }
   .student-dashboard h1 { font-size: clamp(2.5rem, 4vw, 3.5rem); margin: .55rem 0 .7rem; }
   .student-dashboard .intro { margin: .4rem 0 .8rem; font-size: 1rem; line-height: 1.5; }
-  .student-dashboard .progress-overview { margin-top: 1.25rem; padding: 1.2rem; }
-  .student-dashboard .progress-metrics { gap: .75rem; margin-top: .85rem; }
-  .student-dashboard .progress-metric { padding: .8rem; }
-  .student-dashboard .recent-grade-summary { margin-top: 1rem; }
-  .student-dashboard .recent-grade-summary h3 { margin-bottom: .4rem; }
-  .student-dashboard .dashboard-grid { gap: 1rem; margin-top: 1rem; }
-  .student-dashboard .panel { padding: 1.2rem; }
-  .student-dashboard .panel h2 { margin-bottom: .55rem; }
-  .student-dashboard .item-list li { padding: .55rem 0; }
-  .student-dashboard .item-list span { margin-top: .12rem; line-height: 1.35; }
-  .student-dashboard .item-list p { margin-top: .35rem; }
-  .student-dashboard .details { gap: .35rem .75rem; }
+  .student-dashboard .progress-overview { margin-top: .9rem; padding: 1rem; }
+  .student-dashboard .progress-metrics { gap: .6rem; margin-top: .7rem; }
+  .student-dashboard .progress-metric { gap: .2rem; padding: .7rem; }
+  .student-dashboard .recent-grade-summary { margin-top: .75rem; }
+  .student-dashboard .recent-grade-summary h3 { margin-bottom: .35rem; }
+  .student-dashboard .dashboard-grid { gap: .75rem; margin-top: .75rem; }
+  .student-dashboard .panel { padding: 1rem; }
+  .student-dashboard .panel h2 { margin-bottom: .45rem; }
+  .student-dashboard .item-list li { padding: .4rem 0; }
+  .student-dashboard .item-list span { margin-top: .1rem; line-height: 1.3; }
+  .student-dashboard .item-list p { margin-top: .25rem; line-height: 1.4; }
+  .student-dashboard .details { gap: .25rem .65rem; }
 }
 
 @media (max-width: 760px) {
@@ -464,6 +465,16 @@ body.home-page .main-content.home-main > .messages { margin-bottom: 0; }
   .teacher-overview, .teacher-action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .teacher-quick-actions .panel-heading { align-items: flex-start; flex-direction: row; }
   .progress-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .student-dashboard .progress-overview { margin-top: .9rem; padding: .9rem; }
+  .student-dashboard .progress-metrics { gap: .55rem; margin-top: .7rem; }
+  .student-dashboard .progress-metric { gap: .2rem; padding: .7rem; }
+  .student-dashboard .recent-grade-summary { margin-top: .75rem; }
+  .student-dashboard .dashboard-grid { gap: .7rem; margin-top: .75rem; }
+  .student-dashboard .panel { padding: .9rem; }
+  .student-dashboard .panel h2 { margin-bottom: .45rem; }
+  .student-dashboard .item-list li { padding: .45rem 0; }
+  .student-dashboard .item-list span { margin-top: .1rem; line-height: 1.3; }
+  .student-dashboard .item-list p { margin-top: .25rem; line-height: 1.4; }
   .site-header { align-items: stretch; flex-direction: column; padding: .75rem 1rem; }
   .brand-mark { width: 3.1rem; height: 3.1rem; }
   .brand { font-size: 1.1rem; }

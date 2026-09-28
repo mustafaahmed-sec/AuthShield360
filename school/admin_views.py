@@ -349,11 +349,6 @@ def change_account_access(request, user_id):
 @require_POST
 @portal_admin_view
 @transaction.atomic
-
-@login_required
-@require_POST
-@portal_admin_view
-@transaction.atomic
 def reset_school_account_password(request, user_id):
     account = get_object_or_404(User.objects.select_for_update(), pk=user_id, role__in=(User.Role.STUDENT, User.Role.TEACHER), is_active=True)
     if settings.AUTHSHIELD_KEYCLOAK_ENABLED:

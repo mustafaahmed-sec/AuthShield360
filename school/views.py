@@ -40,6 +40,14 @@ def active_announcements_for(user):
     )
 
 
+def _pagination_url(request, page_parameter):
+    query = request.GET.copy()
+    query.pop(page_parameter, None)
+    existing_parameters = query.urlencode()
+    separator = "&" if existing_parameters else ""
+    return f"?{existing_parameters}{separator}{page_parameter}="
+
+
 def home(request):
     context = {
         "student_count": StudentRecord.objects.count(),
@@ -109,6 +117,11 @@ def dashboard(request):
             .select_related("course").order_by("due_date", "id"),
             5,
         ).get_page(request.GET.get("assignments_page"))
+        result_page = Paginator(
+            ExamResult.objects.filter(student=user)
+            .select_related("course").order_by("course__code", "exam_name", "pk"),
+            10,
+        ).get_page(request.GET.get("results_page"))
         context = {
             "announcements": active_announcements_for(user),
             "record": StudentRecord.objects.filter(student=user).first(),
@@ -121,7 +134,9 @@ def dashboard(request):
             "due_soon": due_soon,
             "due_soon_count": due_soon.count(),
             "assignments": assignment_page,
-            "results": ExamResult.objects.filter(student=user).select_related("course").order_by("course__code", "exam_name"),
+            "results": result_page,
+            "assignment_page_url": _pagination_url(request, "assignments_page"),
+            "results_page_url": _pagination_url(request, "results_page"),
             "recent_results": ExamResult.objects.filter(student=user)
             .select_related("course").order_by("-pk")[:5],
             "grade_average_percent": grade_average_percent,
@@ -149,13 +164,21 @@ def dashboard(request):
             "result_count": result_page.paginator.count,
             "assignments": assignment_page,
             "enrollments": Paginator(
-                Enrollment.objects.filter(course__teacher=user)
+                Enrollment.objects.filter(
+                    course__teacher=user,
+                    student__role=User.Role.STUDENT,
+                    student__is_active=True,
+                    student__approval_status=User.ApprovalStatus.APPROVED,
+                )
                 .select_related("student", "student__student_record", "course")
                 .order_by("course__code", "student__full_name", "pk"), 20,
             ).get_page(request.GET.get("students_page")),
             "results": result_page,
             "student_count": User.objects.filter(
-                role=User.Role.STUDENT, enrollments__course__teacher=user
+                role=User.Role.STUDENT,
+                is_active=True,
+                approval_status=User.ApprovalStatus.APPROVED,
+                enrollments__course__teacher=user,
             ).distinct().count(),
             "recent_changes": PortalAuditEvent.objects.filter(actor=user).order_by("-created_at")[:6],
         }
