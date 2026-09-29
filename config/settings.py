@@ -175,6 +175,12 @@ AUTHSHIELD_PASSWORD_RESET_IP_WINDOW_MINUTES = _positive_integer_setting(
 AUTHSHIELD_PASSWORD_RESET_RESPONSE_FLOOR_SECONDS = _positive_integer_setting(
     "AUTHSHIELD_PASSWORD_RESET_RESPONSE_FLOOR_SECONDS", 9
 )
+AUTHSHIELD_SIGNUP_IP_LIMIT = _positive_integer_setting("AUTHSHIELD_SIGNUP_IP_LIMIT", 10)
+AUTHSHIELD_SIGNUP_IP_WINDOW_MINUTES = _positive_integer_setting("AUTHSHIELD_SIGNUP_IP_WINDOW_MINUTES", 15)
+AUTHSHIELD_BLOCKED_AUDIT_LIMIT = _positive_integer_setting("AUTHSHIELD_BLOCKED_AUDIT_LIMIT", 5)
+AUTHSHIELD_BLOCKED_AUDIT_WINDOW_MINUTES = _positive_integer_setting(
+    "AUTHSHIELD_BLOCKED_AUDIT_WINDOW_MINUTES", 15
+)
 
 # Password-only access remains a controlled lab stage. For a Vercel demo it
 # requires a separately configured protected deployment; ordinary users never

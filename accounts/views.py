@@ -28,6 +28,7 @@ from .lockout import (
     clear_expired_or_successful_lock,
     ip_throttle_until,
     normalized_email,
+    consume_public_request_quota,
     record_blocked_attempt,
     record_failed_authentication,
     retry_minutes,
@@ -60,6 +61,10 @@ from school.audit import record_auth_event, request_ip
 
 User = get_user_model()
 logger = logging.getLogger("authshield.keycloak")
+REGISTRATION_SUBMISSION_MESSAGE = (
+    "If this address can be used for an access request, the request has been received. "
+    "If you already have an account or request, check its status."
+)
 OTP_SESSION_KEYS = (
     "authshield_otp_user_id",
     "authshield_otp_channel",
@@ -241,6 +246,21 @@ def signup(request, role="student"):
             request.POST or None,
             initial={"full_name": identity.get("full_name", "")},
         )
+        if request.method == "POST":
+            if not consume_public_request_quota(
+                request,
+                purpose="signup",
+                limit=settings.AUTHSHIELD_SIGNUP_IP_LIMIT,
+                window_minutes=settings.AUTHSHIELD_SIGNUP_IP_WINDOW_MINUTES,
+            ):
+                form.add_error(None, "Too many access requests came from this connection. Try again later.")
+                return render(request, "accounts/signup.html", {
+                    "form": form,
+                    "role": role,
+                    "role_label": role_label,
+                    "keycloak_enabled": True,
+                    "keycloak_email": identity["email"],
+                }, status=429)
         if request.method == "POST" and form.is_valid():
             try:
                 with transaction.atomic():
@@ -288,12 +308,33 @@ def signup(request, role="student"):
         })
 
     form = form_class(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        form.save()
-        messages.success(
+    if request.method == "POST":
+        if not consume_public_request_quota(
             request,
-            f"Your {role_label} access request was submitted. An administrator must approve it before you can sign in.",
-        )
+            purpose="signup",
+            limit=settings.AUTHSHIELD_SIGNUP_IP_LIMIT,
+            window_minutes=settings.AUTHSHIELD_SIGNUP_IP_WINDOW_MINUTES,
+        ):
+            form.add_error(None, "Too many access requests came from this connection. Try again later.")
+            return render(request, "accounts/signup.html", {
+                "form": form, "role": role, "role_label": role_label,
+            }, status=429)
+
+    if request.method == "POST" and form.is_valid():
+        email = normalized_email(form.cleaned_data["email"])
+        if not form.instance.pk and User.objects.filter(email__iexact=email).exists():
+            messages.success(request, REGISTRATION_SUBMISSION_MESSAGE)
+            return redirect("registration_status")
+
+        try:
+            with transaction.atomic():
+                form.save()
+        except IntegrityError:
+            if not form.instance.pk and User.objects.filter(email__iexact=email).exists():
+                messages.success(request, REGISTRATION_SUBMISSION_MESSAGE)
+                return redirect("registration_status")
+            raise
+        messages.success(request, REGISTRATION_SUBMISSION_MESSAGE)
         return redirect("registration_status")
     return render(request, "accounts/signup.html", {"form": form, "role": role, "role_label": role_label})
 

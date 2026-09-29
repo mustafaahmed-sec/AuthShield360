@@ -140,6 +140,21 @@ class PasswordResetRequestLimit(models.Model):
         indexes = [models.Index(fields=("window_started_at",), name="pwd_reset_limit_window_idx")]
 
 
+class PublicRequestThrottle(models.Model):
+    """A short-lived, cross-instance quota for unauthenticated portal requests."""
+
+    purpose = models.CharField(max_length=32)
+    fingerprint = models.CharField(max_length=64)
+    window_started_at = models.DateTimeField()
+    request_count = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("purpose", "fingerprint"), name="unique_public_throttle_bucket"),
+        ]
+        indexes = [models.Index(fields=("window_started_at",), name="public_throttle_window_idx")]
+
+
 class SMSOTPDeliveryLimit(models.Model):
     """Persistent per-account SMS throttle shared across sign-in sessions."""
 

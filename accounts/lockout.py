@@ -1,6 +1,8 @@
 """Small, database-backed throttles for the password-only demonstration."""
 
 from datetime import timedelta
+import hashlib
+import hmac
 from math import ceil
 
 from django.conf import settings
@@ -8,7 +10,7 @@ from django.db import transaction
 from django.db.models import Max, Q
 from django.utils import timezone
 
-from accounts.models import User
+from accounts.models import PublicRequestThrottle, User
 from school.audit import record_auth_event, request_ip
 from school.models import PortalAuditEvent
 
@@ -156,6 +158,14 @@ def record_failed_authentication(email, action, request, duration_ms=None, facto
 
 
 def record_blocked_attempt(email, request, *, action="locked_out", duration_ms=None):
+    if not consume_public_request_quota(
+        request,
+        purpose=f"blocked-audit:{action}",
+        limit=settings.AUTHSHIELD_BLOCKED_AUDIT_LIMIT,
+        window_minutes=settings.AUTHSHIELD_BLOCKED_AUDIT_WINDOW_MINUTES,
+    ):
+        return None
+
     record_auth_event(
         action,
         email=normalized_email(email),
@@ -169,6 +179,39 @@ def record_blocked_attempt(email, request, *, action="locked_out", duration_ms=N
         outcome="failure",
         duration_ms=duration_ms,
     )
+
+
+def consume_public_request_quota(request, *, purpose, limit, window_minutes, now=None):
+    """Consume one privacy-preserving source quota across application instances."""
+    address = request_ip(request) or "unknown"
+    fingerprint = hmac.new(
+        settings.SECRET_KEY.encode("utf-8"),
+        f"public-request:{purpose}:{address}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    now = now or timezone.now()
+    window = timedelta(minutes=window_minutes)
+
+    with transaction.atomic():
+        bucket, created = PublicRequestThrottle.objects.select_for_update().get_or_create(
+            purpose=purpose,
+            fingerprint=fingerprint,
+            defaults={"window_started_at": now, "request_count": 1},
+        )
+        if not created:
+            if now - bucket.window_started_at >= window:
+                bucket.window_started_at = now
+                bucket.request_count = 0
+            if bucket.request_count >= limit:
+                return False
+            bucket.request_count += 1
+            bucket.save(update_fields=("window_started_at", "request_count"))
+
+        # Bound stale quota state without retaining raw addresses.
+        PublicRequestThrottle.objects.filter(
+            window_started_at__lt=now - max(window, timedelta(days=2))
+        ).delete()
+    return True
 
 
 def clear_expired_or_successful_lock(user):

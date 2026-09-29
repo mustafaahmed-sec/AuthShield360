@@ -147,29 +147,84 @@ class PublicAccountFlowTests(TestCase):
         self.assertContains(unknown, "We could not check this request")
         self.assertNotContains(wrong, "Waiting for review")
 
-    def test_duplicate_approved_email_has_generic_signup_error(self):
+    def test_existing_account_signup_uses_generic_response(self):
         User.objects.create_user(
             "existing@example.test", "FictionalDemo!2468", full_name="Existing Student", role=User.Role.STUDENT
         )
         response = self.client.post(reverse("student_signup"), {
             "full_name": "Someone Else", "email": "existing@example.test", "phone_number": "+1 555 010 0100",
             "password1": "FictionalDemo!2468-Strong", "password2": "FictionalDemo!2468-Strong",
-        })
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "This email is already registered")
+        }, follow=True)
+        self.assertEqual(response.redirect_chain[-1][0], reverse("registration_status"))
+        self.assertContains(response, "If this address can be used for an access request")
+        self.assertNotContains(response, "already registered")
         self.assertEqual(User.objects.filter(email="existing@example.test").count(), 1)
 
-    def test_duplicate_teacher_email_has_existing_account_error(self):
+    def test_new_and_existing_signup_responses_do_not_disclose_account_state(self):
         User.objects.create_user(
             "existing-teacher@example.test", "FictionalDemo!2468", full_name="Existing Teacher", role=User.Role.TEACHER
         )
-        response = self.client.post(reverse("teacher_signup"), {
-            "full_name": "Another Teacher", "email": "existing-teacher@example.test", "phone_number": "+1 555 010 0102",
+        payload = {
+            "full_name": "Another Teacher", "phone_number": "+1 555 010 0102",
             "password1": "FictionalDemo!2468-Strong", "password2": "FictionalDemo!2468-Strong",
-        })
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "This email is already registered")
+        }
+        existing = self.client.post(reverse("teacher_signup"), {
+            **payload, "email": "existing-teacher@example.test",
+        }, follow=True)
+        new = self.client.post(reverse("teacher_signup"), {
+            **payload, "email": "new-teacher@example.test",
+        }, follow=True)
+        self.assertEqual(existing.redirect_chain[-1][0], reverse("registration_status"))
+        self.assertEqual(new.redirect_chain[-1][0], reverse("registration_status"))
+        self.assertContains(existing, "If this address can be used for an access request")
+        self.assertContains(new, "If this address can be used for an access request")
+        self.assertEqual(User.objects.get(email="new-teacher@example.test").approval_status, User.ApprovalStatus.PENDING)
         self.assertEqual(User.objects.filter(email="existing-teacher@example.test").count(), 1)
+
+    def test_existing_and_unknown_email_validation_errors_match(self):
+        User.objects.create_user(
+            "known@example.test", "FictionalDemo!2468", full_name="Known Student", role=User.Role.STUDENT
+        )
+        payload = {
+            "full_name": "", "phone_number": "not-a-number", "password1": "short", "password2": "different",
+        }
+        known = self.client.post(reverse("student_signup"), {**payload, "email": "known@example.test"})
+        unknown = self.client.post(reverse("student_signup"), {**payload, "email": "unknown@example.test"})
+        self.assertEqual(known.context["form"].errors.as_data().keys(), unknown.context["form"].errors.as_data().keys())
+
+    @override_settings(AUTHSHIELD_SIGNUP_IP_LIMIT=2, AUTHSHIELD_SIGNUP_IP_WINDOW_MINUTES=15)
+    def test_signup_request_quota_is_shared_across_student_and_teacher_forms(self):
+        common = {
+            "full_name": "Quota Applicant", "phone_number": "+1 555 010 0103",
+            "password1": "FictionalDemo!2468-Strong", "password2": "FictionalDemo!2468-Strong",
+        }
+        first = self.client.post(reverse("student_signup"), {
+            **common, "email": "quota-one@example.test",
+        }, REMOTE_ADDR="192.0.2.41")
+        second = self.client.post(reverse("teacher_signup"), {
+            **common, "email": "quota-two@example.test",
+        }, REMOTE_ADDR="192.0.2.41")
+        blocked = self.client.post(reverse("student_signup"), {
+            **common, "email": "quota-three@example.test",
+        }, REMOTE_ADDR="192.0.2.41")
+        self.assertEqual(first.status_code, 302)
+        self.assertEqual(second.status_code, 302)
+        self.assertEqual(blocked.status_code, 429)
+        self.assertFalse(User.objects.filter(email="quota-three@example.test").exists())
+
+    @override_settings(AUTHSHIELD_SIGNUP_IP_LIMIT=1, AUTHSHIELD_SIGNUP_IP_WINDOW_MINUTES=15)
+    def test_invalid_signup_submissions_also_consume_request_quota(self):
+        first = self.client.post(reverse("student_signup"), {
+            "full_name": "", "email": "invalid@example.test", "phone_number": "invalid",
+            "password1": "short", "password2": "different",
+        }, REMOTE_ADDR="192.0.2.43")
+        next_attempt = self.client.post(reverse("student_signup"), {
+            "full_name": "Valid Applicant", "email": "valid@example.test", "phone_number": "+1 555 010 0104",
+            "password1": "FictionalDemo!2468-Strong", "password2": "FictionalDemo!2468-Strong",
+        }, REMOTE_ADDR="192.0.2.43")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(next_attempt.status_code, 429)
+        self.assertFalse(User.objects.filter(email="valid@example.test").exists())
 
     def test_rejected_applicant_can_resubmit_and_admin_can_approve(self):
         admin = User.objects.create_superuser("reviewer@example.test", "AdminDemo!2468", full_name="Reviewer")
@@ -842,6 +897,7 @@ class FailedLoginProtectionTests(TestCase):
         AUTHSHIELD_IP_FAILURE_LIMIT=2,
         AUTHSHIELD_IP_WINDOW_MINUTES=15,
         AUTHSHIELD_IP_THROTTLE_MINUTES=2,
+        AUTHSHIELD_BLOCKED_AUDIT_LIMIT=2,
     )
     def test_ip_throttle_applies_across_multiple_submitted_emails(self):
         for email in ("unknown-one@example.test", "unknown-two@example.test"):
@@ -858,3 +914,14 @@ class FailedLoginProtectionTests(TestCase):
         self.assertContains(blocked, "02:00")
         self.assertEqual(error_codes, ["ip_rate_limited"])
         self.assertEqual(PortalAuditEvent.objects.filter(action="ip_rate_limited").count(), 1)
+        for _ in range(8):
+            self.post_login(email="blocked@example.test", REMOTE_ADDR="192.0.2.40")
+        self.assertEqual(PortalAuditEvent.objects.filter(action="ip_rate_limited").count(), 2)
+
+    @override_settings(AUTHSHIELD_BLOCKED_AUDIT_LIMIT=2, AUTHSHIELD_BLOCKED_AUDIT_WINDOW_MINUTES=15)
+    def test_repeated_blocked_attempts_stop_growing_audit_rows(self):
+        self.user.locked_until = timezone.now() + timedelta(minutes=5)
+        self.user.save(update_fields=("locked_until",))
+        for _ in range(8):
+            self.post_login(password="FictionalDemo!2468", REMOTE_ADDR="192.0.2.42")
+        self.assertEqual(PortalAuditEvent.objects.filter(action="locked_out").count(), 2)

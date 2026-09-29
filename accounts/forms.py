@@ -63,13 +63,13 @@ class AccountSignupForm(UserCreationForm):
             "maxlength": "50",
         })
 
+    def _get_validation_exclusions(self):
+        # Account existence is handled with the same public response in the view.
+        # The email field itself still receives normal form-level validation.
+        return super()._get_validation_exclusions() | {"email"}
+
     def clean_email(self):
-        email = self.cleaned_data["email"].strip().lower()
-        if User.objects.filter(email__iexact=email).exclude(pk=self.instance.pk).exists():
-            raise forms.ValidationError(
-                "This email is already registered. Use a different email or sign in with the existing account."
-            )
-        return email
+        return self.cleaned_data["email"].strip().lower()
 
     def clean_phone_number(self):
         phone_number = normalize_phone_number(self.cleaned_data["phone_number"])
