@@ -2,6 +2,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from django.db.models.functions import Lower
+from django.utils.crypto import salted_hmac
 
 
 class UserManager(BaseUserManager):
@@ -42,6 +43,17 @@ class User(AbstractUser):
         PENDING = "pending", "Pending review"
         APPROVED = "approved", "Approved"
         REJECTED = "rejected", "Not approved"
+
+    def _get_session_auth_hash(self, secret=None):
+        """Expire pre-MFA admin sessions while preserving other role sessions."""
+        session_hash = super()._get_session_auth_hash(secret=secret)
+        if self.role != self.Role.ADMIN:
+            return session_hash
+        return salted_hmac(
+            "accounts.User.admin_mfa_session.v1",
+            session_hash,
+            secret=secret,
+        ).hexdigest()
 
     username = None
     email = models.EmailField(unique=True)

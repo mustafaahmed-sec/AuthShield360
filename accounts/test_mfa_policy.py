@@ -1,6 +1,8 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
+from django.contrib.auth.base_user import AbstractBaseUser
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -169,6 +171,23 @@ class AdminMFAPolicyTests(TestCase):
         policy = RoleMFAPolicy.objects.get(role=User.Role.ADMIN)
         self.assertTrue(policy.enabled)
         self.assertTrue(policy.email_enabled)
+
+    def test_pre_mfa_admin_session_is_invalidated(self):
+        legacy_client = Client()
+        session = legacy_client.session
+        session[SESSION_KEY] = str(self.admin.pk)
+        session[BACKEND_SESSION_KEY] = "django.contrib.auth.backends.ModelBackend"
+        session[HASH_SESSION_KEY] = AbstractBaseUser._get_session_auth_hash(self.admin)
+        session.save()
+
+        response = legacy_client.get(reverse("dashboard"))
+
+        self.assertRedirects(
+            response,
+            f"{reverse('login')}?next={reverse('dashboard')}",
+            fetch_redirect_response=False,
+        )
+        self.assertNotIn(SESSION_KEY, legacy_client.session)
 
 
 class KeycloakFlowMFATests(TestCase):
