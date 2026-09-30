@@ -93,6 +93,15 @@ if (root) {
       await postJson(authorizeUrl);
       if (!auth) {
         const app = initializeApp(config);
+        if (config.appCheckSiteKey) {
+          const { initializeAppCheck, ReCaptchaEnterpriseProvider } = await import(
+            "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js"
+          );
+          initializeAppCheck(app, {
+            provider: new ReCaptchaEnterpriseProvider(config.appCheckSiteKey),
+            isTokenAutoRefreshEnabled: true,
+          });
+        }
         auth = getAuth(app);
         auth.languageCode = "en";
       }

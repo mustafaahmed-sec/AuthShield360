@@ -452,6 +452,15 @@ class OTPLoginTests(TestCase):
         self.assertEqual(self.client.session["authshield_otp_channel"], "sms")
         self.assertFalse(self.client.session["authshield_otp_sms_sent"])
 
+    @override_settings(AUTHSHIELD_FIREBASE_APPCHECK_SITE_KEY="test-app-check-site-key")
+    def test_sms_verification_page_includes_configured_app_check_site_key(self):
+        self.submit_password()
+
+        response = self.client.get(reverse("otp_verify"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "test-app-check-site-key")
+
     def test_sms_code_alone_cannot_authenticate_without_firebase_id_token(self):
         self.submit_password()
         self.complete_sms_send()

@@ -221,6 +221,7 @@ def _otp_context(request, user, channel, phase):
                 "authDomain": settings.AUTHSHIELD_FIREBASE_AUTH_DOMAIN,
                 "projectId": settings.AUTHSHIELD_FIREBASE_PROJECT_ID,
                 "appId": settings.AUTHSHIELD_FIREBASE_APP_ID,
+                "appCheckSiteKey": settings.AUTHSHIELD_FIREBASE_APPCHECK_SITE_KEY,
             },
             "firebase_phone_number": delivery_target(user, "sms"),
         })
