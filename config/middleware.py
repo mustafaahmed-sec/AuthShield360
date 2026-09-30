@@ -3,7 +3,10 @@
 import os
 
 from django.conf import settings
+from django.contrib import messages
 from django.http import HttpResponseRedirect
+from django.shortcuts import redirect
+from django.utils.deprecation import MiddlewareMixin
 
 
 class CanonicalProductionHostMiddleware:
@@ -36,3 +39,28 @@ class CanonicalProductionHostMiddleware:
             response["Pragma"] = "no-cache"
             response["Expires"] = "0"
         return response
+
+
+class MustChangePasswordMiddleware(MiddlewareMixin):
+    """Keep temporary-password sessions out of portal views until rotation."""
+
+    allowed_url_names = {
+        "home",
+        "logout",
+        "password_change",
+        "password_reset_request",
+        "password_reset_verify",
+        "password_reset_resend",
+        "keycloak_callback",
+    }
+
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        user = request.user
+        if (
+            user.is_authenticated
+            and user.must_change_password
+            and getattr(request.resolver_match, "url_name", None) not in self.allowed_url_names
+        ):
+            messages.warning(request, "Change your temporary password before continuing to the portal.")
+            return redirect("password_change")
+        return None

@@ -50,11 +50,13 @@ Both Student and Teacher access requests require administrator approval before s
 
 ## 5. Verification results
 
-On 30 September 2026, the complete Django suite ran with `config.test_settings`: **119 tests passed in 21.97 seconds**. Ruff and Django migration drift checks passed. These results establish code-level evidence; they do not establish every hosted user flow.
+On 30 September 2026, the complete Django suite ran with `config.test_settings`: **127 tests passed**. Ruff and Django migration drift checks passed. These results establish code-level evidence; they do not establish every hosted user flow.
 
 ### Authentication and MFA
 
 Automated checks cover successful and rejected passwords, password-only access not bypassing a required OTP, valid and invalid OTP handling, expired and replayed challenges, missing-factor attempts, SMS/email step-up ordering, cross-session send/guess limits, and login lockout behavior. Firebase, email, and OIDC responses are simulated or mocked in these tests. No live SMS, reCAPTCHA completion, email receipt, or real OIDC callback sign-in is claimed.
+
+Additional checks confirm that password-recovery pages show only a generic resend cooldown (not the real code expiry), and that a temporary password cannot open protected portal pages before the user changes it. Production settings also reject an implicit Vercel Preview database and reject a Preview connection that resolves to the same PostgreSQL host, port, and database path as Production, including PostgreSQL scheme and Neon pooler aliases. Password-reset SMTP delivery and its minimum response delay still run synchronously in request workers, so response timing can vary and concurrent traffic can exhaust request workers. A durable background mail queue or equivalent deployment-level concurrency control is needed before claiming this path is resilient to distributed request floods or timing analysis.
 
 The local performance suite completes 27 sign-in cycles across three roles and three authentication modes. These are Django test-client timings using in-memory SQLite and simulated providers, not browser or hosted measurements. The latest recorded timings and every run are retained in `docs/evidence/authentication-performance-local.md`; the first cold Student email-OTP run is deliberately retained rather than excluded.
 
@@ -74,11 +76,11 @@ Read-only requests on 30 September 2026 returned HTTP 200 for `/`, `/login/`, `/
 
 The project matrix at `docs/IDENTITY_SECURITY_TEST_MATRIX.md` records test ID, user/role, action, expected result, actual result, status, and evidence. It separates automated local checks from production configuration and manual checks. Its current status is:
 
-- Automated application checks: 119 tests passed locally.
+- Automated application checks: 127 tests passed locally.
 - Portal database schema: the Production build ran Django migrations and reported no pending operations; the schema is current through `0012_keycloakmfapolicy_rolemfapolicy`.
 - Vercel page delivery: the five public routes listed above returned HTTP 200; the unauthenticated MFA page redirected to sign-in.
 - Live Firebase SMS and email step-up: not run.
-- Live Keycloak callback: not run; the portal login integration is disabled. Keycloak TOTP settings are available only when its management API and a safe active flow are configured.
+- Live Keycloak callback: not run; the portal login integration is disabled. A fresh anonymous request to the realm discovery URL returned Vercel login HTML rather than OIDC JSON, so the identity service is not publicly reachable for OIDC clients. Keycloak TOTP settings are available only when its management API and a safe active flow are configured.
 - Hosted audit visibility, hosted restart persistence, and hosted performance: not run.
 - Human-recorded demonstration video: not recorded.
 

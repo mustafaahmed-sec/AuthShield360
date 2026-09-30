@@ -24,11 +24,11 @@
 
 ## Live service checks
 
-- **Firebase:** Phone provider and deployed domain authorization were previously checked in Firebase Console. The deployed sign-in page currently renders the SMS/email verification step. No reCAPTCHA, real SMS, email delivery, or completed sign-in was performed in this review.
-- **Keycloak:** The separate service's OIDC discovery, realm, and client were previously checked. Portal Keycloak integration remains disabled while SMTP, registration, and real callback sign-in are unverified. It is optional to this SRS implementation.
+- **Firebase:** A read-only request to `recaptchaParams` using the Firebase web key supplied for project `authshield360-8b987` returned HTTP 200 and reCAPTCHA parameters on 2026-09-30. This confirms that key can reach the Firebase endpoint; it does not confirm that a user can complete reCAPTCHA, SMS/email delivery, or sign-in. No live SMS was sent.
+- **Keycloak:** The separate Vercel project reports a Ready deployment, but an unauthenticated request to its realm discovery path currently receives Vercel login HTML instead of OIDC JSON; the service alias returned HTTP 503. Portal Keycloak integration remains disabled. Public discovery, SMTP, registration, and a real callback flow must be verified before enabling it. Keycloak is optional to this SRS implementation.
 - **Neon:** Production Django migration checks ran during the 2026-09-30 release build and reported no pending migrations; the schema is current through `0012_keycloakmfapolicy_rolemfapolicy`. The migration adds policy tables and did not modify account or school-record rows. Keycloak uses its separate database.
 - **Vercel:** The 2026-09-30 Production deployment is Ready. Requests to `/`, `/login/`, `/signup/student/`, `/signup/teacher/`, and `/signup/status/` returned HTTP 200. An unauthenticated request to `/administrator/security/mfa/` redirected to sign-in (HTTP 302). These checks prove route delivery and the unauthenticated boundary, not authenticated admin use, OTP provider delivery, or persistent hosted operations.
-- **Automation:** The full local Django test suite passed 119 tests in 21.97 seconds on 2026-09-30. Ruff, migration-drift checks, and GitHub Actions passed. These checks do not prove live provider delivery or a completed hosted login.
+- **Automation:** The full local Django test suite passed 127 tests on 2026-09-30. Ruff and migration-drift checks passed. These checks do not prove live provider delivery or a completed hosted login.
 
 ## Current limits before claiming the full SRS complete
 
@@ -36,5 +36,6 @@
 2. Measure audit-feed visibility, restart persistence, and the three-run authentication timings against the intended hosted demo environment.
 3. Record the required human-visible demonstration video and capture the SRS evidence from that real session.
 4. Conduct the remaining manual browser, compatibility, and accessibility walkthrough and update the matrix with actual outcomes.
+5. Add durable asynchronous password-reset email delivery or an equivalent bounded-concurrency design before relying on this synchronous path under distributed traffic. Vercel has Preview-scoped `AUTHSHIELD_STAGING_MODE` and `STAGING_DATABASE_URL` variables; their values were not read, so the separate database target remains unverified. The new application guard rejects a shared Preview/Production target. No secret or database setting was changed here.
 
 No live result is inferred from local mocks, a page load, a configured provider, or a deployment status. See [the complete test matrix](IDENTITY_SECURITY_TEST_MATRIX.md) and its linked evidence files for test-level detail.

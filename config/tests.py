@@ -4,6 +4,25 @@ from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from .middleware import CanonicalProductionHostMiddleware
+from .settings import _same_database_target
+
+
+class PreviewDatabaseIsolationTests(SimpleTestCase):
+    def test_postgres_url_scheme_aliases_cannot_bypass_database_isolation(self):
+        self.assertTrue(
+            _same_database_target(
+                "postgres://preview@ep-demo-pooler.us-east-2.aws.neon.tech/school",
+                "postgresql://production@EP-DEMO.us-east-2.aws.neon.tech:5432/school/",
+            )
+        )
+
+    def test_different_database_name_is_a_separate_target(self):
+        self.assertFalse(
+            _same_database_target(
+                "postgres://preview@db.example.test/school_preview",
+                "postgresql://production@db.example.test/school",
+            )
+        )
 
 
 class ProductionHostMiddlewareTests(SimpleTestCase):

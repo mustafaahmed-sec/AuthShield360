@@ -32,6 +32,9 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31_536_000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
 
 INSTALLED_APPS = [
     "config.admin.AuthShieldAdminConfig",
@@ -51,6 +54,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "config.middleware.MustChangePasswordMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -75,13 +79,33 @@ TEMPLATES = [
 ]
 WSGI_APPLICATION = "config.wsgi.application"
 
+
+def _same_database_target(left_url, right_url):
+    left = urlparse(left_url)
+    right = urlparse(right_url)
+    return (
+        (left.hostname or "").lower().replace("-pooler.", ".")
+        == (right.hostname or "").lower().replace("-pooler.", ".")
+        and (left.port or 5432) == (right.port or 5432)
+        and left.path.rstrip("/").lower() == right.path.rstrip("/").lower()
+    )
+
+
 AUTHSHIELD_STAGING_MODE = os.environ.get("AUTHSHIELD_STAGING_MODE", "false").lower() == "true"
+vercel_environment = os.environ.get("VERCEL_ENV", "").lower()
+if vercel_environment == "preview" and not AUTHSHIELD_STAGING_MODE:
+    raise ImproperlyConfigured(
+        "Vercel Preview requires AUTHSHIELD_STAGING_MODE and a separate STAGING_DATABASE_URL."
+    )
 if AUTHSHIELD_STAGING_MODE:
-    if os.environ.get("VERCEL_ENV", "").lower() != "preview":
+    if vercel_environment != "preview":
         raise ImproperlyConfigured("AUTHSHIELD_STAGING_MODE is allowed only in Vercel Preview deployments.")
     database_url = os.environ.get("STAGING_DATABASE_URL")
     if not database_url:
         raise ImproperlyConfigured("STAGING_DATABASE_URL is required for a staging Preview deployment.")
+    production_database_url = os.environ.get("DATABASE_URL")
+    if production_database_url and _same_database_target(database_url, production_database_url):
+        raise ImproperlyConfigured("STAGING_DATABASE_URL must point to a database separate from production.")
 else:
     database_url = os.environ.get("DATABASE_URL")
 
@@ -102,8 +126,10 @@ if database_url:
         }
     }
 else:
-    if os.environ.get("VERCEL"):
-        raise ImproperlyConfigured("A hosted DATABASE_URL is required on Vercel.")
+    if os.environ.get("VERCEL") or not DEBUG:
+        raise ImproperlyConfigured("A PostgreSQL DATABASE_URL is required for hosted or non-debug deployments.")
+    if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+        raise ImproperlyConfigured("A hosted DATABASE_URL is required on Render.")
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",

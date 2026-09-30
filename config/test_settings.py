@@ -3,6 +3,7 @@
 import os
 
 os.environ.setdefault("DJANGO_SECRET_KEY", "authshield-isolated-test-key-never-use-in-production")
+os.environ["DJANGO_DEBUG"] = "true"
 
 from .settings import *  # noqa: F403
 

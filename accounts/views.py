@@ -1310,7 +1310,6 @@ def password_reset_request(request):
         now = now_datetime.timestamp()
         request.session["authshield_password_reset_started_at"] = now
         request.session["authshield_password_reset_sent_at"] = now
-        request.session["authshield_password_reset_expires_at"] = now + settings.AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS
         request.session["authshield_password_reset_resends"] = 0
         request.session.set_expiry(settings.SESSION_COOKIE_AGE)
         email = normalized_email(form.cleaned_data["email"])
@@ -1332,13 +1331,9 @@ def password_reset_request(request):
             # Keep the eligible account in this browser session so a transient
             # mail-delivery failure can be retried from the same generic page.
             request.session["authshield_password_reset_user_id"] = user.pk
-            if cooldown_active:
-                challenge = prior_challenge
-                request.session["authshield_password_reset_sent_at"] = challenge.sent_at.timestamp()
-                request.session["authshield_password_reset_expires_at"] = challenge.expires_at.timestamp() if challenge.expires_at else now
             try:
                 if not cooldown_active:
-                    challenge = start_otp(
+                    start_otp(
                         user.email,
                         "email",
                         request.session,
@@ -1371,10 +1366,6 @@ def password_reset_request(request):
                 )
             else:
                 request.session["authshield_password_reset_user_id"] = user.pk
-                expires_at = challenge.expires_at.timestamp() if challenge and challenge.expires_at else 0
-                sent_at = challenge.sent_at.timestamp() if challenge and challenge.sent_at else now
-                request.session["authshield_password_reset_sent_at"] = sent_at
-                request.session["authshield_password_reset_expires_at"] = expires_at
                 request.session.set_expiry(settings.SESSION_COOKIE_AGE)
                 if not cooldown_active:
                     record_auth_event(
@@ -1483,20 +1474,13 @@ def password_reset_verify(request):
             and not challenge.completed_at
         )
 
-    expires_at = request.session.get("authshield_password_reset_expires_at", 0)
+    # Only show a generic resend cooldown. The server remains authoritative
+    # about the real challenge expiry, which can differ when an active code is reused.
     sent_at = request.session.get("authshield_password_reset_sent_at", 0)
-    if user and challenge:
-        sent_at = challenge.sent_at.timestamp() if challenge.sent_at else sent_at
-        expires_at = challenge.expires_at.timestamp() if challenge.expires_at else expires_at
-        if challenge.completed_at or not challenge.code_hash:
-            expires_at = min(expires_at, now.timestamp()) if expires_at else now.timestamp()
-        request.session["authshield_password_reset_sent_at"] = sent_at
-        request.session["authshield_password_reset_expires_at"] = expires_at
     context = {
         "has_reset_request": has_reset_request,
         "password_form": password_form,
         "challenge_active": has_reset_request,
-        "otp_expires_at": expires_at,
         "otp_resend_available_at": sent_at + settings.AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS,
     }
     return render(request, "accounts/password_reset_verify.html", context)
@@ -1504,6 +1488,7 @@ def password_reset_verify(request):
 
 @require_POST
 def password_reset_resend(request):
+    response_started_at = time.monotonic()
     user_id = request.session.get("authshield_password_reset_user_id")
     user = _password_reset_user(pk=user_id) if user_id else None
     challenge = EmailOTPChallenge.objects.filter(
@@ -1515,11 +1500,14 @@ def password_reset_resend(request):
 
     now = timezone.now()
     seconds_since_send = int((now - challenge.sent_at).total_seconds()) if challenge and challenge.sent_at else 30
-    if user and challenge and seconds_since_send < settings.AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS:
-        return redirect("password_reset_verify")
     resend_count = request.session.get("authshield_password_reset_resends", 0)
     if resend_count < 3:
-        if user and challenge:
+        cooldown_active = bool(
+            user
+            and challenge
+            and seconds_since_send < settings.AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS
+        )
+        if user and challenge and not cooldown_active:
             try:
                 challenge = start_otp(
                     user.email,
@@ -1531,10 +1519,8 @@ def password_reset_resend(request):
                     force_new=True,
                 )
             except (OTPProviderError, ImproperlyConfigured):
-                messages.error(request, "We could not send a new code right now. Try again later.")
+                pass
             if challenge and getattr(challenge, "_email_sent", False):
-                request.session["authshield_password_reset_sent_at"] = challenge.sent_at.timestamp()
-                request.session["authshield_password_reset_expires_at"] = challenge.expires_at.timestamp()
                 record_auth_event(
                     "password_reset_otp_sent",
                     email=user.email,
@@ -1544,16 +1530,19 @@ def password_reset_resend(request):
                     factor="email_otp",
                     outcome="success",
                 )
-            elif challenge and not getattr(challenge, "_email_sent", True):
-                messages.info(request, "A code was recently sent. Check that message, then wait before requesting another.")
-        now = timezone.now().timestamp()
         request.session["authshield_password_reset_resends"] = resend_count + 1
-        if not user or not challenge:
-            request.session["authshield_password_reset_sent_at"] = now
-            request.session["authshield_password_reset_expires_at"] = now + settings.AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS
     else:
         messages.info(request, "This reset request reached its resend limit. Start again later.")
+    # Give every visitor the same generic timer and feedback. Actual challenge
+    # cooldown, expiry, attempts, and verification remain enforced server-side.
+    display_sent_at = timezone.now().timestamp()
+    request.session["authshield_password_reset_sent_at"] = display_sent_at
+    messages.info(
+        request,
+        "If an eligible account matches the address, a reset code may be sent. Check your inbox and Spam or Junk folder.",
+    )
     request.session.set_expiry(settings.SESSION_COOKIE_AGE)
+    _wait_for_password_reset_response(response_started_at)
     return redirect("password_reset_verify")
 
 

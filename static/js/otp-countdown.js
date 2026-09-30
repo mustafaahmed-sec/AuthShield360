@@ -1,7 +1,8 @@
 (() => {
   const timer = document.querySelector("[data-otp-countdown]");
+  const resetResendTimer = document.querySelector("[data-reset-resend-countdown]");
   const lockoutTimer = document.querySelector("[data-lockout-countdown]");
-  if (!timer && !lockoutTimer) return;
+  if (!timer && !resetResendTimer && !lockoutTimer) return;
 
   const codeInput = document.querySelector("[name='code']");
   const verifyButton = document.querySelector("[data-otp-verify]");
@@ -10,7 +11,7 @@
   const countdownPrefix = timer?.dataset.countdownPrefix || "Code expires in";
   const expiredMessage = timer?.dataset.expiredMessage || "Code expired. Request a new code to continue.";
   let expiresAt = Number(timer?.dataset.expiresAt || 0);
-  let resendAt = Number(timer?.dataset.resendAt || 0);
+  let resendAt = Number(timer?.dataset.resendAt || resetResendTimer?.dataset.resendAt || 0);
 
   function format(seconds) {
     const minutes = Math.floor(seconds / 60);
@@ -30,6 +31,13 @@
         if (codeInput) codeInput.disabled = true;
         if (verifyButton) verifyButton.disabled = true;
       }
+    }
+
+    if (resetResendTimer) {
+      const wait = Math.max(0, Math.ceil(resendAt - now));
+      resetResendTimer.textContent = wait
+        ? `You can request another code in ${format(wait)}.`
+        : "You can request another code now.";
     }
 
     if (resendButton) {

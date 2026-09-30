@@ -51,3 +51,11 @@ This note records configuration checks completed against Firebase and Vercel. It
 - Added migration `0012_keycloakmfapolicy_rolemfapolicy` for policy storage. The Preview build applied it to the staging database. The Production build ran Django migrations and reported no pending migrations, confirming that the production schema is current through `0012`.
 - Production deployment `dpl_E3XjaXAUq1cKETRtnQRJeH7KvVH9` is Ready at the AuthShield 360 alias. GET requests to `/`, `/login/`, `/signup/student/`, `/signup/teacher/`, and `/signup/status/` returned HTTP 200; `/administrator/security/mfa/` redirected unauthenticated requests to sign-in (HTTP 302).
 - The local suite passed 119 tests in 21.97 seconds, Ruff passed, migration drift checks passed, and GitHub Actions passed on the release commits. Live Firebase SMS, authenticated hosted sign-in, and a logged-in production admin-page walkthrough remain unverified.
+
+## Follow-up verification — 30 September 2026
+
+- A fresh local run of the full Django suite passed all 127 tests in 21.93 seconds. Ruff passed, Django system checks reported no issues, and `makemigrations --check --dry-run` reported no model/migration drift. A separate regression test confirms PostgreSQL URL scheme and Neon pooler aliases cannot bypass Preview database isolation.
+- Vercel reports the current portal and separate Keycloak Production deployments as Ready. The portal's five public routes still return HTTP 200; the unauthenticated MFA settings route redirects to sign-in (HTTP 302).
+- A read-only `recaptchaParams` request with the web key supplied for Firebase project `authshield360-8b987` returned HTTP 200 and reCAPTCHA parameters. No CAPTCHA was solved and no SMS or email was sent; the result does not prove a complete login.
+- The Keycloak deployment is Ready, but the anonymous realm discovery request returned a Vercel login HTML page rather than the required OIDC JSON; the service alias returned HTTP 503. The portal's Keycloak switch remains disabled; keep it disabled until the public OIDC endpoint and full callback flow are verified.
+- No environment-variable values, API keys, passwords, or database credentials were changed during these checks.
