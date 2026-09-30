@@ -712,6 +712,11 @@ class OTPLoginTests(TestCase):
         self.email_provider.start.assert_called_once()
         self.assertEqual(self.email_provider.start.call_args.args[0], self.user.email)
 
+        email_page = self.client.get(reverse("otp_verify"))
+        self.assertContains(email_page, 'name="code"')
+        self.assertContains(email_page, 'autocomplete="one-time-code"')
+        self.assertContains(email_page, "Verify and sign in")
+
         second = self.client.post(reverse("otp_verify"), {"code": "654321"})
 
         self.assertRedirects(second, reverse("dashboard"), fetch_redirect_response=False)

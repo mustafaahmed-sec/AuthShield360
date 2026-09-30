@@ -8,8 +8,20 @@
       <h1 id="otp-title">Enter your code</h1>
       {% if messages %}{% for message in messages %}<div class="status-banner status-{{ message.tags|default:'info' }}" role="status">{{ message }}</div>{% endfor %}{% endif %}
       <p class="otp-countdown" data-otp-countdown data-expires-at="{{ otp_expires_at }}" data-resend-at="{{ otp_resend_available_at }}" role="timer"{% if not otp_sms_sent %} hidden{% endif %}>Code expires soon</p>
-      {% if step_up %}
-        <p class="muted">Your SMS code was accepted. Enter the additional code sent to {{ destination }} to finish signing in.</p>
+      {% if step_up or channel == 'email' %}
+        {% if step_up %}
+          <p class="muted">Your SMS code was accepted. Enter the additional code sent to {{ destination }} to finish signing in.</p>
+        {% else %}
+          <p class="muted">Enter the latest one-time code sent by email to {{ destination }}. If you requested a new code or started sign-in in another tab, only the newest code works.</p>
+        {% endif %}
+        <form method="post" action="{% url 'otp_verify' %}" data-busy-label="Verifying…">
+          {% csrf_token %}
+          <div class="form-field">
+            <label for="id_code">One-time code</label>
+            <input id="id_code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="Enter your 6-digit code" required autofocus>
+          </div>
+          <button class="button full" type="submit" data-otp-verify>Verify and sign in</button>
+        </form>
       {% elif channel == 'sms' %}
         <p class="muted">We’ll send a one-time SMS code to {{ destination }} after the security check. Firebase processes the phone number for verification, and carrier rates may apply.</p>
         {{ firebase_phone_config|json_script:"firebase-phone-config" }}
@@ -26,16 +38,6 @@
           </div>
           <input type="hidden" name="firebase_id_token" id="firebase-id-token">
           <button class="button full" id="verify-sms-code" type="submit" data-otp-verify disabled>Verify and sign in</button>
-        </form>
-      {% else %}
-        <p class="muted">Enter the latest one-time code sent by email to {{ destination }}. If you requested a new code or started sign-in in another tab, only the newest code works.</p>
-        <form method="post" action="{% url 'otp_verify' %}" data-busy-label="Verifying…">
-          {% csrf_token %}
-          <div class="form-field">
-            <label for="id_code">One-time code</label>
-            <input id="id_code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="Enter your 6-digit code" required autofocus>
-          </div>
-          <button class="button full" type="submit" data-otp-verify>Verify and sign in</button>
         </form>
       {% endif %}
       <div class="form-actions">
