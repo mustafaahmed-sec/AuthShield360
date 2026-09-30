@@ -45,16 +45,20 @@ def admin_mfa_settings(request):
             keycloak_status_error = str(error)
     role_forms = {}
     for role, policy in policies.items():
+        is_admin_policy = role == User.Role.ADMIN
         role_forms[role] = RoleMFAPolicyForm(
             request.POST if request.method == "POST" else None,
             prefix=role,
             initial={
-                "enabled": policy.enabled,
-                "sms_enabled": policy.sms_enabled,
-                "email_enabled": policy.email_enabled,
+                "enabled": True if is_admin_policy else policy.enabled,
+                "sms_enabled": policy.sms_enabled or (
+                    is_admin_policy and not readiness["email"] and readiness["sms"]
+                ),
+                "email_enabled": policy.email_enabled or (is_admin_policy and readiness["email"]),
                 "require_both_factors": policy.require_both_factors,
-                "include_otp_exempt_accounts": policy.include_otp_exempt_accounts,
             },
+            mandatory=is_admin_policy,
+            require_email=is_admin_policy and readiness["email"],
         )
     keycloak_form = KeycloakMFAPolicyForm(
         request.POST if request.method == "POST" else None,
@@ -101,12 +105,9 @@ def admin_mfa_settings(request):
                         for role, form in role_forms.items():
                             new_values = {
                                 name: form.cleaned_data[name]
-                                for name in ("enabled", "sms_enabled", "email_enabled", "require_both_factors")
+                                for name in ("enabled", "sms_enabled", "email_enabled")
                             }
-                            if role == User.Role.ADMIN:
-                                new_values["include_otp_exempt_accounts"] = form.cleaned_data[
-                                    "include_otp_exempt_accounts"
-                                ]
+                            new_values["require_both_factors"] = form.cleaned_data["require_both_factors"]
                             old = policies[role]
                             if any(getattr(old, name) != value for name, value in new_values.items()):
                                 saved = save_role_policy(role, values=new_values, actor=request.user)

@@ -48,7 +48,6 @@ class AdminMFAPolicyTests(TestCase):
             "admin-sms_enabled": "",
             "admin-email_enabled": "",
             "admin-require_both_factors": "",
-            "admin-include_otp_exempt_accounts": "",
             "keycloak-totp_enabled": "",
             "confirm": "on" if confirm else "",
         }
@@ -60,6 +59,7 @@ class AdminMFAPolicyTests(TestCase):
         self.assertContains(response, "Student accounts")
         self.assertContains(response, "Firebase SMS OTP")
         self.assertContains(response, "Keycloak authenticator app (TOTP)")
+        self.assertContains(response, "always need a second-factor code")
 
         self.client.force_login(self.student)
         denied = self.client.get(reverse("admin_mfa_settings"))
@@ -136,14 +136,39 @@ class AdminMFAPolicyTests(TestCase):
         self.assertEqual(start_otp.call_args.args[2], "email")
 
     @override_settings(AUTHSHIELD_OTP_EXEMPT_EMAILS=frozenset({"mfa-admin@example.test"}))
-    def test_admin_exemption_is_preserved_until_explicitly_included(self):
-        policy = RoleMFAPolicy.objects.create(
-            role=User.Role.ADMIN, enabled=True, email_enabled=True,
+    def test_admin_mfa_is_mandatory_even_when_saved_policy_is_off_and_email_is_exempt(self):
+        RoleMFAPolicy.objects.create(
+            role=User.Role.ADMIN,
+            enabled=False,
+            sms_enabled=True,
+            email_enabled=False,
+            require_both_factors=True,
         )
-        self.assertFalse(policy_for_user(self.admin)["enabled"])
-        policy.include_otp_exempt_accounts = True
-        policy.save(update_fields=("include_otp_exempt_accounts",))
-        self.assertTrue(policy_for_user(self.admin)["enabled"])
+        policy = policy_for_user(self.admin)
+        self.assertTrue(policy["enabled"])
+        self.assertTrue(policy["email"])
+        self.assertFalse(policy["sms"])
+        self.assertFalse(policy["require_both"])
+
+        with patch("accounts.views._start_otp") as start_otp:
+            auth_client = Client()
+            response = auth_client.post(reverse("login"), {
+                "username": self.admin.email,
+                "password": "FictionalAdmin!2468",
+            })
+
+        self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
+        self.assertNotIn("_auth_user_id", auth_client.session)
+        start_otp.assert_called_once()
+        self.assertEqual(start_otp.call_args.args[2], "email")
+
+    def test_admin_cannot_disable_mfa_from_admin_settings_form(self):
+        response = self._all_roles_post()
+
+        self.assertRedirects(response, reverse("admin_mfa_settings"), fetch_redirect_response=False)
+        policy = RoleMFAPolicy.objects.get(role=User.Role.ADMIN)
+        self.assertTrue(policy.enabled)
+        self.assertTrue(policy.email_enabled)
 
 
 class KeycloakFlowMFATests(TestCase):

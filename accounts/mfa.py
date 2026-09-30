@@ -5,7 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import EmailOTPChallenge, KeycloakMFAPolicy, RoleMFAPolicy, User
-from .otp import firebase_phone_auth_available
+from .otp import firebase_phone_auth_available, normalize_phone_number
 
 
 def email_otp_available():
@@ -22,6 +22,19 @@ def _role_policy_defaults(role):
     require_both = configured and settings.AUTHSHIELD_EMAIL_STEP_UP
     if require_both and not (email_enabled and sms_enabled):
         require_both = False
+    if role == User.Role.ADMIN:
+        admin_sms_enabled = firebase_phone_auth_available()
+        admin_email_enabled = email_otp_available()
+        return {
+            "enabled": True,
+            "sms_enabled": admin_sms_enabled,
+            "email_enabled": admin_email_enabled,
+            "require_both_factors": (
+                settings.AUTHSHIELD_EMAIL_STEP_UP
+                and admin_sms_enabled
+                and admin_email_enabled
+            ),
+        }
     return {
         "enabled": configured and (email_enabled or sms_enabled),
         "sms_enabled": sms_enabled,
@@ -57,12 +70,30 @@ def get_keycloak_mfa_policy():
 def policy_for_user(user):
     """Return effective OTP channels, honoring deployment and provider availability."""
     policy = get_role_mfa_policy(user.role)
-    is_legacy_exempt = (
-        user.role == User.Role.ADMIN
-        and user.email.strip().lower() in settings.AUTHSHIELD_OTP_EXEMPT_EMAILS
-        and not policy.include_otp_exempt_accounts
-    )
-    if not policy.enabled or is_legacy_exempt:
+    if user.role == User.Role.ADMIN:
+        sms_available = (
+            policy.sms_enabled
+            and firebase_phone_auth_available()
+            and bool(normalize_phone_number(user.phone_number))
+        )
+        email_available = email_otp_available()
+        # Admin MFA is mandatory even if a legacy database policy or deployment
+        # exemption predates this rule. Email is the no-phone fallback; SMS is
+        # available when it was enabled and the account has a usable number.
+        if not email_available and not sms_available:
+            sms_available = (
+                firebase_phone_auth_available()
+                and bool(normalize_phone_number(user.phone_number))
+            )
+        return {
+            "enabled": True,
+            "sms": sms_available,
+            "email": email_available,
+            "require_both": bool(
+                policy.require_both_factors and sms_available and email_available
+            ),
+        }
+    if not policy.enabled:
         return {
             "enabled": False,
             "sms": False,
@@ -120,6 +151,13 @@ def ensure_method_configuration(form, role, *, sms_available, email_available):
         form.add_error("enabled", "Choose SMS or email before requiring portal MFA for this role.")
     if not form.cleaned_data.get("enabled") and form.cleaned_data.get("require_both_factors"):
         form.add_error("require_both_factors", "Turn on role MFA before requiring both factors.")
+    if role == User.Role.ADMIN:
+        if not form.cleaned_data.get("enabled"):
+            form.add_error("enabled", "Administrator MFA is always required and cannot be disabled.")
+        if email_available and not form.cleaned_data.get("email_enabled"):
+            form.add_error("email_enabled", "Email OTP must remain enabled as the administrator fallback when no phone is available.")
+        if not (form.cleaned_data.get("sms_enabled") or form.cleaned_data.get("email_enabled")):
+            form.add_error("email_enabled", "Administrator accounts must have at least one available second-factor method.")
     return not form.errors
 
 
@@ -130,8 +168,6 @@ def save_role_policy(role, *, values, actor):
             "enabled", "sms_enabled", "email_enabled", "require_both_factors",
         ):
             setattr(policy, field, values[field])
-        if role == User.Role.ADMIN:
-            policy.include_otp_exempt_accounts = values["include_otp_exempt_accounts"]
         policy.updated_by = actor
         policy.save()
         now = timezone.now()

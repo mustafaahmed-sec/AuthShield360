@@ -258,11 +258,6 @@ if AUTHSHIELD_KEYCLOAK_ENABLED and not all((
     )
 if AUTHSHIELD_KEYCLOAK_ENABLED and not DEBUG and urlparse(AUTHSHIELD_KEYCLOAK_SERVER_URL).scheme != "https":
     raise ImproperlyConfigured("Keycloak must use an HTTPS server URL outside local development.")
-AUTHSHIELD_OTP_EXEMPT_EMAILS = frozenset(
-    email.strip().lower()
-    for email in os.environ.get("AUTHSHIELD_OTP_EXEMPT_EMAILS", "").split(",")
-    if email.strip()
-)
 AUTHSHIELD_LOGIN_ENABLED = (
     (AUTHSHIELD_BASELINE_LOGIN_ENABLED or AUTHSHIELD_OTP_ENABLED or AUTHSHIELD_KEYCLOAK_ENABLED)
     and (DEBUG or AUTHSHIELD_PROTECTED_DEMO)

@@ -51,20 +51,33 @@ class SRSAuthenticationPerformanceTests(TestCase):
         AUTHSHIELD_BASELINE_LOGIN_ENABLED=True,
         AUTHSHIELD_OTP_ENABLED=False,
         AUTHSHIELD_KEYCLOAK_ENABLED=False,
+        AUTHSHIELD_FIREBASE_API_KEY="",
+        AUTHSHIELD_FIREBASE_AUTH_DOMAIN="",
+        AUTHSHIELD_FIREBASE_PROJECT_ID="",
+        AUTHSHIELD_FIREBASE_APP_ID="",
+        AUTHSHIELD_GMAIL_ADDRESS="authshield-test@example.test",
+        AUTHSHIELD_GMAIL_APP_PASSWORD="test-app-password",
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     )
     def test_password_only_baseline_three_runs_per_role(self):
         results = []
         for role, user in self.users.items():
             runs = []
             for _ in range(3):
+                mail.outbox.clear()
                 browser = Client()
                 started = time.perf_counter()
                 response = browser.post(reverse("login"), {
                     "username": user.email, "password": self.password,
                 })
+                if role == User.Role.ADMIN:
+                    self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
+                    self.assertNotIn("_auth_user_id", browser.session)
+                    response = browser.post(reverse("otp_verify"), {"code": self._email_code()})
                 self.assertRedirects(response, reverse("dashboard"), fetch_redirect_response=False)
                 runs.append((time.perf_counter() - started) * 1000)
-            results.append(self._record(role, runs))
+            label = "admin (mandatory email OTP)" if role == User.Role.ADMIN else role
+            results.append(self._record(label, runs))
         self.assertEqual(len(results), 3)
 
     @override_settings(

@@ -8,7 +8,15 @@ class RoleMFAPolicyForm(forms.Form):
     sms_enabled = forms.BooleanField(required=False, label="Firebase SMS OTP")
     email_enabled = forms.BooleanField(required=False, label="Email OTP")
     require_both_factors = forms.BooleanField(required=False, label="Require SMS and then email")
-    include_otp_exempt_accounts = forms.BooleanField(required=False, label="Include OTP-exempt administrator accounts")
+
+    def __init__(self, *args, mandatory=False, require_email=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if mandatory:
+            self.fields["enabled"].disabled = True
+            self.fields["enabled"].initial = True
+        if require_email:
+            self.fields["email_enabled"].disabled = True
+            self.fields["email_enabled"].initial = True
 
 
 class MFASaveConfirmationForm(forms.Form):
