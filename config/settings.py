@@ -75,7 +75,16 @@ TEMPLATES = [
 ]
 WSGI_APPLICATION = "config.wsgi.application"
 
-database_url = os.environ.get("DATABASE_URL")
+AUTHSHIELD_STAGING_MODE = os.environ.get("AUTHSHIELD_STAGING_MODE", "false").lower() == "true"
+if AUTHSHIELD_STAGING_MODE:
+    if os.environ.get("VERCEL_ENV", "").lower() != "preview":
+        raise ImproperlyConfigured("AUTHSHIELD_STAGING_MODE is allowed only in Vercel Preview deployments.")
+    database_url = os.environ.get("STAGING_DATABASE_URL")
+    if not database_url:
+        raise ImproperlyConfigured("STAGING_DATABASE_URL is required for a staging Preview deployment.")
+else:
+    database_url = os.environ.get("DATABASE_URL")
+
 if database_url:
     parsed_database_url = urlparse(database_url)
     if parsed_database_url.scheme not in ("postgres", "postgresql") or not parsed_database_url.hostname:

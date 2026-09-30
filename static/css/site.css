@@ -441,6 +441,36 @@ body.home-page .main-content.home-main > .messages { margin-bottom: 0; }
   .landing-arrow { transition: none; }
 }
 
+.mfa-provider-status { display: flex; flex-wrap: wrap; gap: .65rem 1.1rem; margin: 1.25rem 0; padding: .85rem 1rem; border: 1px solid #d5e1ec; border-radius: .7rem; background: #fff; }
+.mfa-status-item { display: inline-flex; align-items: center; gap: .45rem; color: #38546f; font-size: .9rem; }
+.mfa-status-dot { width: .6rem; height: .6rem; flex: 0 0 .6rem; border-radius: 50%; background: #c08a24; }
+.mfa-status-dot.ready { background: #159873; box-shadow: 0 0 0 3px #e6f5ef; }
+.mfa-role-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-block: 1rem; }
+.mfa-role-card, .mfa-keycloak-card { min-width: 0; padding: 1.2rem; }
+.mfa-role-card h2, .mfa-keycloak-card h2 { margin: 0 0 .45rem; font-size: 1.2rem; }
+.mfa-role-card > .muted { min-height: 2.6em; margin: 0 0 1rem; line-height: 1.4; }
+.mfa-toggle, .mfa-option { display: flex; align-items: flex-start; gap: .7rem; padding: .8rem 0; color: #1b3047; cursor: pointer; }
+.mfa-toggle > input, .mfa-option > input, .mfa-confirm input { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; margin: .15rem 0 0; accent-color: #15517b; }
+.mfa-toggle span, .mfa-option span { display: grid; gap: .2rem; }
+.mfa-toggle small, .mfa-option small { color: #58708a; font-size: .83rem; line-height: 1.4; }
+.mfa-methods { display: grid; gap: .2rem; margin: .35rem 0; padding: .55rem .85rem .7rem; border: 1px solid #d9e4ef; border-radius: .55rem; }
+.mfa-methods legend { padding-inline: .3rem; color: #314d69; font-weight: 700; }
+.mfa-option { padding: .38rem 0; }
+.mfa-sub-option { border-top: 1px solid #edf1f5; }
+.mfa-toggle.unavailable, .mfa-option.unavailable { opacity: .62; }
+.mfa-keycloak-card { margin-block: 1rem; }
+.mfa-keycloak-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.mfa-keycloak-card > p { color: #48617b; line-height: 1.55; }
+.mfa-unavailable-chip { color: #704f10; background: #fff8e7; border-color: #ead8a9; }
+.mfa-save-note { display: grid; gap: .7rem; margin-top: 1rem; }
+.mfa-save-note h2 { margin: 0; font-size: 1.15rem; }
+.mfa-save-note p { margin: .3rem 0; }
+.mfa-confirm { display: flex; align-items: flex-start; gap: .55rem; color: #253b53; }
+.mfa-confirm input { margin-top: .18rem; }
+.field-error { margin: .3rem 0; color: #a52a32; font-size: .9rem; }
+@media (max-width: 900px) { .mfa-role-grid { grid-template-columns: minmax(0, 1fr); } .mfa-role-card > .muted { min-height: 0; } }
+@media (max-width: 520px) { .mfa-provider-status { display: grid; } .mfa-keycloak-heading { align-items: flex-start; flex-direction: column; } }
+
 @media (min-width: 761px) {
   .main-content.student-dashboard-main { margin: 1.75rem auto; }
   .student-dashboard h1 { font-size: clamp(2.5rem, 4vw, 3.5rem); margin: .55rem 0 .7rem; }

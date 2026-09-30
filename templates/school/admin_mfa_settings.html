@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}MFA settings | AuthShield 360{% endblock %}
+{% block content %}
+  <div class="eyebrow">Administrator security</div>
+  <h1>MFA settings</h1>
+  <p class="intro">Set sign-in verification by role. Saving a changed role policy invalidates its pending portal OTP sign-in attempts; it does not sign out people who are already in the portal. Password-reset codes are unaffected.</p>
+
+  <div class="mfa-provider-status" aria-label="MFA provider status">
+    <span class="mfa-status-item"><span class="mfa-status-dot{% if readiness.sms %} ready{% endif %}" aria-hidden="true"></span>Firebase SMS {% if readiness.sms %}available{% else %}not configured{% endif %}</span>
+    <span class="mfa-status-item"><span class="mfa-status-dot{% if readiness.email %} ready{% endif %}" aria-hidden="true"></span>Email OTP {% if readiness.email %}available{% else %}not configured{% endif %}</span>
+    <span class="mfa-status-item"><span class="mfa-status-dot{% if readiness.keycloak_admin_api %} ready{% endif %}" aria-hidden="true"></span>Keycloak Admin API {% if readiness.keycloak_admin_api %}credentials configured{% else %}not configured{% endif %}</span>
+  </div>
+
+  <form method="post" class="mfa-settings-form">
+    {% csrf_token %}
+    <div class="mfa-role-grid">
+      {% for section in role_sections %}
+        {% with role=section.role form=section.form %}
+        <section class="panel mfa-role-card" aria-labelledby="mfa-role-{{ role }}">
+          <h2 id="mfa-role-{{ role }}">{{ section.label }} accounts</h2>
+          <p class="muted">These controls apply to portal verification after the password or Keycloak sign-in.</p>
+          {% with form=section.form %}
+            <label class="mfa-toggle">{{ form.enabled }}<span><strong>Require MFA</strong><small>Users in this role must complete at least one selected method.</small></span></label>
+            {% for error in form.enabled.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            <fieldset class="mfa-methods">
+              <legend>Allowed methods</legend>
+              <label class="mfa-option{% if not readiness.sms %} unavailable{% endif %}">{{ form.sms_enabled }}<span>Firebase SMS OTP{% if not readiness.sms %}<small>Provider unavailable</small>{% endif %}</span></label>
+              <label class="mfa-option{% if not readiness.email %} unavailable{% endif %}">{{ form.email_enabled }}<span>Email OTP{% if not readiness.email %}<small>Provider unavailable</small>{% endif %}</span></label>
+              {% for error in form.sms_enabled.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+              {% for error in form.email_enabled.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </fieldset>
+            <label class="mfa-toggle mfa-sub-option">{{ form.require_both_factors }}<span><strong>Require both</strong><small>Send SMS first, then require a separate email code.</small></span></label>
+            {% for error in form.require_both_factors.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            {% if role == "admin" %}
+              <label class="mfa-toggle mfa-sub-option">{{ form.include_otp_exempt_accounts }}<span><strong>Include currently exempt administrators</strong><small>By default, deployment-configured exempt accounts keep their existing password-only exception.</small></span></label>
+              {% for error in form.include_otp_exempt_accounts.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            {% endif %}
+          {% endwith %}
+        </section>
+        {% endwith %}
+      {% endfor %}
+    </div>
+
+    <section class="panel mfa-keycloak-card" aria-labelledby="mfa-keycloak-title">
+      <div class="mfa-keycloak-heading">
+        <div><div class="eyebrow">Separate identity provider control</div><h2 id="mfa-keycloak-title">Keycloak authenticator app (TOTP)</h2></div>
+        {% if keycloak_actual is not None %}<span class="review-chip">Flow currently {{ keycloak_actual|yesno:"required,not required" }}</span>{% elif keycloak_status_error %}<span class="review-chip mfa-unavailable-chip">Could not verify live flow</span>{% else %}<span class="review-chip mfa-unavailable-chip">Flow status unavailable</span>{% endif %}
+      </div>
+      <p>Keycloak TOTP uses an authenticator app such as FreeOTP or Google Authenticator. It does not send SMS. This switch manages the active Keycloak browser flow from the server; it is separate from the role-based Firebase SMS and email controls above.</p>
+      {% if keycloak_status_error %}<p class="field-error">{{ keycloak_status_error }}</p>{% endif %}
+      <label class="mfa-toggle{% if not keycloak_manage_available %} unavailable{% endif %}"><input type="checkbox" name="keycloak-totp_enabled" id="{{ keycloak_form.totp_enabled.id_for_label }}" {% if keycloak_form.totp_enabled.value %}checked{% endif %}{% if not keycloak_manage_available %} disabled{% endif %}><span><strong>Require TOTP in Keycloak</strong><small>{% if keycloak_manage_available %}Applies globally to accounts using the active browser flow.{% elif not readiness.keycloak_admin_api %}Configure the Keycloak Admin API service account before managing this setting here.{% else %}An unconditional OTP execution could not be verified in the active flow, so this control is unavailable.{% endif %}</small></span></label>
+      {% for error in keycloak_form.totp_enabled.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    </section>
+
+    <section class="note mfa-save-note">
+      <div><h2>Review before saving</h2><p>SMS and email policies apply to the selected roles. A changed role policy immediately invalidates pending portal sign-in attempts for those accounts, which must start again. Existing sessions remain active, and password-reset codes are unaffected. Keycloak TOTP is managed separately for accounts using the active Keycloak browser flow.</p></div>
+      <label class="mfa-confirm">{{ confirmation_form.confirm }}<span>{{ confirmation_form.confirm.label }}</span></label>
+      {% for error in confirmation_form.confirm.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+      <div class="actions"><a class="button secondary" href="{% url 'dashboard' %}">Cancel</a><button class="button" type="submit">Save MFA settings</button></div>
+    </section>
+  </form>
+{% endblock %}

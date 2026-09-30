@@ -19,6 +19,7 @@ from accounts.views import (
     signup_options,
     password_change,
 )
+from accounts.mfa_admin import admin_mfa_settings
 from school.admin_views import (
     admin_management,
     add_student,
@@ -69,6 +70,7 @@ urlpatterns = [
     path("teacher/students/<int:student_id>/edit/", edit_assigned_student, name="edit_assigned_student"),
     path("teacher/enrollment-requests/new/", request_enrollment_change, name="request_enrollment_change"),
     path("administrator/management/", admin_management, name="admin_management"),
+    path("administrator/security/mfa/", admin_mfa_settings, name="admin_mfa_settings"),
     path("administrator/attendance/", admin_attendance, name="admin_attendance"),
     path("administrator/accounts/<int:user_id>/preview/", preview_school_portal, name="preview_school_portal"),
     path("administrator/students/new/", add_student, name="add_student"),

@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from school.models import PortalAuditEvent, StudentRecord
 
-from .models import EmailOTPChallenge, SMSOTPDeliveryLimit, User
+from .models import EmailOTPChallenge, RoleMFAPolicy, SMSOTPDeliveryLimit, User
 from .otp import (
     GmailEmailOTP,
     MAX_OTP_ATTEMPTS,
@@ -423,6 +423,32 @@ class OTPLoginTests(TestCase):
         self.assertNotIn("_auth_user_id", self.client.session)
         self.assertEqual(self.client.session["authshield_otp_channel"], "sms")
         self.assertFalse(self.client.session["authshield_otp_sms_sent"])
+
+    def test_sms_code_alone_cannot_authenticate_without_firebase_id_token(self):
+        self.submit_password()
+        self.complete_sms_send()
+        self.verify_firebase_token.return_value = None
+
+        response = self.client.post(reverse("otp_verify"), {"code": "042731"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(self.client.session["authshield_otp_attempts"], 1)
+        self.verify_firebase_token.assert_called_once()
+        self.assertEqual(self.verify_firebase_token.call_args.args[0], "")
+
+    def test_role_policy_change_invalidates_pending_sign_in_even_if_reenabled(self):
+        self.submit_password(channel="email")
+        policy = RoleMFAPolicy.objects.get(role=User.Role.STUDENT)
+        RoleMFAPolicy.objects.filter(pk=policy.pk).update(
+            updated_at=policy.updated_at + timedelta(seconds=1)
+        )
+
+        response = self.client.get(reverse("otp_verify"))
+
+        self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
+        self.assertNotIn("authshield_otp_user_id", self.client.session)
+        self.assertNotIn("_auth_user_id", self.client.session)
 
     def test_password_alone_does_not_grant_dashboard_access(self):
         self.submit_password()

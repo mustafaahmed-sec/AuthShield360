@@ -167,3 +167,46 @@ class SMSOTPDeliveryLimit(models.Model):
     last_requested_at = models.DateTimeField(blank=True, null=True)
     request_count = models.PositiveSmallIntegerField(default=0)
     verification_attempts = models.PositiveSmallIntegerField(default=0)
+
+
+class RoleMFAPolicy(models.Model):
+    """Portal OTP policy for one account role."""
+
+    role = models.CharField(max_length=16, choices=User.Role.choices, unique=True)
+    enabled = models.BooleanField(default=False)
+    sms_enabled = models.BooleanField(default=False)
+    email_enabled = models.BooleanField(default=False)
+    require_both_factors = models.BooleanField(default=False)
+    include_otp_exempt_accounts = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="updated_mfa_policies",
+    )
+
+    class Meta:
+        ordering = ("role",)
+
+    def __str__(self):
+        return f"{self.get_role_display()} MFA policy"
+
+
+class KeycloakMFAPolicy(models.Model):
+    """State of the portal's Keycloak authenticator-app OTP flow switch."""
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    totp_enabled = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="updated_keycloak_mfa_policies",
+    )
+
+    def __str__(self):
+        return "Keycloak authenticator-app MFA policy"

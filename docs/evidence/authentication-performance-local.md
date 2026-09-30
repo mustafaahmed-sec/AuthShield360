@@ -1,8 +1,8 @@
 # SRS authentication performance: local isolated run
 
-**Date:** 2026-09-28
+**Date:** 2026-09-29
 **Command:** `.venv\Scripts\python.exe manage.py test --settings=config.test_settings --verbosity=1` (includes `accounts.test_performance`)
-**Test result:** 106 tests passed in 21.33 seconds. The three benchmark scenarios each ran three times for Student, Teacher, and Administrator (27 full sign-in cycles total).
+**Test result:** 110 tests passed in 20.54 seconds on 2026-09-29. The three benchmark scenarios each ran three times for Student, Teacher, and Administrator (27 full sign-in cycles total).
 **Environment:** Django test client, in-memory SQLite, fictional test users, local in-memory email backend. Firebase SMS verification was mocked; no external provider calls were made.
 
 ## Measurements
@@ -11,15 +11,15 @@ All values are milliseconds from the first request in the sign-in flow through f
 
 | Scenario | Role | Run 1 | Run 2 | Run 3 | Mean |
 | --- | --- | ---: | ---: | ---: | ---: |
-| Password only | Student | 54.62 | 6.44 | 4.80 | 21.95 |
-| Password only | Teacher | 4.85 | 8.72 | 8.14 | 7.23 |
-| Password only | Administrator | 7.38 | 6.73 | 5.56 | 6.56 |
-| Password + email OTP | Student | 1,311.42 | 16.64 | 14.36 | 447.47 |
-| Password + email OTP | Teacher | 14.36 | 13.83 | 13.82 | 14.01 |
-| Password + email OTP | Administrator | 13.37 | 12.33 | 13.02 | 12.91 |
-| Password + SMS OTP + email step-up | Student | 26.83 | 24.11 | 25.22 | 25.39 |
-| Password + SMS OTP + email step-up | Teacher | 23.74 | 25.42 | 24.54 | 24.57 |
-| Password + SMS OTP + email step-up | Administrator | 23.92 | 21.69 | 23.73 | 23.11 |
+| Password only | Student | 53.85 | 5.64 | 5.02 | 21.50 |
+| Password only | Teacher | 7.16 | 5.37 | 5.29 | 5.94 |
+| Password only | Administrator | 4.76 | 4.68 | 4.59 | 4.68 |
+| Password + email OTP | Student | 1,278.28 | 14.60 | 14.61 | 435.83 |
+| Password + email OTP | Teacher | 13.98 | 16.27 | 18.36 | 16.21 |
+| Password + email OTP | Administrator | 12.49 | 12.10 | 12.25 | 12.28 |
+| Password + SMS OTP + email step-up | Student | 25.25 | 25.14 | 22.43 | 24.27 |
+| Password + SMS OTP + email step-up | Teacher | 23.03 | 23.24 | 23.19 | 23.16 |
+| Password + SMS OTP + email step-up | Administrator | 22.20 | 21.90 | 21.86 | 21.99 |
 
 ## Limits of this measurement
 

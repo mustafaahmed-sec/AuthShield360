@@ -94,3 +94,54 @@ def keycloak_send_password_reset(subject):
         f"users/{quote(subject, safe='')}/execute-actions-email",
         payload=["UPDATE_PASSWORD"],
     )
+
+
+def _keycloak_browser_flow():
+    """Return the active browser flow and its top-level OTP execution, if safe."""
+    realm = keycloak_admin_request("GET", "")
+    browser_alias = realm.json().get("browserFlow")
+    if not browser_alias:
+        raise KeycloakAdminError("The active Keycloak browser flow could not be identified.")
+    executions_response = keycloak_admin_request(
+        "GET", f"authentication/flows/{quote(browser_alias, safe='')}/executions"
+    )
+    executions = executions_response.json()
+    if not isinstance(executions, list):
+        raise KeycloakAdminError("Keycloak returned an unsupported browser-flow configuration.")
+    otp_execution = next(
+        (item for item in executions if item.get("providerId") == "auth-otp-form"),
+        None,
+    )
+    return browser_alias, otp_execution
+
+
+def keycloak_totp_status():
+    """Inspect the active flow. None means no directly managed OTP execution exists."""
+    _, execution = _keycloak_browser_flow()
+    if not execution:
+        return None
+    return execution.get("requirement") == "REQUIRED"
+
+
+def keycloak_set_totp_required(enabled):
+    """Set OTP only when an unconditional execution exists in the active browser flow.
+
+    Nested conditional flows require separate review because marking their execution
+    required could leave users without an enrolled authenticator able to bypass MFA.
+    """
+    alias, execution = _keycloak_browser_flow()
+    if not execution:
+        raise KeycloakAdminError(
+            "No OTP authenticator execution exists in the active Keycloak browser flow."
+        )
+    if execution.get("level", 0) not in (0, "0") or execution.get("authenticationFlow"):
+        raise KeycloakAdminError(
+            "The OTP execution is inside a subflow. Configure and review an unconditional portal OTP execution first."
+        )
+    updated = dict(execution)
+    updated["requirement"] = "REQUIRED" if enabled else "DISABLED"
+    keycloak_admin_request(
+        "PUT",
+        f"authentication/flows/{quote(alias, safe='')}/executions",
+        payload=updated,
+    )

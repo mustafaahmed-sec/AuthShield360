@@ -1,45 +1,40 @@
 # AuthShield 360 SRS closeout
 
-**Source:** `AuthShield 360-Ethical Cyber Horizons_SRS.pdf`, version 1.0, 21 pages.
-**Review date:** 2026-09-28.
-**Scope:** Local source, automated checks, selected Vercel configuration, Firebase Console settings, public Keycloak OIDC discovery, the portal Neon schema, and the production login page. The portal was redeployed after migration; no portal account or school-record data was changed, and no live SMS was sent.
+**Source:** AuthShield 360-Ethical Cyber Horizons SRS, version 1.0 (21 pages).
+**Review date:** 2026-09-30.
+**Scope:** Local source and tests, tracked setup and evidence documents, selected Firebase/Keycloak/Vercel settings, Neon schema status, and read-only public route checks. No production account or school-record data was changed and no live SMS was sent.
 
 ## Requirement status
 
-| SRS requirement | Status | Verification and remaining proof |
+| SRS requirement | Status | Evidence and remaining proof |
 | --- | --- | --- |
-| Fictional school portal, sample records, assignments, results, attendance, and admin functions | Implemented locally | Role-specific views and repeatable fictional seed are covered by automated tests. Local seed/restart counts are in [`evidence/restart-persistence-local.md`](evidence/restart-persistence-local.md). Confirm the intended demo database before using seed/reset commands. |
-| Student, Teacher, and Administrator accounts and role boundaries | Implemented locally | Server-side role checks, approval gates, teacher roster scope, and admin-only management have automated coverage. Hosted walkthrough remains pending. |
-| Password-only baseline and secure password handling | Implemented locally as a selectable lab stage | Django's password hasher is used. Automated tests cover the baseline flow; the SRS-required test-mode comparisons are in [`evidence/authentication-performance-local.md`](evidence/authentication-performance-local.md). These are local test-client timings, not browser or hosted timings. |
-| Password + OTP and valid, invalid, expired, replayed, and missing-factor cases | Implemented in code | Email challenges are stored hashed and are single use. Firebase phone tokens are verified server-side. Automated checks pass using local/mock providers; live SMS delivery is not proven. |
-| SMS OTP followed by email step-up | Implemented behind configuration | `AUTHSHIELD_EMAIL_STEP_UP=true` requires SMS and a second email code. Both factors passed isolated tests with provider behavior simulated. Firebase reCAPTCHA and carrier delivery have not been completed live. |
-| Failed-login protection and account lockout | Implemented locally | Password failure lockout/escalation and cross-session SMS send/guess limits have automated coverage. Migrations `0009` and `0010` must be applied before deploying the current schema-dependent code. |
-| Session security, logout, and old-session reuse | Implemented locally | Logout, session expiry, and stale-cookie checks pass in the test suite. Hosted restart and session behavior still need evidence. |
-| Authentication logging and monitoring | Implemented locally | Authentication and admin actions write structured events; the admin activity view reads persisted events. Local event visibility was under 140 ms, but the SRS target still needs measurement on the hosted demo. |
-| Controlled ethical testing with browser DevTools plus ZAP or Burp | Pending | Automated authorization tests pass. No ZAP/Burp report has been produced. Docker Desktop's engine returned an API error and Java/ZAP is not installed, so the tool assessment has not run. Keep all such testing on localhost with fictional accounts. |
-| Mandatory Identity Security Test Matrix | Prepared with local and pending evidence separated | [`IDENTITY_SECURITY_TEST_MATRIX.md`](IDENTITY_SECURITY_TEST_MATRIX.md) uses the SRS-required fields: Test ID, User/Role, Test Action, Expected Result, Actual Result, Pass/Fail Status, and Evidence. |
-| Configuration reset and repeatable test data | Implemented and locally verified | The `seed_demo` command is repeatable in a disposable database. [`RESTART_AND_RESET.md`](RESTART_AND_RESET.md) warns against running reset on hosted or non-disposable data. |
-| Compatibility, usability, accessibility, and maintainability | Partly implemented; manual review remains | Responsive authentication screens and keyboard-friendly controls are present. A browser/device walkthrough and accessibility inspection are still needed; no broad accessibility certification is claimed. |
-| Final report, presentation, MP4, and submission ZIP | Not complete | Existing local status/evidence files are not the final submission. The final MP4 must be recorded from the real approved demo; live/manual evidence must not be fabricated. |
+| Fictional school portal, sample records, assignments, results, attendance, and admin functions | Implemented locally | Role dashboards, school data, repeatable fictional seed, attendance, and management actions have automated coverage. Seed and restart totals are documented in [restart evidence](evidence/restart-persistence-local.md). |
+| Student, Teacher, and Administrator accounts and role boundaries | Implemented locally | Approval gates, server-side role access, teacher roster scope, and admin-only management are covered by automated tests. Hosted authenticated walkthrough remains pending. |
+| Password-only baseline and secure password handling | Implemented locally as a comparison stage | Django password hashing and the baseline flow have test coverage. The preliminary browser/local baseline is documented in [baseline evidence](evidence/password-only-baseline.md); local benchmark values are in [performance evidence](evidence/authentication-performance-local.md). |
+| Password plus OTP, including invalid, expired, replayed, and missing-factor cases | Implemented in code; provider behavior simulated in automated checks | Email challenges are stored hashed and single-use. Firebase phone verification tokens are checked server-side. Role policy changes invalidate pending portal sign-ins. Current tests use local/mock providers; live delivery and user sign-in are not proven. |
+| SMS OTP followed by email step-up | Implemented behind configuration | Both stages pass isolated automated tests with simulated providers. Production login-page delivery currently shows the SMS and email step; a real Firebase CAPTCHA, SMS delivery, email receipt, and completed sign-in remain unverified. |
+| Failed-login protection and account lockout | Implemented locally | Account lockout, escalation/reset behavior, cross-session SMS send and guess limits, public signup/IP throttles, and blocked-audit caps have automated coverage. |
+| Sessions, logout, and old-session reuse | Implemented locally | Logout, expiry, and stale-cookie checks pass automated tests; local process-restart persistence is documented. Hosted restart/session behavior remains unverified. |
+| Authentication logging and monitoring | Implemented locally | Structured authentication and administrator events are persisted and shown in the admin activity view. Local visibility was measured under 140 ms; the hosted five-second target still needs measurement. |
+| Identity Security Test Matrix | Prepared and refreshed | [The matrix](IDENTITY_SECURITY_TEST_MATRIX.md) separates automated results from live/manual results and uses the SRS-required fields. |
+| Configuration reset and repeatable sample data | Implemented and locally verified | `seed_demo` is repeatable in a disposable database. [Reset instructions](RESTART_AND_RESET.md) warn against resetting a hosted or non-disposable database. |
+| Compatibility, usability, accessibility, and maintainability | Partly implemented | Responsive authentication views and keyboard-friendly controls exist. A documented browser/device and accessibility walkthrough remains pending; no accessibility certification is claimed. |
+| Report and presentation | Prepared from evidence | The local closeout report and portfolio description summarize implemented behavior and evidence while clearly marking remaining live work. They do not replace a team-recorded demo. |
+| Mandatory MP4 demonstration and consolidated ZIP | Partly complete | A source package ZIP is prepared. The SRS-required human-recorded MP4 has not been recorded; it must show the real approved demo and must not be simulated or fabricated. |
 
-## Live service state checked
+## Live service checks
 
-- **Firebase:** Phone provider is enabled for project `authshield360-8b987`; `authshield360.vercel.app` is authorized. SMS region policy currently allows Pakistan and Colombia. The Firebase web key's reCAPTCHA-parameters endpoint returned HTTP 200. Matching web configuration is saved in the portal Vercel Production environment, but a portal deployment has not yet consumed those values. No CAPTCHA or paid/live SMS test was performed.
-- **Keycloak:** `https://authshield360-keycloak.vercel.app` responds with successful OIDC discovery. The `authshield` realm and `authshield-portal` client exist. The portal has the Keycloak client configuration in Vercel but `AUTHSHIELD_KEYCLOAK_ENABLED=false`; Keycloak SMTP, registration, verification email, and a real portal callback sign-in remain unverified. The current Vercel container configuration is an evaluation/demo setup, not a resilient identity cluster.
-- **Neon:** The current Neon account exposes `authshield360-db` (project ID `sparkling-mountain-48984319`) with `main` as its default branch. The previously supplied ID `patient-fog-02499412` could not be accessed under the signed-in account. The separate `authshield360-keycloak-db` belongs to Keycloak and did not receive Django portal migrations. Migrations `0008`–`0010` passed on a temporary schema-only branch and were then applied to the portal `main` branch; only schema changed.
-- **Deployment:** Production deployment `dpl_3yFGy4jyx47LD4MQzpZNi1RSoaKf` is Ready and aliased to `https://authshield360.vercel.app`. The public `/login/` returned HTTP 200, rendered the sign-in form and SMS + email verification notice, and did not show a Keycloak button. This verifies page delivery/configured presentation, not an authenticated sign-in or live OTP.
+- **Firebase:** Phone provider and deployed domain authorization were previously checked in Firebase Console. The deployed sign-in page currently renders the SMS/email verification step. No reCAPTCHA, real SMS, email delivery, or completed sign-in was performed in this review.
+- **Keycloak:** The separate service's OIDC discovery, realm, and client were previously checked. Portal Keycloak integration remains disabled while SMTP, registration, and real callback sign-in are unverified. It is optional to this SRS implementation.
+- **Neon:** Portal schema migrations through `0011_publicrequestthrottle` were applied on the production portal database before this MFA dashboard release. Migration `0012_keycloakmfapolicy_rolemfapolicy` adds policy tables and must be applied before or during deployment. These are schema changes only; no account or school-record rows are intended to change. Keycloak uses its separate database.
+- **Vercel:** The production home, `/login/`, `/signup/student/`, `/signup/teacher/`, and `/signup/status/` routes returned HTTP 200 on 2026-09-29. A successful GET proves route delivery only; authenticated access, provider delivery, and persistent hosted operations were not exercised.
+- **Automation:** The full local Django test suite passed 119 tests in 21.97 seconds on 2026-09-30. Ruff and Django migration-drift checks passed. These local checks do not replace the post-deployment route and migration checks for this release.
 
-## Project decisions and submission notes
+## Current limits before claiming the full SRS complete
 
-- Use only fictional or participant-owned accounts and records for evidence. Never put real school data, passwords, OTPs, Firebase secrets, SMTP credentials, or database URLs in reports or screenshots.
-- Firebase Phone Auth is the configured SMS provider; Gmail SMTP is the email OTP channel. A real delivery check requires the participant to complete Firebase reCAPTCHA and enter the code on their own controlled test device.
-- Keycloak is an optional identity-provider integration, not a mandatory SRS platform. Django remains responsible for school approval and role authorization; Firebase remains the portal's phone-verification provider.
-- Teachers can work only within assigned school records. They do not get student-password reset access.
-- The supplied SRS page 18 says not to copy project content or configuration from GPT/AI tools. The user previously reported separate teacher guidance allowing AI assistance when the implementation is understood. Keep that clarification in writing, follow the teacher's final rule, and do not misrepresent tool-assisted work as solely student-authored.
+1. Complete one participant-owned live Firebase SMS and email step-up flow, without recording or sharing the actual phone number or OTP.
+2. Measure audit-feed visibility, restart persistence, and the three-run authentication timings against the intended hosted demo environment.
+3. Record the required human-visible demonstration video and capture the SRS evidence from that real session.
+4. Conduct the remaining manual browser, compatibility, and accessibility walkthrough and update the matrix with actual outcomes.
 
-## Remaining work before claiming the full SRS is complete
-
-1. Run the live Firebase SMS flow on a participant-owned test account after the participant completes CAPTCHA and code entry; record the provider result without exposing the OTP or phone number.
-2. Complete the authorized local DevTools plus ZAP or Burp assessment, review each finding, and attach the tool report.
-3. Measure audit-feed visibility, restart persistence, and three-run login times against the intended demo environment; local measurements alone do not satisfy hosted evidence.
-4. Record the human-visible walkthrough and assemble the final report, presentation, and submission ZIP from the verified local and live results.
+No live result is inferred from local mocks, a page load, a configured provider, or a deployment status. See [the complete test matrix](IDENTITY_SECURITY_TEST_MATRIX.md) and its linked evidence files for test-level detail.

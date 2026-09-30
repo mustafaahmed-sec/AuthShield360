@@ -37,3 +37,16 @@ This note records configuration checks completed against Firebase and Vercel. It
 2. Configure Keycloak SMTP and public registration/email verification only if the portal will use Keycloak for student and teacher registration.
 3. Enable Keycloak only after a complete real login, callback, email verification, OTP, logout, and administrator-account check passes.
 4. Repeat audit-feed timing, restart/persistence, and login-time measurements against the intended hosted demo, then record the final presentation and video.
+
+## Read-only closeout update — 29 September 2026
+
+- The production portal schema is confirmed migrated through `0011_publicrequestthrottle`; the temporary schema-validation branch has been removed. Migration `0011` adds the public request throttling model. No application account or school-record rows were changed during the migration work.
+- Production GET requests to `/`, `/login/`, `/signup/student/`, `/signup/teacher/`, and `/signup/status/` each returned HTTP 200. This check verifies that these routes render; it did not authenticate a user or send a message.
+- The full local Django suite passed 110 tests in 20.54 seconds. Ruff and `makemigrations --check --dry-run` passed. GitHub Actions passed for commit `955ff9d`, and Vercel reported the deployment Ready.
+- The production page check does not prove Firebase CAPTCHA completion, SMS or email delivery, completed MFA, hosted audit-feed timing, or restart persistence.
+
+## Release update — 30 September 2026
+
+- Added administrator-managed per-role portal MFA policies and a separate Keycloak authenticator-app TOTP control. A changed role policy invalidates pending portal OTP sign-in attempts; active sessions and password-reset challenges are unaffected.
+- Added migration `0012_keycloakmfapolicy_rolemfapolicy` for policy storage. Apply and verify it on the production portal database as part of the deployment before marking the release complete.
+- The local suite passed 119 tests, Ruff passed, and Django reported no migration drift. Live Firebase SMS and hosted authenticated sign-in remain unverified.

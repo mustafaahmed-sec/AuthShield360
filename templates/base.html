@@ -19,6 +19,7 @@
         <a href="{% url 'dashboard' %}">Dashboard</a>
         {% if request.user.is_portal_admin %}
           <a href="{% url 'admin_management' %}">Accounts &amp; requests</a>
+          <a href="{% url 'admin_mfa_settings' %}">MFA settings</a>
           <a href="{% url 'admin:school_portalauditevent_changelist' %}">Security log</a>
         {% elif request.user.is_portal_teacher %}
           <a href="{% url 'teacher_students' %}">{% if request.user.can_manage_all_students %}All students{% else %}My students{% endif %}</a>

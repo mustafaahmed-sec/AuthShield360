@@ -43,6 +43,13 @@ from .forms import (
     TeacherSignupForm,
 )
 from .keycloak import keycloak_client
+from .mfa import (
+    allowed_channels,
+    channel_is_allowed,
+    initial_channel,
+    policy_for_user,
+    policy_revision_for_user,
+)
 from django.contrib.auth.forms import SetPasswordForm
 from .models import EmailOTPChallenge, PasswordResetRequestLimit, SMSOTPDeliveryLimit
 from .otp import (
@@ -76,7 +83,9 @@ OTP_SESSION_KEYS = (
     "authshield_otp_started_at",
     "authshield_otp_attempts",
     "authshield_otp_resends",
+    "authshield_otp_policy_revision",
     "authshield_otp_sms_sent_at",
+    "authshield_otp_sms_send_authorized_at",
     "authshield_otp_sms_sent",
     "authshield_otp_expiry_logged",
     "authshield_email_otp_hash",
@@ -86,6 +95,10 @@ OTP_SESSION_KEYS = (
 def _clear_otp_session(request):
     for key in OTP_SESSION_KEYS:
         request.session.pop(key, None)
+
+
+def _otp_policy_is_current(request, user):
+    return request.session.get("authshield_otp_policy_revision") == policy_revision_for_user(user)
 
 
 def _otp_ttl_seconds(channel):
@@ -98,6 +111,7 @@ def _otp_ttl_seconds(channel):
 
 def _start_otp(request, user, channel, *, phase="primary", reset_resends=True, force_new=False):
     purpose = "email_step_up" if phase == "email_step_up" else "sign_in"
+    policy_revision = policy_revision_for_user(user)
     challenge = start_otp(
         delivery_target(user, channel),
         channel,
@@ -110,6 +124,7 @@ def _start_otp(request, user, channel, *, phase="primary", reset_resends=True, f
     request.session["authshield_otp_user_id"] = user.pk
     request.session["authshield_otp_channel"] = channel
     request.session["authshield_otp_phase"] = phase
+    request.session["authshield_otp_policy_revision"] = policy_revision
     if phase == "primary":
         request.session["authshield_otp_primary_channel"] = channel
     now = timezone.now().timestamp()
@@ -140,6 +155,7 @@ def _prepare_firebase_sms_challenge(request, user):
     request.session["authshield_otp_channel"] = "sms"
     request.session["authshield_otp_phase"] = "primary"
     request.session["authshield_otp_primary_channel"] = "sms"
+    request.session["authshield_otp_policy_revision"] = policy_revision_for_user(user)
     request.session["authshield_otp_started_at"] = now
     request.session["authshield_otp_expires_at"] = now + settings.AUTHSHIELD_SMS_OTP_TTL_SECONDS
     request.session["authshield_otp_attempts"] = 0
@@ -413,12 +429,13 @@ def keycloak_login(request):
 
 
 def _finish_keycloak_sign_in(request, user, channel, next_url):
-    otp_exempt = user.is_portal_admin and normalized_email(user.email) in settings.AUTHSHIELD_OTP_EXEMPT_EMAILS
-    if settings.AUTHSHIELD_OTP_ENABLED and not otp_exempt:
-        if settings.AUTHSHIELD_EMAIL_STEP_UP:
-            channel = "sms"
-        elif channel == "sms" and not firebase_phone_auth_available():
-            channel = "email"
+    mfa_policy = policy_for_user(user)
+    if mfa_policy["enabled"]:
+        channels = allowed_channels(user)
+        if not channels:
+            messages.error(request, "Required sign-in verification is not configured for this account. Contact the administrator.")
+            return redirect("login")
+        channel = initial_channel(user, channel)
 
         if channel == "sms":
             try:
@@ -685,17 +702,13 @@ class BaselineLoginView(LoginView):
 
     def form_valid(self, form):
         user = form.get_user()
-        account_requires_otp = settings.AUTHSHIELD_OTP_ENABLED and not (
-            user.is_portal_admin
-            and normalized_email(user.email) in settings.AUTHSHIELD_OTP_EXEMPT_EMAILS
-        )
+        mfa_policy = policy_for_user(user)
+        account_requires_otp = mfa_policy["enabled"]
         if account_requires_otp:
-            if settings.AUTHSHIELD_EMAIL_STEP_UP:
-                channel = "sms"
-            elif firebase_phone_auth_available():
-                channel = form.cleaned_data.get("otp_channel") or "email"
-            else:
-                channel = "email"
+            channel = initial_channel(user, form.cleaned_data.get("otp_channel") or "email")
+            if not channel:
+                form.add_error(None, "Required sign-in verification is not configured for this account. Contact the administrator.")
+                return self.render_to_response(self.get_context_data(form=form))
             if channel == "sms":
                 if not firebase_phone_auth_available():
                     record_auth_event(
@@ -804,7 +817,7 @@ class BaselineLoginView(LoginView):
 @require_http_methods(["GET", "POST"])
 def otp_verify(request):
     user_id = request.session.get("authshield_otp_user_id")
-    if not settings.AUTHSHIELD_OTP_ENABLED or not user_id:
+    if not user_id:
         _clear_otp_session(request)
         messages.info(request, "Start sign-in again to request a verification code.")
         return redirect("login")
@@ -816,6 +829,18 @@ def otp_verify(request):
 
     channel = request.session.get("authshield_otp_channel", "")
     phase = request.session.get("authshield_otp_phase", "primary")
+    if not _otp_policy_is_current(request, user):
+        _clear_otp_session(request)
+        messages.info(request, "MFA settings changed during sign-in. Start again to use the current verification method.")
+        return redirect("login")
+    if not channel_is_allowed(user, channel, phase=phase):
+        _clear_otp_session(request)
+        messages.info(request, "The sign-in verification policy changed. Start sign-in again.")
+        return redirect("login")
+    if phase == "primary" and policy_for_user(user)["require_both"] and channel != "sms":
+        _clear_otp_session(request)
+        messages.info(request, "The sign-in policy now requires both methods. Start sign-in again.")
+        return redirect("login")
     if channel == "email":
         challenge_replaced, challenge_completed = _sync_email_otp_challenge(request, user, phase)
         if challenge_completed:
@@ -968,7 +993,7 @@ def otp_verify(request):
             duration_ms=_otp_duration_ms(request),
         )
 
-        if phase == "primary" and settings.AUTHSHIELD_EMAIL_STEP_UP and channel == "sms":
+        if phase == "primary" and policy_for_user(user)["require_both"] and channel == "sms":
             try:
                 _start_otp(request, user, "email", phase="email_step_up")
             except (OTPProviderError, ImproperlyConfigured):
@@ -1022,8 +1047,7 @@ def otp_verify(request):
 def _pending_sms_user(request, *, allow_expired=False):
     user_id = request.session.get("authshield_otp_user_id")
     if (
-        not settings.AUTHSHIELD_OTP_ENABLED
-        or request.session.get("authshield_otp_channel") != "sms"
+        request.session.get("authshield_otp_channel") != "sms"
         or not firebase_phone_auth_available()
     ):
         return None
@@ -1033,6 +1057,14 @@ def _pending_sms_user(request, *, allow_expired=False):
         approval_status=User.ApprovalStatus.APPROVED,
     ).first()
     if not user or (user.role != User.Role.ADMIN and user.locked_until and user.locked_until > timezone.now()):
+        return None
+    if not _otp_policy_is_current(request, user):
+        return None
+    if not channel_is_allowed(
+        user,
+        "sms",
+        phase=request.session.get("authshield_otp_phase", "primary"),
+    ):
         return None
     if not allow_expired and timezone.now().timestamp() >= request.session.get("authshield_otp_expires_at", 0):
         return None
@@ -1127,7 +1159,7 @@ def otp_sms_mark_sent(request):
     request.session.save()
     record_auth_event(
         "otp_sent", email=user.email,
-        description="Firebase accepted the SMS verification request.",
+        description="The browser reported Firebase accepted the SMS request; phone-code verification is still required.",
         request=request, factor="mobile_otp", outcome="success",
     )
     return JsonResponse({
@@ -1169,7 +1201,12 @@ def otp_resend(request):
     user = User.objects.filter(pk=user_id, is_active=True, approval_status=User.ApprovalStatus.APPROVED).first()
     channel = request.session.get("authshield_otp_channel", "")
     phase = request.session.get("authshield_otp_phase", "primary")
-    if not settings.AUTHSHIELD_OTP_ENABLED or not user or channel != "email":
+    if (
+        not user
+        or not _otp_policy_is_current(request, user)
+        or channel != "email"
+        or not channel_is_allowed(user, channel, phase=phase)
+    ):
         _clear_otp_session(request)
         messages.error(request, "Start sign-in again to request a verification code.")
         return redirect("login")

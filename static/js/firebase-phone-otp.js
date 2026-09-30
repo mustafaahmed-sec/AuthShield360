@@ -76,6 +76,7 @@ if (root) {
       "auth/billing-not-enabled": "Firebase SMS sending requires the project to be linked to a Cloud Billing account.",
       "auth/region-not-allowed": "Firebase’s SMS region policy does not allow messages to this country.",
       "auth/quota-exceeded": "Firebase’s SMS quota has been reached. Try later or check the project’s billing and SMS limits.",
+      "auth/error-code:-39": "Firebase’s SMS service returned internal error 39. The request did not confirm that a code was sent. Wait before trying again; if this keeps happening, contact Firebase Support with this error.",
       "auth/network-request-failed": "The browser could not reach Firebase. Check the internet connection and try again.",
     };
     const code = typeof error?.code === "string" ? error.code : "";
