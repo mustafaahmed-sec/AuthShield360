@@ -68,15 +68,15 @@ Automated tests cover password failure thresholds, lockout and escalation, succe
 
 ### Hosted route check
 
-Read-only requests on 29 September 2026 returned HTTP 200 for `/`, `/login/`, `/signup/student/`, `/signup/teacher/`, and `/signup/status/`. The login page displayed the configured SMS/email verification step. This confirms public route rendering only. No credentials were submitted, and no authentication or OTP delivery was attempted.
+Read-only requests on 30 September 2026 returned HTTP 200 for `/`, `/login/`, `/signup/student/`, `/signup/teacher/`, and `/signup/status/`. The unauthenticated `/administrator/security/mfa/` route redirected to sign-in with HTTP 302. This confirms route delivery and the unauthenticated boundary only. No credentials were submitted, and no authentication or OTP delivery was attempted.
 
 ## 6. Identity Security Test Matrix
 
 The project matrix at `docs/IDENTITY_SECURITY_TEST_MATRIX.md` records test ID, user/role, action, expected result, actual result, status, and evidence. It separates automated local checks from production configuration and manual checks. Its current status is:
 
 - Automated application checks: 119 tests passed locally.
-- Portal database schema: migration `0012_keycloakmfapolicy_rolemfapolicy` adds portal MFA configuration tables and must be applied in production for this release.
-- Vercel page delivery: the five public routes listed above returned HTTP 200.
+- Portal database schema: the Production build ran Django migrations and reported no pending operations; the schema is current through `0012_keycloakmfapolicy_rolemfapolicy`.
+- Vercel page delivery: the five public routes listed above returned HTTP 200; the unauthenticated MFA page redirected to sign-in.
 - Live Firebase SMS and email step-up: not run.
 - Live Keycloak callback: not run; the portal login integration is disabled. Keycloak TOTP settings are available only when its management API and a safe active flow are configured.
 - Hosted audit visibility, hosted restart persistence, and hosted performance: not run.

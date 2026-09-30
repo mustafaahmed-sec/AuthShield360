@@ -48,5 +48,6 @@ This note records configuration checks completed against Firebase and Vercel. It
 ## Release update — 30 September 2026
 
 - Added administrator-managed per-role portal MFA policies and a separate Keycloak authenticator-app TOTP control. A changed role policy invalidates pending portal OTP sign-in attempts; active sessions and password-reset challenges are unaffected.
-- Added migration `0012_keycloakmfapolicy_rolemfapolicy` for policy storage. Apply and verify it on the production portal database as part of the deployment before marking the release complete.
-- The local suite passed 119 tests, Ruff passed, and Django reported no migration drift. Live Firebase SMS and hosted authenticated sign-in remain unverified.
+- Added migration `0012_keycloakmfapolicy_rolemfapolicy` for policy storage. The Preview build applied it to the staging database. The Production build ran Django migrations and reported no pending migrations, confirming that the production schema is current through `0012`.
+- Production deployment `dpl_E3XjaXAUq1cKETRtnQRJeH7KvVH9` is Ready at the AuthShield 360 alias. GET requests to `/`, `/login/`, `/signup/student/`, `/signup/teacher/`, and `/signup/status/` returned HTTP 200; `/administrator/security/mfa/` redirected unauthenticated requests to sign-in (HTTP 302).
+- The local suite passed 119 tests in 21.97 seconds, Ruff passed, migration drift checks passed, and GitHub Actions passed on the release commits. Live Firebase SMS, authenticated hosted sign-in, and a logged-in production admin-page walkthrough remain unverified.

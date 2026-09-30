@@ -26,9 +26,9 @@
 
 - **Firebase:** Phone provider and deployed domain authorization were previously checked in Firebase Console. The deployed sign-in page currently renders the SMS/email verification step. No reCAPTCHA, real SMS, email delivery, or completed sign-in was performed in this review.
 - **Keycloak:** The separate service's OIDC discovery, realm, and client were previously checked. Portal Keycloak integration remains disabled while SMTP, registration, and real callback sign-in are unverified. It is optional to this SRS implementation.
-- **Neon:** Portal schema migrations through `0011_publicrequestthrottle` were applied on the production portal database before this MFA dashboard release. Migration `0012_keycloakmfapolicy_rolemfapolicy` adds policy tables and must be applied before or during deployment. These are schema changes only; no account or school-record rows are intended to change. Keycloak uses its separate database.
-- **Vercel:** The production home, `/login/`, `/signup/student/`, `/signup/teacher/`, and `/signup/status/` routes returned HTTP 200 on 2026-09-29. A successful GET proves route delivery only; authenticated access, provider delivery, and persistent hosted operations were not exercised.
-- **Automation:** The full local Django test suite passed 119 tests in 21.97 seconds on 2026-09-30. Ruff and Django migration-drift checks passed. These local checks do not replace the post-deployment route and migration checks for this release.
+- **Neon:** Production Django migration checks ran during the 2026-09-30 release build and reported no pending migrations; the schema is current through `0012_keycloakmfapolicy_rolemfapolicy`. The migration adds policy tables and did not modify account or school-record rows. Keycloak uses its separate database.
+- **Vercel:** The 2026-09-30 Production deployment is Ready. Requests to `/`, `/login/`, `/signup/student/`, `/signup/teacher/`, and `/signup/status/` returned HTTP 200. An unauthenticated request to `/administrator/security/mfa/` redirected to sign-in (HTTP 302). These checks prove route delivery and the unauthenticated boundary, not authenticated admin use, OTP provider delivery, or persistent hosted operations.
+- **Automation:** The full local Django test suite passed 119 tests in 21.97 seconds on 2026-09-30. Ruff, migration-drift checks, and GitHub Actions passed. These checks do not prove live provider delivery or a completed hosted login.
 
 ## Current limits before claiming the full SRS complete
 
