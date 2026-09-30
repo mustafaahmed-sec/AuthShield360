@@ -20,7 +20,6 @@ from .mfa import (
     save_role_policy,
 )
 from .mfa_forms import MFASaveConfirmationForm, RoleMFAPolicyForm
-from .models import User
 
 
 class KeycloakMFAPolicyForm(forms.Form):
@@ -45,20 +44,19 @@ def admin_mfa_settings(request):
             keycloak_status_error = str(error)
     role_forms = {}
     for role, policy in policies.items():
-        is_admin_policy = role == User.Role.ADMIN
         role_forms[role] = RoleMFAPolicyForm(
             request.POST if request.method == "POST" else None,
             prefix=role,
             initial={
-                "enabled": True if is_admin_policy else policy.enabled,
+                "enabled": True,
                 "sms_enabled": policy.sms_enabled or (
-                    is_admin_policy and not readiness["email"] and readiness["sms"]
+                    not readiness["email"] and readiness["sms"]
                 ),
-                "email_enabled": policy.email_enabled or (is_admin_policy and readiness["email"]),
+                "email_enabled": policy.email_enabled or readiness["email"],
                 "require_both_factors": policy.require_both_factors,
             },
-            mandatory=is_admin_policy,
-            require_email=is_admin_policy and readiness["email"],
+            mandatory=True,
+            require_email=readiness["email"],
         )
     keycloak_form = KeycloakMFAPolicyForm(
         request.POST if request.method == "POST" else None,

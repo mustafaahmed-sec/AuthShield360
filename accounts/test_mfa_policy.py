@@ -25,7 +25,7 @@ from school.models import PortalAuditEvent
     AUTHSHIELD_FIREBASE_APP_ID="",
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
 )
-class AdminMFAPolicyTests(TestCase):
+class PortalMFAPolicyTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(
             "mfa-admin@example.test", "FictionalAdmin!2468", full_name="MFA Administrator"
@@ -34,6 +34,11 @@ class AdminMFAPolicyTests(TestCase):
             "mfa-student@example.test", "FictionalStudent!2468", full_name="MFA Student",
             role=User.Role.STUDENT,
         )
+        self.teacher = User.objects.create_user(
+            "mfa-teacher@example.test", "FictionalTeacher!2468", full_name="MFA Teacher",
+            role=User.Role.TEACHER,
+        )
+        self.users = (self.admin, self.student, self.teacher)
         self.client.force_login(self.admin)
 
     def _all_roles_post(self, *, student_enabled=False, confirm=True):
@@ -61,7 +66,7 @@ class AdminMFAPolicyTests(TestCase):
         self.assertContains(response, "Student accounts")
         self.assertContains(response, "Firebase SMS OTP")
         self.assertContains(response, "Keycloak authenticator app (TOTP)")
-        self.assertContains(response, "always need a second-factor code")
+        self.assertContains(response, "Every student, teacher, and administrator")
 
         self.client.force_login(self.student)
         denied = self.client.get(reverse("admin_mfa_settings"))
@@ -69,6 +74,11 @@ class AdminMFAPolicyTests(TestCase):
         self.assertTrue(PortalAuditEvent.objects.filter(action="role_access_denied").exists())
 
     def test_policy_requires_confirmation_and_audits_successful_save(self):
+        RoleMFAPolicy.objects.create(
+            role=User.Role.STUDENT,
+            enabled=False,
+            email_enabled=False,
+        )
         missing_confirmation = self._all_roles_post(student_enabled=True, confirm=False)
         self.assertEqual(missing_confirmation.status_code, 200)
         self.assertFalse(RoleMFAPolicy.objects.get(role=User.Role.STUDENT).enabled)
@@ -84,6 +94,11 @@ class AdminMFAPolicyTests(TestCase):
         self.assertIn("Email OTP", event.description)
 
     def test_policy_change_expires_pending_sign_in_codes_but_preserves_password_reset_codes(self):
+        RoleMFAPolicy.objects.create(
+            role=User.Role.STUDENT,
+            enabled=False,
+            email_enabled=False,
+        )
         now = timezone.now()
         sign_in = EmailOTPChallenge.objects.create(
             user=self.student,
@@ -120,74 +135,69 @@ class AdminMFAPolicyTests(TestCase):
         self.assertEqual(reset.code_hash, "hashed-reset-code")
         self.assertGreater(reset.expires_at, timezone.now())
 
-    def test_role_policy_enforces_email_otp_even_when_legacy_global_default_is_off(self):
-        RoleMFAPolicy.objects.create(
-            role=User.Role.STUDENT,
-            enabled=True,
-            email_enabled=True,
-        )
-        self.assertTrue(policy_for_user(self.student)["enabled"])
-        with patch("accounts.views._start_otp") as start_otp:
-            response = Client().post(reverse("login"), {
-                "username": self.student.email,
-                "password": "FictionalStudent!2468",
-                "otp_channel": "email",
-            })
-        self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
-        start_otp.assert_called_once()
-        self.assertEqual(start_otp.call_args.args[2], "email")
-
     @override_settings(AUTHSHIELD_OTP_EXEMPT_EMAILS=frozenset({"mfa-admin@example.test"}))
-    def test_admin_mfa_is_mandatory_even_when_saved_policy_is_off_and_email_is_exempt(self):
-        RoleMFAPolicy.objects.create(
-            role=User.Role.ADMIN,
-            enabled=False,
-            sms_enabled=True,
-            email_enabled=False,
-            require_both_factors=True,
-        )
-        policy = policy_for_user(self.admin)
-        self.assertTrue(policy["enabled"])
-        self.assertTrue(policy["email"])
-        self.assertFalse(policy["sms"])
-        self.assertFalse(policy["require_both"])
+    def test_mfa_is_mandatory_for_all_roles_even_if_legacy_policy_is_off(self):
+        for user in self.users:
+            with self.subTest(role=user.role):
+                RoleMFAPolicy.objects.update_or_create(
+                    role=user.role,
+                    defaults={
+                        "enabled": False,
+                        "sms_enabled": True,
+                        "email_enabled": False,
+                        "require_both_factors": True,
+                    },
+                )
+                policy = policy_for_user(user)
+                self.assertTrue(policy["enabled"])
+                self.assertTrue(policy["email"])
+                self.assertFalse(policy["sms"])
+                self.assertFalse(policy["require_both"])
 
-        with patch("accounts.views._start_otp") as start_otp:
-            auth_client = Client()
-            response = auth_client.post(reverse("login"), {
-                "username": self.admin.email,
-                "password": "FictionalAdmin!2468",
-            })
+                with patch("accounts.views._start_otp") as start_otp:
+                    auth_client = Client()
+                    response = auth_client.post(reverse("login"), {
+                        "username": user.email,
+                        "password": {
+                            User.Role.ADMIN: "FictionalAdmin!2468",
+                            User.Role.STUDENT: "FictionalStudent!2468",
+                            User.Role.TEACHER: "FictionalTeacher!2468",
+                        }[user.role],
+                    })
 
-        self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
-        self.assertNotIn("_auth_user_id", auth_client.session)
-        start_otp.assert_called_once()
-        self.assertEqual(start_otp.call_args.args[2], "email")
+                self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
+                self.assertNotIn("_auth_user_id", auth_client.session)
+                start_otp.assert_called_once()
+                self.assertEqual(start_otp.call_args.args[2], "email")
 
-    def test_admin_cannot_disable_mfa_from_admin_settings_form(self):
+    def test_cannot_disable_mfa_from_admin_settings_form_for_any_role(self):
         response = self._all_roles_post()
 
         self.assertRedirects(response, reverse("admin_mfa_settings"), fetch_redirect_response=False)
-        policy = RoleMFAPolicy.objects.get(role=User.Role.ADMIN)
-        self.assertTrue(policy.enabled)
-        self.assertTrue(policy.email_enabled)
+        for role in User.Role.values:
+            with self.subTest(role=role):
+                policy = RoleMFAPolicy.objects.get(role=role)
+                self.assertTrue(policy.enabled)
+                self.assertTrue(policy.email_enabled)
 
-    def test_pre_mfa_admin_session_is_invalidated(self):
-        legacy_client = Client()
-        session = legacy_client.session
-        session[SESSION_KEY] = str(self.admin.pk)
-        session[BACKEND_SESSION_KEY] = "django.contrib.auth.backends.ModelBackend"
-        session[HASH_SESSION_KEY] = AbstractBaseUser._get_session_auth_hash(self.admin)
-        session.save()
+    def test_pre_mfa_sessions_are_invalidated_for_all_roles(self):
+        for user in self.users:
+            with self.subTest(role=user.role):
+                legacy_client = Client()
+                session = legacy_client.session
+                session[SESSION_KEY] = str(user.pk)
+                session[BACKEND_SESSION_KEY] = "django.contrib.auth.backends.ModelBackend"
+                session[HASH_SESSION_KEY] = AbstractBaseUser._get_session_auth_hash(user)
+                session.save()
 
-        response = legacy_client.get(reverse("dashboard"))
+                response = legacy_client.get(reverse("dashboard"))
 
-        self.assertRedirects(
-            response,
-            f"{reverse('login')}?next={reverse('dashboard')}",
-            fetch_redirect_response=False,
-        )
-        self.assertNotIn(SESSION_KEY, legacy_client.session)
+                self.assertRedirects(
+                    response,
+                    f"{reverse('login')}?next={reverse('dashboard')}",
+                    fetch_redirect_response=False,
+                )
+                self.assertNotIn(SESSION_KEY, legacy_client.session)
 
 
 class KeycloakFlowMFATests(TestCase):

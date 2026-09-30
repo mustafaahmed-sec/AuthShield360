@@ -45,12 +45,10 @@ class User(AbstractUser):
         REJECTED = "rejected", "Not approved"
 
     def _get_session_auth_hash(self, secret=None):
-        """Expire pre-MFA admin sessions while preserving other role sessions."""
+        """Expire sessions created before portal-wide MFA became mandatory."""
         session_hash = super()._get_session_auth_hash(secret=secret)
-        if self.role != self.Role.ADMIN:
-            return session_hash
         return salted_hmac(
-            "accounts.User.admin_mfa_session.v1",
+            "accounts.User.portal_mfa_session.v1",
             session_hash,
             secret=secret,
         ).hexdigest()

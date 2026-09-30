@@ -121,6 +121,15 @@ class KeycloakPortalFlowTests(TestCase):
         self.assertContains(response, "Email")
 
 
+@override_settings(
+    AUTHSHIELD_FIREBASE_API_KEY="",
+    AUTHSHIELD_FIREBASE_AUTH_DOMAIN="",
+    AUTHSHIELD_FIREBASE_PROJECT_ID="",
+    AUTHSHIELD_FIREBASE_APP_ID="",
+    AUTHSHIELD_GMAIL_ADDRESS="authshield-test@example.test",
+    AUTHSHIELD_GMAIL_APP_PASSWORD="test-app-password",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
 class PublicAccountFlowTests(TestCase):
     def test_approved_account_can_sign_in_and_bad_password_is_rejected(self):
         user = User.objects.create_user(
@@ -129,8 +138,14 @@ class PublicAccountFlowTests(TestCase):
         bad = self.client.post(reverse("login"), {"username": user.email, "password": "incorrect"})
         self.assertEqual(bad.status_code, 200)
         self.assertNotIn("_auth_user_id", self.client.session)
-        good = self.client.post(reverse("login"), {"username": user.email, "password": "FictionalDemo!2468"})
-        self.assertRedirects(good, reverse("dashboard"), fetch_redirect_response=False)
+        good = self.client.post(reverse("login"), {
+            "username": user.email, "password": "FictionalDemo!2468", "otp_channel": "email",
+        })
+        self.assertRedirects(good, reverse("otp_verify"), fetch_redirect_response=False)
+        match = re.search(r"(?m)^([0-9]{6})$", mail.outbox[-1].body)
+        self.assertIsNotNone(match)
+        verified = self.client.post(reverse("otp_verify"), {"code": match.group(1)})
+        self.assertRedirects(verified, reverse("dashboard"), fetch_redirect_response=False)
         self.assertEqual(int(self.client.session["_auth_user_id"]), user.pk)
 
     def test_status_lookup_requires_the_matching_password(self):
@@ -251,6 +266,15 @@ class PublicAccountFlowTests(TestCase):
         self.assertTrue(StudentRecord.objects.filter(student=applicant).exists())
 
 
+@override_settings(
+    AUTHSHIELD_FIREBASE_API_KEY="",
+    AUTHSHIELD_FIREBASE_AUTH_DOMAIN="",
+    AUTHSHIELD_FIREBASE_PROJECT_ID="",
+    AUTHSHIELD_FIREBASE_APP_ID="",
+    AUTHSHIELD_GMAIL_ADDRESS="authshield-test@example.test",
+    AUTHSHIELD_GMAIL_APP_PASSWORD="test-app-password",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
 class AuthenticationAuditTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -259,14 +283,18 @@ class AuthenticationAuditTests(TestCase):
 
     def test_successful_login_is_audit_logged(self):
         response = self.client.post(reverse("login"), {
-            "username": self.user.email, "password": "FictionalDemo!2468",
+            "username": self.user.email, "password": "FictionalDemo!2468", "otp_channel": "email",
         })
-        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
+        match = re.search(r"(?m)^([0-9]{6})$", mail.outbox[-1].body)
+        self.assertIsNotNone(match)
+        response = self.client.post(reverse("otp_verify"), {"code": match.group(1)})
+        self.assertRedirects(response, reverse("dashboard"), fetch_redirect_response=False)
         event = PortalAuditEvent.objects.get(action="login_success")
         self.assertEqual(event.actor, self.user)
         self.assertEqual(event.actor_role, User.Role.STUDENT)
-        self.assertEqual(event.auth_mode, "password")
-        self.assertEqual(event.factor, "password")
+        self.assertEqual(event.auth_mode, "otp")
+        self.assertEqual(event.factor, "email_otp")
         self.assertEqual(event.outcome, "success")
         self.assertEqual(event.ip_address, "127.0.0.1")
         self.assertIsNotNone(event.duration_ms)
@@ -817,6 +845,13 @@ class EmailOTPChallengeSessionSyncTests(TestCase):
     AUTHSHIELD_IP_FAILURE_LIMIT=30,
     AUTHSHIELD_IP_WINDOW_MINUTES=15,
     AUTHSHIELD_IP_THROTTLE_MINUTES=1,
+    AUTHSHIELD_FIREBASE_API_KEY="",
+    AUTHSHIELD_FIREBASE_AUTH_DOMAIN="",
+    AUTHSHIELD_FIREBASE_PROJECT_ID="",
+    AUTHSHIELD_FIREBASE_APP_ID="",
+    AUTHSHIELD_GMAIL_ADDRESS="authshield-test@example.test",
+    AUTHSHIELD_GMAIL_APP_PASSWORD="test-app-password",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
 )
 class FailedLoginProtectionTests(TestCase):
     def setUp(self):
@@ -825,10 +860,13 @@ class FailedLoginProtectionTests(TestCase):
             full_name="Lockout Student", role=User.Role.STUDENT,
         )
 
-    def post_login(self, email=None, password="wrong-password", **extra):
+    def post_login(self, email=None, password="wrong-password", otp_channel=None, **extra):
+        data = {"username": email or self.user.email, "password": password}
+        if otp_channel:
+            data["otp_channel"] = otp_channel
         return self.client.post(
             reverse("login"),
-            {"username": email or self.user.email, "password": password},
+            data,
             **extra,
         )
 
@@ -864,8 +902,12 @@ class FailedLoginProtectionTests(TestCase):
         for _ in range(4):
             self.post_login()
 
-        success = self.post_login(password="FictionalDemo!2468")
-        self.assertEqual(success.status_code, 302)
+        success = self.post_login(password="FictionalDemo!2468", otp_channel="email")
+        self.assertRedirects(success, reverse("otp_verify"), fetch_redirect_response=False)
+        match = re.search(r"(?m)^([0-9]{6})$", mail.outbox[-1].body)
+        self.assertIsNotNone(match)
+        verified = self.client.post(reverse("otp_verify"), {"code": match.group(1)})
+        self.assertRedirects(verified, reverse("dashboard"), fetch_redirect_response=False)
         self.user.refresh_from_db()
         self.assertIsNone(self.user.locked_until)
         self.post_login()

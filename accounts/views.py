@@ -690,7 +690,7 @@ class BaselineLoginView(LoginView):
                 return redirect("keycloak_login")
             return render(request, self.template_name, {
                 "keycloak_enabled": True,
-                "otp_enabled": settings.AUTHSHIELD_OTP_ENABLED,
+                "otp_enabled": True,
                 "email_step_up": settings.AUTHSHIELD_EMAIL_STEP_UP,
                 "mobile_otp_enabled": firebase_phone_auth_available(),
                 "next": request.GET.get("next", ""),
@@ -775,7 +775,7 @@ class BaselineLoginView(LoginView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["otp_enabled"] = settings.AUTHSHIELD_OTP_ENABLED
+        context["otp_enabled"] = True
         context["email_step_up"] = settings.AUTHSHIELD_EMAIL_STEP_UP
         context["keycloak_enabled"] = settings.AUTHSHIELD_KEYCLOAK_ENABLED
         context["mobile_otp_enabled"] = firebase_phone_auth_available()

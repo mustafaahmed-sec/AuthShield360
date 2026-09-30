@@ -16,30 +16,15 @@ def email_otp_available():
 
 
 def _role_policy_defaults(role):
-    configured = settings.AUTHSHIELD_OTP_ENABLED
-    email_enabled = configured and email_otp_available()
-    sms_enabled = configured and firebase_phone_auth_available()
-    require_both = configured and settings.AUTHSHIELD_EMAIL_STEP_UP
-    if require_both and not (email_enabled and sms_enabled):
-        require_both = False
-    if role == User.Role.ADMIN:
-        admin_sms_enabled = firebase_phone_auth_available()
-        admin_email_enabled = email_otp_available()
-        return {
-            "enabled": True,
-            "sms_enabled": admin_sms_enabled,
-            "email_enabled": admin_email_enabled,
-            "require_both_factors": (
-                settings.AUTHSHIELD_EMAIL_STEP_UP
-                and admin_sms_enabled
-                and admin_email_enabled
-            ),
-        }
+    email_enabled = email_otp_available()
+    sms_enabled = firebase_phone_auth_available()
     return {
-        "enabled": configured and (email_enabled or sms_enabled),
+        "enabled": True,
         "sms_enabled": sms_enabled,
         "email_enabled": email_enabled,
-        "require_both_factors": require_both,
+        "require_both_factors": (
+            settings.AUTHSHIELD_EMAIL_STEP_UP and email_enabled and sms_enabled
+        ),
     }
 
 
@@ -70,41 +55,24 @@ def get_keycloak_mfa_policy():
 def policy_for_user(user):
     """Return effective OTP channels, honoring deployment and provider availability."""
     policy = get_role_mfa_policy(user.role)
-    if user.role == User.Role.ADMIN:
-        sms_available = (
-            policy.sms_enabled
-            and firebase_phone_auth_available()
-            and bool(normalize_phone_number(user.phone_number))
-        )
-        email_available = email_otp_available()
-        # Admin MFA is mandatory even if a legacy database policy or deployment
-        # exemption predates this rule. Email is the no-phone fallback; SMS is
-        # available when it was enabled and the account has a usable number.
-        if not email_available and not sms_available:
-            sms_available = (
-                firebase_phone_auth_available()
-                and bool(normalize_phone_number(user.phone_number))
-            )
-        return {
-            "enabled": True,
-            "sms": sms_available,
-            "email": email_available,
-            "require_both": bool(
-                policy.require_both_factors and sms_available and email_available
-            ),
-        }
-    if not policy.enabled:
-        return {
-            "enabled": False,
-            "sms": False,
-            "email": False,
-            "require_both": False,
-        }
+    email_available = email_otp_available()
+    sms_available = (
+        firebase_phone_auth_available()
+        and bool(normalize_phone_number(user.phone_number))
+    )
+    # MFA is mandatory for every portal role. Email remains available as the
+    # fallback for users without an enrolled phone and for Firebase outages.
+    sms_enabled = policy.sms_enabled and sms_available
+    email_enabled = email_available
+    if not email_enabled and sms_available:
+        sms_enabled = True
     return {
         "enabled": True,
-        "sms": policy.sms_enabled and firebase_phone_auth_available(),
-        "email": policy.email_enabled and email_otp_available(),
-        "require_both": policy.require_both_factors,
+        "sms": sms_enabled,
+        "email": email_enabled,
+        "require_both": bool(
+            policy.require_both_factors and sms_enabled and email_enabled
+        ),
     }
 
 
@@ -145,19 +113,14 @@ def ensure_method_configuration(form, role, *, sms_available, email_available):
         form.cleaned_data.get("sms_enabled") and form.cleaned_data.get("email_enabled")
     ):
         form.add_error("require_both_factors", "Requiring both factors needs SMS and email enabled.")
-    if form.cleaned_data.get("enabled") and not (
-        form.cleaned_data.get("sms_enabled") or form.cleaned_data.get("email_enabled")
-    ):
-        form.add_error("enabled", "Choose SMS or email before requiring portal MFA for this role.")
-    if not form.cleaned_data.get("enabled") and form.cleaned_data.get("require_both_factors"):
-        form.add_error("require_both_factors", "Turn on role MFA before requiring both factors.")
-    if role == User.Role.ADMIN:
-        if not form.cleaned_data.get("enabled"):
-            form.add_error("enabled", "Administrator MFA is always required and cannot be disabled.")
-        if email_available and not form.cleaned_data.get("email_enabled"):
-            form.add_error("email_enabled", "Email OTP must remain enabled as the administrator fallback when no phone is available.")
-        if not (form.cleaned_data.get("sms_enabled") or form.cleaned_data.get("email_enabled")):
-            form.add_error("email_enabled", "Administrator accounts must have at least one available second-factor method.")
+    if not form.cleaned_data.get("enabled"):
+        form.add_error("enabled", f"MFA is required for every {role_display_name(role).lower()} account and cannot be disabled.")
+    if form.cleaned_data.get("require_both_factors") and not form.cleaned_data.get("enabled"):
+        form.add_error("require_both_factors", "MFA must remain enabled before requiring both methods.")
+    if email_available and not form.cleaned_data.get("email_enabled"):
+        form.add_error("email_enabled", "Email OTP must remain enabled as a fallback when SMS is unavailable or no phone is enrolled.")
+    if not (form.cleaned_data.get("sms_enabled") or form.cleaned_data.get("email_enabled")):
+        form.add_error("email_enabled", "Every role must have at least one configured second-factor method.")
     return not form.errors
 
 
