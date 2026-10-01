@@ -177,4 +177,4 @@ This is a source-folder handoff, not a transfer of cloud ownership or a database
 
 ## Project documents
 
-This README is the project’s single Markdown handoff guide. The private beginner and jury study guide is at **output/pdf/AuthShield360_TechViz_Study_Guide.pdf**. Use it alongside this README to understand the system and prepare for a project demonstration.
+This README is the project’s single Markdown handoff guide. The beginner and jury study guide is at **docs/AuthShield360_TechViz_Study_Guide.pdf**. Use it alongside this README to understand the system and prepare for a project demonstration.
