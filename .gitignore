@@ -28,7 +28,7 @@ tmp/
 .idea/
 .vscode/
 .agents/
-.vercel-deploy-credentials.txt
+Portal Role Credentials.txt
 AuthShield Access Directory.xlsx
 skills-lock.json
 .vercel

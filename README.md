@@ -115,7 +115,9 @@ The names of expected settings are listed in **.env.example**. The main groups a
 - Firebase web configuration: AUTHSHIELD_FIREBASE_API_KEY, AUTHSHIELD_FIREBASE_AUTH_DOMAIN, AUTHSHIELD_FIREBASE_PROJECT_ID, AUTHSHIELD_FIREBASE_APP_ID.
 - Optional Keycloak: AUTHSHIELD_KEYCLOAK_ENABLED and its server, realm, client, and secret settings.
 
-This guide lists setting names only. It does not include credential values. Keep private keys, SMTP passwords, database URLs, and client secrets out of public repositories, screenshots, blog posts, and ordinary email. The USB also contains local environment/deployment material and an access-directory workbook; restrict it to intended administrators. Rotate credentials if the USB or workbook is lost or shared beyond that group.
+The USB handoff also keeps local access material: **.env**, **.env.production.local**, **Portal Role Credentials.txt**, and **AuthShield Access Directory.xlsx**. `config/settings.py` loads only `.env`; `.env.production.local` is not read automatically by the Django app. The role credential text file and environment files contain readable secrets, and the workbook may contain account details. These files are excluded from Git and the Vercel upload. Vercel production settings are managed in the Vercel project, and account permissions must be granted by each provider.
+
+This guide lists setting names only. It does not include credential values. Keep private keys, SMTP passwords, database URLs, and client secrets out of public repositories, screenshots, blogs, and ordinary email. If the USB or workbook is lost or exposed, revoke or rotate affected credentials promptly.
 
 ## Local setup and deployment
 
@@ -171,7 +173,7 @@ The detailed SRS evidence pack and dated supporting records were removed from th
 
 ## USB handoff
 
-This is a full source-folder handoff, not a transfer of cloud ownership or a database backup. The USB contains credentials in protected local configuration material and in the access-directory workbook. Keep it with the intended administrator; do not upload or share it through an unprotected channel. Before another maintainer uses it, agree on which accounts they may access, transfer credentials securely, and consider rotating them afterward.
+This is a source-folder handoff, not a transfer of cloud ownership or a database backup. Keep the USB and its readable local credentials with the intended administrator; do not upload them to GitHub or Vercel, or send them through an unprotected channel. Another maintainer still needs to be granted access to GitHub, Vercel, Neon, Firebase, email delivery, and Keycloak if used. Consider rotating credentials after transfer if the USB was accessible to anyone else.
 
 ## Project documents
 
