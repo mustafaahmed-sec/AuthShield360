@@ -76,6 +76,12 @@ class KeycloakPortalFlowTests(TestCase):
         self.assertEqual(self.client.session["authshield_keycloak_flow"], "login")
         client.return_value.authorize_redirect.assert_called_once()
 
+    @override_settings(
+        AUTHSHIELD_FIREBASE_API_KEY="test-web-api-key",
+        AUTHSHIELD_FIREBASE_AUTH_DOMAIN="authshield-test.firebaseapp.com",
+        AUTHSHIELD_FIREBASE_PROJECT_ID="authshield-test",
+        AUTHSHIELD_FIREBASE_APP_ID="1:123:web:test",
+    )
     def test_verified_keycloak_identity_continues_to_otp_before_sign_in(self):
         session = self.client.session
         session["authshield_keycloak_flow"] = "login"
