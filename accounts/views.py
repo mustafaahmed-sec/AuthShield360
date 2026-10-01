@@ -64,6 +64,7 @@ from .otp import (
     start_otp,
     verify_firebase_phone_id_token,
 )
+from .throttling import consume_throttle_quota
 from school.audit import record_auth_event, request_ip
 
 
@@ -1363,6 +1364,18 @@ def _password_reset_user(**lookup):
     return eligible_users.filter(**lookup).first()
 
 
+def _password_reset_account_send_allowed(user, now=None):
+    """Limit reset emails per account across browser sessions and app instances."""
+    return consume_throttle_quota(
+        scope="password-reset-account",
+        purpose="password-reset-account",
+        identity=str(user.pk),
+        limit=settings.AUTHSHIELD_PASSWORD_RESET_ACCOUNT_LIMIT,
+        window_minutes=settings.AUTHSHIELD_PASSWORD_RESET_ACCOUNT_WINDOW_MINUTES,
+        now=now,
+    )
+
+
 def _password_reset_request_allowed(request, now=None):
     """Apply a cross-instance IP limit without storing the visitor's raw IP."""
     address = request_ip(request)
@@ -1437,9 +1450,10 @@ def password_reset_request(request):
             # Keep the eligible account in this browser session so a transient
             # mail-delivery failure can be retried from the same generic page.
             request.session["authshield_password_reset_user_id"] = user.pk
+            email_was_sent = False
             try:
-                if not cooldown_active:
-                    start_otp(
+                if not cooldown_active and _password_reset_account_send_allowed(user, now_datetime):
+                    challenge = start_otp(
                         user.email,
                         "email",
                         request.session,
@@ -1447,6 +1461,7 @@ def password_reset_request(request):
                         user=user,
                         purpose=EmailOTPChallenge.Purpose.PASSWORD_RESET,
                     )
+                    email_was_sent = bool(getattr(challenge, "_email_sent", False))
             except OTPProviderError:
                 record_auth_event(
                     "password_reset_otp_failure",
@@ -1473,12 +1488,12 @@ def password_reset_request(request):
             else:
                 request.session["authshield_password_reset_user_id"] = user.pk
                 request.session.set_expiry(settings.SESSION_COOKIE_AGE)
-                if not cooldown_active:
+                if email_was_sent:
                     record_auth_event(
                         "password_reset_otp_sent",
                         email=user.email,
                         actor=user,
-                        description="A password recovery code was sent or an active code was reused.",
+                        description="A password recovery code was sent.",
                         request=request,
                         factor="email_otp",
                         outcome="success",
@@ -1522,7 +1537,12 @@ def password_reset_verify(request):
                 if challenge.attempts >= MAX_OTP_ATTEMPTS or not challenge.code_hash or not challenge.expires_at or challenge.expires_at <= timezone.now():
                     challenge.code_hash = ""
                     challenge.save(update_fields=("code_hash",))
-                elif not check_password(code, challenge.code_hash):
+                elif (
+                    len(code) != 6
+                    or not code.isascii()
+                    or not code.isdigit()
+                    or not check_password(code, challenge.code_hash)
+                ):
                     challenge.attempts += 1
                     if challenge.attempts >= MAX_OTP_ATTEMPTS:
                         challenge.code_hash = ""
@@ -1614,28 +1634,29 @@ def password_reset_resend(request):
             and seconds_since_send < settings.AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS
         )
         if user and challenge and not cooldown_active:
-            try:
-                challenge = start_otp(
-                    user.email,
-                    "email",
-                    request.session,
-                    recipient_name=user.full_name,
-                    user=user,
-                    purpose=EmailOTPChallenge.Purpose.PASSWORD_RESET,
-                    force_new=True,
-                )
-            except (OTPProviderError, ImproperlyConfigured):
-                pass
-            if challenge and getattr(challenge, "_email_sent", False):
-                record_auth_event(
-                    "password_reset_otp_sent",
-                    email=user.email,
-                    actor=user,
-                    description="A replacement password recovery code was sent; the prior code is invalid.",
-                    request=request,
-                    factor="email_otp",
-                    outcome="success",
-                )
+            if _password_reset_account_send_allowed(user, now):
+                try:
+                    challenge = start_otp(
+                        user.email,
+                        "email",
+                        request.session,
+                        recipient_name=user.full_name,
+                        user=user,
+                        purpose=EmailOTPChallenge.Purpose.PASSWORD_RESET,
+                        force_new=True,
+                    )
+                except (OTPProviderError, ImproperlyConfigured):
+                    pass
+                if challenge and getattr(challenge, "_email_sent", False):
+                    record_auth_event(
+                        "password_reset_otp_sent",
+                        email=user.email,
+                        actor=user,
+                        description="A replacement password recovery code was sent; the prior code is invalid.",
+                        request=request,
+                        factor="email_otp",
+                        outcome="success",
+                    )
         request.session["authshield_password_reset_resends"] = resend_count + 1
     else:
         messages.info(request, "This reset request reached its resend limit. Start again later.")

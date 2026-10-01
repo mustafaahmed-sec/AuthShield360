@@ -12,7 +12,23 @@ class PreviewDatabaseIsolationTests(SimpleTestCase):
         self.assertTrue(
             _same_database_target(
                 "postgres://preview@ep-demo-pooler.us-east-2.aws.neon.tech/school",
-                "postgresql://production@EP-DEMO.us-east-2.aws.neon.tech:5432/school/",
+                "postgresql://production@EP-DEMO.us-east-2.aws.neon.tech:5432/school",
+            )
+        )
+
+    def test_percent_encoded_database_name_cannot_bypass_database_isolation(self):
+        self.assertTrue(
+            _same_database_target(
+                "postgres://preview@db.example.test/sch%6Fol",
+                "postgresql://production@db.example.test/school",
+            )
+        )
+
+    def test_database_names_remain_case_sensitive(self):
+        self.assertFalse(
+            _same_database_target(
+                "postgres://preview@db.example.test/School",
+                "postgresql://production@db.example.test/school",
             )
         )
 

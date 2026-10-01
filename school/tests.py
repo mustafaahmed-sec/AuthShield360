@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.urls import reverse
 
 from accounts.models import OTPDeliveryLimit, User
+from .audit import record_role_denial
 from .models import (
     Announcement,
     Assignment,
@@ -753,6 +754,51 @@ class StudentRoleBoundaryTests(TestCase):
         denials = PortalAuditEvent.objects.filter(actor=self.student, action="role_access_denied")
         self.assertEqual(denials.count(), len(protected_paths))
         self.assertTrue(all(event.ip_address == "127.0.0.1" for event in denials))
+
+    def test_repeated_denials_are_throttled_across_requests_and_source_addresses(self):
+        self.client.force_login(self.student)
+        path = reverse("admin_management")
+
+        for address in ("192.0.2.41", "192.0.2.42", "192.0.2.43", "192.0.2.44"):
+            response = self.client.get(path, REMOTE_ADDR=address)
+            self.assertEqual(response.status_code, 403)
+
+        self.assertEqual(
+            PortalAuditEvent.objects.filter(
+                actor=self.student,
+                action="role_access_denied",
+                target_name="administrator management",
+            ).count(),
+            1,
+        )
+
+    def test_role_denial_audit_quota_reopens_after_its_window(self):
+        self.client.force_login(self.student)
+        first_window_start = timezone.now()
+
+        with patch("accounts.throttling.timezone.now", return_value=first_window_start):
+            record_role_denial(self.student, "administrator management")
+            record_role_denial(self.student, "administrator management")
+        self.assertEqual(
+            PortalAuditEvent.objects.filter(
+                actor=self.student,
+                action="role_access_denied",
+                target_name="administrator management",
+            ).count(),
+            1,
+        )
+
+        after_window = first_window_start + timedelta(minutes=16)
+        with patch("accounts.throttling.timezone.now", return_value=after_window):
+            record_role_denial(self.student, "administrator management")
+        self.assertEqual(
+            PortalAuditEvent.objects.filter(
+                actor=self.student,
+                action="role_access_denied",
+                target_name="administrator management",
+            ).count(),
+            2,
+        )
 
 
 class StudentDashboardProgressTests(TestCase):

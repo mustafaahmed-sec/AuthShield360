@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1320" viewBox="0 0 1800 1320" role="img" aria-labelledby="title desc">
+  <title id="title">AuthShield 360 application database relationships</title>
+  <desc id="desc">A grouped entity map for the Django accounts and school application tables. Django migrations define the schema.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#31597d"/></marker>
+    <style>
+      text{font-family:Arial,Helvetica,sans-serif;fill:#172b46}
+      .h1{font-size:40px;font-weight:700}.sub{font-size:20px;fill:#53677e}
+      .group-title{font-size:24px;font-weight:700;letter-spacing:.5px}
+      .table{fill:#fff;stroke:#b9c9d9;stroke-width:2;rx:12}
+      .head{font-size:17px;font-weight:700;fill:#fff}
+      .field{font-size:15px;fill:#263b56}
+      .hint{font-size:15px;fill:#4c6076}
+      .line{fill:none;stroke:#31597d;stroke-width:2.5;marker-end:url(#arrow)}
+      .dash{fill:none;stroke:#0b8e84;stroke-width:2.2;stroke-dasharray:8 6;marker-end:url(#arrow)}
+      .label{font-size:14px;font-weight:700;fill:#31597d}
+    </style>
+  </defs>
+  <rect width="1800" height="1320" fill="#f4f7fb"/>
+  <text x="70" y="72" class="h1">AuthShield 360 database map</text>
+  <text x="70" y="108" class="sub">PostgreSQL schema managed by Django migrations | PK = primary key | FK = foreign key</text>
+
+  <rect x="50" y="145" width="520" height="875" rx="20" fill="#e9f1f8" stroke="#b7c9da"/>
+  <text x="78" y="186" class="group-title">ACCOUNTS AND AUTHENTICATION</text>
+  <rect x="80" y="220" width="220" height="190" class="table"/>
+  <rect x="80" y="220" width="220" height="40" rx="12" fill="#173352"/>
+  <text x="98" y="247" class="head">User</text>
+  <text x="98" y="286" class="field">PK id</text><text x="98" y="311" class="field">email, role, status</text>
+  <text x="98" y="336" class="field">phone_number</text><text x="98" y="361" class="field">password hash, lockout</text>
+  <text x="98" y="386" class="field">reviewed_by FK User</text>
+
+  <rect x="330" y="220" width="210" height="155" class="table"/>
+  <rect x="330" y="220" width="210" height="40" rx="12" fill="#1e6088"/>
+  <text x="348" y="247" class="head">EmailOTPChallenge</text>
+  <text x="348" y="286" class="field">PK id</text><text x="348" y="311" class="field">user_id FK, purpose</text>
+  <text x="348" y="336" class="field">code hash, expiry, attempts</text>
+
+  <rect x="330" y="405" width="210" height="170" class="table"/>
+  <rect x="330" y="405" width="210" height="40" rx="12" fill="#1e6088"/>
+  <text x="348" y="432" class="head">RoleMFAPolicy</text>
+  <text x="348" y="471" class="field">PK id | unique role</text><text x="348" y="496" class="field">enabled, SMS, email</text>
+  <text x="348" y="521" class="field">require both factors</text><text x="348" y="546" class="field">updated_by FK User</text>
+
+  <rect x="330" y="605" width="210" height="145" class="table"/>
+  <rect x="330" y="605" width="210" height="40" rx="12" fill="#1e6088"/>
+  <text x="348" y="632" class="head">KeycloakMFAPolicy</text>
+  <text x="348" y="671" class="field">PK id</text><text x="348" y="696" class="field">TOTP setting</text>
+  <text x="348" y="721" class="field">updated_by FK User</text>
+
+  <rect x="80" y="450" width="220" height="235" class="table"/>
+  <rect x="80" y="450" width="220" height="40" rx="12" fill="#1e6088"/>
+  <text x="98" y="477" class="head">Delivery limits</text>
+  <text x="98" y="516" class="field">SMSOTPDeliveryLimit</text><text x="98" y="541" class="field">user_id one-to-one FK</text>
+  <text x="98" y="576" class="field">OTPDeliveryLimit</text><text x="98" y="601" class="field">user_id FK + channel</text>
+  <text x="98" y="636" class="field">attempts, counts, locks</text>
+
+  <rect x="80" y="725" width="220" height="210" class="table"/>
+  <rect x="80" y="725" width="220" height="40" rx="12" fill="#1e6088"/>
+  <text x="98" y="752" class="head">Request quotas</text>
+  <text x="98" y="791" class="field">PublicRequestThrottle</text><text x="98" y="816" class="field">purpose + HMAC fingerprint</text>
+  <text x="98" y="851" class="field">PasswordResetRequestLimit</text><text x="98" y="876" class="field">HMAC fingerprint</text>
+  <text x="98" y="911" class="field">window and count</text>
+
+  <rect x="620" y="145" width="1120" height="875" rx="20" fill="#eaf4f2" stroke="#b8d8d2"/>
+  <text x="650" y="186" class="group-title">SCHOOL RECORDS</text>
+  <path d="M300 280 C315 280 315 290 330 290" class="line"/>
+  <path d="M300 330 C315 430 315 475 330 485" class="dash"/>
+  <path d="M300 330 C315 630 315 675 330 685" class="dash"/>
+  <path d="M300 380 C420 425 535 390 660 350" class="dash"/>
+  <path d="M1260 310 L1370 310" class="line"/>
+  <path d="M1015 360 C970 405 940 425 900 490" class="line"/>
+  <path d="M1137 385 L1137 470" class="line"/>
+  <path d="M1260 385 C1320 420 1360 450 1370 500" class="line"/>
+
+
+
+  <rect x="660" y="235" width="245" height="150" class="table"/>
+  <rect x="660" y="235" width="245" height="40" rx="12" fill="#087f78"/>
+  <text x="678" y="262" class="head">StudentRecord</text>
+  <text x="678" y="301" class="field">PK id</text><text x="678" y="326" class="field">student_id one-to-one FK User</text><text x="678" y="351" class="field">admission number, grade</text>
+
+  <rect x="1015" y="235" width="245" height="150" class="table"/>
+  <rect x="1015" y="235" width="245" height="40" rx="12" fill="#087f78"/>
+  <text x="1033" y="262" class="head">Course</text>
+  <text x="1033" y="301" class="field">PK id</text><text x="1033" y="326" class="field">teacher_id nullable FK User</text><text x="1033" y="351" class="field">unique code, title</text>
+
+  <rect x="1370" y="235" width="300" height="150" class="table"/>
+  <rect x="1370" y="235" width="300" height="40" rx="12" fill="#087f78"/>
+  <text x="1388" y="262" class="head">Enrollment</text>
+  <text x="1388" y="301" class="field">PK id</text><text x="1388" y="326" class="field">student_id FK User</text><text x="1388" y="351" class="field">course_id FK Course</text>
+
+  <rect x="660" y="470" width="245" height="145" class="table"/>
+  <rect x="660" y="470" width="245" height="40" rx="12" fill="#087f78"/>
+  <text x="678" y="497" class="head">Assignment</text>
+  <text x="678" y="536" class="field">PK id</text><text x="678" y="561" class="field">course_id FK Course</text><text x="678" y="586" class="field">title, due date</text>
+
+  <rect x="1015" y="470" width="245" height="145" class="table"/>
+  <rect x="1015" y="470" width="245" height="40" rx="12" fill="#087f78"/>
+  <text x="1033" y="497" class="head">ExamResult</text>
+  <text x="1033" y="536" class="field">PK id</text><text x="1033" y="561" class="field">student_id FK User</text><text x="1033" y="586" class="field">course_id FK Course</text>
+
+  <rect x="1370" y="470" width="300" height="145" class="table"/>
+  <rect x="1370" y="470" width="300" height="40" rx="12" fill="#087f78"/>
+  <text x="1388" y="497" class="head">AttendanceRecord</text>
+  <text x="1388" y="536" class="field">student_id FK User | course_id FK</text><text x="1388" y="561" class="field">marked_by nullable FK User</text><text x="1388" y="586" class="field">unique per course, student, date</text>
+
+  <rect x="660" y="700" width="245" height="150" class="table"/>
+  <rect x="660" y="700" width="245" height="40" rx="12" fill="#087f78"/>
+  <text x="678" y="727" class="head">TeacherAttendanceRecord</text>
+  <text x="678" y="766" class="field">teacher_id FK User</text><text x="678" y="791" class="field">marked_by nullable FK User</text><text x="678" y="816" class="field">unique per teacher, date</text>
+
+  <rect x="1015" y="700" width="300" height="150" class="table"/>
+  <rect x="1015" y="700" width="300" height="40" rx="12" fill="#087f78"/>
+  <text x="1033" y="727" class="head">EnrollmentChangeRequest</text>
+  <text x="1033" y="766" class="field">course_id FK Course</text><text x="1033" y="791" class="field">requester, student, reviewer FK User</text><text x="1033" y="816" class="field">action, status, reason</text>
+
+  <rect x="1370" y="700" width="300" height="150" class="table"/>
+  <rect x="1370" y="700" width="300" height="40" rx="12" fill="#087f78"/>
+  <text x="1388" y="727" class="head">PortalAuditEvent</text>
+  <text x="1388" y="766" class="field">actor_id nullable FK User</text><text x="1388" y="791" class="field">action, target, outcome</text><text x="1388" y="816" class="field">time and request metadata</text>
+
+  <rect x="660" y="890" width="300" height="90" class="table"/>
+  <rect x="660" y="890" width="300" height="40" rx="12" fill="#087f78"/>
+  <text x="678" y="917" class="head">Announcement</text>
+  <text x="678" y="956" class="field">PK id | audience | active dates</text>
+
+  <rect x="1015" y="890" width="300" height="90" class="table"/>
+  <rect x="1015" y="890" width="300" height="40" rx="12" fill="#087f78"/>
+  <text x="1033" y="917" class="head">Student audit views</text>
+  <text x="1033" y="956" class="field">Django proxies over PortalAuditEvent</text>
+
+  <rect x="50" y="1050" width="1690" height="210" rx="18" fill="#fff7e7" stroke="#e2bc62" stroke-width="2"/>
+  <text x="80" y="1090" class="group-title">HOW TO READ THE LINKS</text>
+  <text x="80" y="1128" class="hint">User to StudentRecord is one-to-one. Student users and courses connect many-to-many through Enrollment.</text>
+  <text x="80" y="1158" class="hint">A teacher can own many courses. A course can own many assignments, results, attendance rows, and enrollment requests.</text>
+  <text x="80" y="1188" class="hint">Dashed links indicate user actor/owner references. For exact optionality and constraints, read the Django models and migrations.</text>
+  <text x="80" y="1220" class="hint">StudentPortalAuditEvent, TeacherPortalAuditEvent, and AdministratorPortalAuditEvent are proxy views, not extra tables.</text>
+  <text x="80" y="1248" class="hint">This is an application schema map. The production database's current rows and migration state were not read or exported.</text>
+</svg>
+
+

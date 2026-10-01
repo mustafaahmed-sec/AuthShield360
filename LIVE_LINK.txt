@@ -1,0 +1,8 @@
+AuthShield 360 links
+====================
+
+Portal: https://authshield360.vercel.app
+GitHub: https://github.com/mustafaahmed-sec/AuthShield360
+
+The portal address was supplied by the project owner. This handoff did not
+verify the latest Vercel deployment, current uptime, or live authentication.

@@ -8,14 +8,17 @@ __pycache__
 **/__pycache__
 .agents
 .agents/**
+.ruff_cache
 staticfiles
 media
 Portal Role Credentials.txt
 AuthShield Access Directory.xlsx
 skills-lock.json
-docs/evidence/
+README.md
+Documentation/
+Database/
+docs/
 tmp/
 output/
 *.sqlite3
 *.sqlite
-AuthShield360_TechViz_Study_Guide.pdf

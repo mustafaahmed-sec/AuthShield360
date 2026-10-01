@@ -45,31 +45,46 @@ def get_portal_mfa_policies():
     return {role: get_role_mfa_policy(role) for role in User.Role.values}
 
 
+def role_policy_values(role, policy=None):
+    """Return editable settings, using safe provider defaults for unmanaged rows."""
+    policy = policy or get_role_mfa_policy(role)
+    if policy.updated_by_id is None:
+        return _role_policy_defaults(role)
+    return {
+        "enabled": policy.enabled,
+        "sms_enabled": policy.sms_enabled,
+        "email_enabled": policy.email_enabled,
+        "require_both_factors": policy.require_both_factors,
+    }
+
+
 def get_keycloak_mfa_policy():
     policy, _ = KeycloakMFAPolicy.objects.get_or_create(pk=1)
     return policy
 
 
 def policy_for_user(user):
-    """Return effective OTP channels, honoring deployment and provider availability."""
+    """Return the saved role policy filtered through currently available providers."""
+    role_policy = get_role_mfa_policy(user.role)
+    configured = role_policy_values(user.role, role_policy)
     email_available = email_otp_available()
     sms_available = firebase_phone_auth_available()
-    # When both providers are configured, require both methods for every role.
-    # A missing phone number is an enrollment problem, not a reason to skip MFA.
-    sms_enabled = sms_available
-    email_enabled = email_available
-    if not email_enabled and sms_available:
-        sms_enabled = True
     return {
-        "enabled": True,
-        "sms": sms_enabled,
-        "email": email_enabled,
-        "require_both": bool(sms_enabled and email_enabled),
+        "enabled": configured["enabled"],
+        "sms": configured["sms_enabled"] and sms_available,
+        "email": configured["email_enabled"] and email_available,
+        "require_both": bool(
+            configured["require_both_factors"]
+            and configured["sms_enabled"]
+            and configured["email_enabled"]
+        ),
     }
 
 
 def allowed_channels(user):
     policy = policy_for_user(user)
+    if not policy["enabled"]:
+        return []
     channels = [channel for channel in ("sms", "email") if policy[channel]]
     if policy["require_both"] and set(channels) != {"sms", "email"}:
         return []
@@ -100,7 +115,9 @@ def channel_is_allowed(user, channel, *, phase="primary"):
 
 
 def ensure_method_configuration(form, role, *, sms_available, email_available):
-    """Keep unavailable providers from being enabled through a crafted form post."""
+    """Validate methods selected for an enabled role policy."""
+    if not form.cleaned_data.get("enabled"):
+        return not form.errors
     if form.cleaned_data.get("sms_enabled") and not sms_available:
         form.add_error("sms_enabled", "Firebase Phone Auth is not configured for this deployment.")
     if form.cleaned_data.get("email_enabled") and not email_available:
@@ -109,18 +126,8 @@ def ensure_method_configuration(form, role, *, sms_available, email_available):
         form.cleaned_data.get("sms_enabled") and form.cleaned_data.get("email_enabled")
     ):
         form.add_error("require_both_factors", "Requiring both factors needs SMS and email enabled.")
-    if sms_available and email_available:
-        for field in ("sms_enabled", "email_enabled", "require_both_factors"):
-            if not form.cleaned_data.get(field):
-                form.add_error(field, "SMS-first, then email verification is required for every role when both providers are configured.")
-    if not form.cleaned_data.get("enabled"):
-        form.add_error("enabled", f"MFA is required for every {role_display_name(role).lower()} account and cannot be disabled.")
-    if form.cleaned_data.get("require_both_factors") and not form.cleaned_data.get("enabled"):
-        form.add_error("require_both_factors", "MFA must remain enabled before requiring both methods.")
-    if email_available and not form.cleaned_data.get("email_enabled"):
-        form.add_error("email_enabled", "Email OTP must remain enabled as a fallback when SMS is unavailable or no phone is enrolled.")
     if not (form.cleaned_data.get("sms_enabled") or form.cleaned_data.get("email_enabled")):
-        form.add_error("email_enabled", "Every role must have at least one configured second-factor method.")
+        form.add_error("email_enabled", f"Enable at least one available second factor for {role_display_name(role).lower()} MFA.")
     return not form.errors
 
 

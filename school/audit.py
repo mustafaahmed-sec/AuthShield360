@@ -6,7 +6,9 @@ import logging
 import os
 
 from django.conf import settings
+from django.db import DatabaseError
 
+from accounts.throttling import consume_throttle_quota
 from .models import PortalAuditEvent
 
 
@@ -150,6 +152,25 @@ def record_role_denial(actor, resource, request=None):
                 return None
             recorded.add(resource)
             request._authshield_recorded_role_denials = recorded
+        try:
+            route_name = (
+                getattr(getattr(request, "resolver_match", None), "url_name", None)
+                if request is not None
+                else None
+            )
+            should_record = consume_throttle_quota(
+                scope="role-denial",
+                purpose="role-access-denial",
+                identity=f"{actor.pk}:{route_name or resource}",
+                limit=settings.AUTHSHIELD_ROLE_DENIAL_AUDIT_LIMIT,
+                window_minutes=settings.AUTHSHIELD_ROLE_DENIAL_AUDIT_WINDOW_MINUTES,
+            )
+        except DatabaseError:
+            # Audit storage trouble must never change the authorization result.
+            logger.exception("Could not apply the role-denial audit quota.")
+            return None
+        if not should_record:
+            return None
         record_event(
             actor,
             "role_access_denied",

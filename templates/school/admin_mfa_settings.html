@@ -3,7 +3,7 @@
 {% block content %}
   <div class="eyebrow">Administrator security</div>
   <h1>MFA settings</h1>
-  <p class="intro">Every student, teacher, and administrator must complete a second-factor code after the password or Keycloak sign-in; this requirement cannot be disabled. Email is kept available as a fallback when SMS is unavailable or an account has no usable phone. Saving a changed role policy invalidates pending portal OTP sign-in attempts for that role; it does not sign out people who are already in the portal. Password-reset codes are unaffected.</p>
+  <p class="intro">Set portal MFA separately for students, teachers, and administrators. A saved change applies to new sign-ins after the password or Keycloak step. Disabling MFA skips the portal OTP step for that role. Saving a changed role policy invalidates pending portal OTP sign-ins for that role; active sessions stay signed in. Password-reset codes are unaffected.</p>
 
   <div class="mfa-provider-status" aria-label="MFA provider status">
     <span class="mfa-status-item"><span class="mfa-status-dot{% if readiness.sms %} ready{% endif %}" aria-hidden="true"></span>Firebase SMS {% if readiness.sms %}available{% else %}not configured{% endif %}</span>
@@ -20,17 +20,17 @@
           <h2 id="mfa-role-{{ role }}">{{ section.label }} accounts</h2>
           <p class="muted">These controls apply to portal verification after the password or Keycloak sign-in.</p>
           {% with form=section.form %}
-            <label class="mfa-toggle">{{ form.enabled }}<span><strong>Always require MFA</strong><small>Required for every {{ section.label|lower }} account after password sign-in; this control is locked on.</small></span></label>
+          <label class="mfa-toggle">{{ form.enabled }}<span><strong>Require MFA</strong><small>Applies to all {{ section.label|lower }} accounts at their next sign-in.</small></span></label>
             {% for error in form.enabled.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
             <fieldset class="mfa-methods">
               <legend>Allowed methods</legend>
-              <label class="mfa-option{% if not readiness.sms %} unavailable{% endif %}">{{ form.sms_enabled }}<span>Firebase SMS OTP{% if not readiness.sms %}<small>Provider unavailable</small>{% endif %}</span></label>
-              <label class="mfa-option{% if not readiness.email %} unavailable{% endif %}">{{ form.email_enabled }}<span>Email OTP{% if readiness.email %}<small>Required fallback when SMS is unavailable or no phone is enrolled.</small>{% else %}<small>Provider unavailable</small>{% endif %}</span></label>
+              <label class="mfa-option{% if not readiness.sms %} unavailable{% endif %}">{{ form.sms_enabled }}<span>Firebase SMS OTP{% if not readiness.sms %}<small>Provider is not configured; enabling this method will be rejected.</small>{% endif %}</span></label>
+              <label class="mfa-option{% if not readiness.email %} unavailable{% endif %}">{{ form.email_enabled }}<span>Email OTP{% if not readiness.email %}<small>Provider is not configured; enabling this method will be rejected.</small>{% endif %}</span></label>
               {% for error in form.sms_enabled.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
               {% for error in form.email_enabled.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
             </fieldset>
-            <p class="muted">When email and Firebase are configured and the account has a valid phone, every role uses both factors in the same order. Email-only verification is used if SMS is unavailable or no phone is enrolled.</p>
-            <label class="mfa-toggle mfa-sub-option">{{ form.require_both_factors }}<span><strong>Require both</strong><small>SMS is verified first, then a separate email code. This is required for every role when both providers are ready.</small></span></label>
+            <p class="muted">Choose the factors allowed for this role. If both are required, sign-in verifies SMS first and email second. If a required provider is unavailable, sign-in fails closed until the configuration is corrected.</p>
+            <label class="mfa-toggle mfa-sub-option">{{ form.require_both_factors }}<span><strong>Require both factors</strong><small>Requires Firebase SMS first, followed by a separate email code.</small></span></label>
             {% for error in form.require_both_factors.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
           {% endwith %}
         </section>
@@ -50,7 +50,7 @@
     </section>
 
     <section class="note mfa-save-note">
-      <div><h2>Review before saving</h2><p>SMS and email policies apply to the selected roles. A changed role policy immediately invalidates pending portal sign-in attempts for those accounts, which must start again. Existing sessions remain active, and password-reset codes are unaffected. Keycloak TOTP is managed separately for accounts using the active Keycloak browser flow.</p></div>
+      <div><h2>Review before saving</h2><p>Each role setting affects all accounts with that role at their next sign-in. Turning MFA off allows password sign-in without the portal OTP factors. A changed role policy invalidates pending portal OTP sign-ins for that role. Existing sessions remain active, password-reset codes are unaffected, and Keycloak TOTP remains a separate global setting.</p></div>
       <label class="mfa-confirm">{{ confirmation_form.confirm }}<span>{{ confirmation_form.confirm.label }}</span></label>
       {% for error in confirmation_form.confirm.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
       <div class="actions"><a class="button secondary" href="{% url 'dashboard' %}">Cancel</a><button class="button" type="submit">Save MFA settings</button></div>

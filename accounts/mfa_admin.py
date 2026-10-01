@@ -17,6 +17,7 @@ from .mfa import (
     get_portal_mfa_policies,
     provider_readiness,
     role_display_name,
+    role_policy_values,
     save_role_policy,
 )
 from .mfa_forms import MFASaveConfirmationForm, RoleMFAPolicyForm
@@ -43,21 +44,14 @@ def admin_mfa_settings(request):
         except KeycloakAdminError as error:
             keycloak_status_error = str(error)
     role_forms = {}
+    initial_role_values = {}
     for role, policy in policies.items():
+        initial = role_policy_values(role, policy)
+        initial_role_values[role] = initial
         role_forms[role] = RoleMFAPolicyForm(
             request.POST if request.method == "POST" else None,
             prefix=role,
-            initial={
-                "enabled": True,
-                "sms_enabled": readiness["sms"] or policy.sms_enabled,
-                "email_enabled": readiness["email"] or policy.email_enabled,
-                "require_both_factors": (
-                    policy.require_both_factors or (readiness["sms"] and readiness["email"])
-                ),
-            },
-            mandatory=True,
-            require_email=readiness["email"],
-            mandatory_both=readiness["sms"] and readiness["email"],
+            initial=initial,
         )
     keycloak_form = KeycloakMFAPolicyForm(
         request.POST if request.method == "POST" else None,
@@ -72,12 +66,19 @@ def admin_mfa_settings(request):
         valid = confirmation.is_valid() and valid
         if valid:
             for role, form in role_forms.items():
-                ensure_method_configuration(
-                    form,
-                    role,
-                    sms_available=readiness["sms"],
-                    email_available=readiness["email"],
-                )
+                values = {
+                    name: form.cleaned_data[name]
+                    for name in (
+                        "enabled", "sms_enabled", "email_enabled", "require_both_factors"
+                    )
+                }
+                if any(initial_role_values[role][name] != value for name, value in values.items()):
+                    ensure_method_configuration(
+                        form,
+                        role,
+                        sms_available=readiness["sms"],
+                        email_available=readiness["email"],
+                    )
             valid = all(not form.errors for form in role_forms.values())
         if valid:
             requested_totp = (
@@ -107,8 +108,7 @@ def admin_mfa_settings(request):
                                 for name in ("enabled", "sms_enabled", "email_enabled")
                             }
                             new_values["require_both_factors"] = form.cleaned_data["require_both_factors"]
-                            old = policies[role]
-                            if any(getattr(old, name) != value for name, value in new_values.items()):
+                            if any(initial_role_values[role][name] != value for name, value in new_values.items()):
                                 saved = save_role_policy(role, values=new_values, actor=request.user)
                                 methods = [
                                     label for name, label in (

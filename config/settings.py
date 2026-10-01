@@ -80,15 +80,15 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 
+def _database_target(url):
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower().replace("-pooler.", ".")
+    database_name = unquote(parsed.path.lstrip("/"))
+    return hostname, parsed.port or 5432, database_name
+
+
 def _same_database_target(left_url, right_url):
-    left = urlparse(left_url)
-    right = urlparse(right_url)
-    return (
-        (left.hostname or "").lower().replace("-pooler.", ".")
-        == (right.hostname or "").lower().replace("-pooler.", ".")
-        and (left.port or 5432) == (right.port or 5432)
-        and left.path.rstrip("/").lower() == right.path.rstrip("/").lower()
-    )
+    return _database_target(left_url) == _database_target(right_url)
 
 
 AUTHSHIELD_STAGING_MODE = os.environ.get("AUTHSHIELD_STAGING_MODE", "false").lower() == "true"
@@ -213,6 +213,12 @@ AUTHSHIELD_PASSWORD_RESET_IP_LIMIT = _positive_integer_setting("AUTHSHIELD_PASSW
 AUTHSHIELD_PASSWORD_RESET_IP_WINDOW_MINUTES = _positive_integer_setting(
     "AUTHSHIELD_PASSWORD_RESET_IP_WINDOW_MINUTES", 15
 )
+AUTHSHIELD_PASSWORD_RESET_ACCOUNT_LIMIT = _positive_integer_setting(
+    "AUTHSHIELD_PASSWORD_RESET_ACCOUNT_LIMIT", 3
+)
+AUTHSHIELD_PASSWORD_RESET_ACCOUNT_WINDOW_MINUTES = _positive_integer_setting(
+    "AUTHSHIELD_PASSWORD_RESET_ACCOUNT_WINDOW_MINUTES", 60
+)
 AUTHSHIELD_PASSWORD_RESET_RESPONSE_FLOOR_SECONDS = _positive_integer_setting(
     "AUTHSHIELD_PASSWORD_RESET_RESPONSE_FLOOR_SECONDS", 9
 )
@@ -221,6 +227,12 @@ AUTHSHIELD_SIGNUP_IP_WINDOW_MINUTES = _positive_integer_setting("AUTHSHIELD_SIGN
 AUTHSHIELD_BLOCKED_AUDIT_LIMIT = _positive_integer_setting("AUTHSHIELD_BLOCKED_AUDIT_LIMIT", 5)
 AUTHSHIELD_BLOCKED_AUDIT_WINDOW_MINUTES = _positive_integer_setting(
     "AUTHSHIELD_BLOCKED_AUDIT_WINDOW_MINUTES", 15
+)
+AUTHSHIELD_ROLE_DENIAL_AUDIT_LIMIT = _positive_integer_setting(
+    "AUTHSHIELD_ROLE_DENIAL_AUDIT_LIMIT", 1
+)
+AUTHSHIELD_ROLE_DENIAL_AUDIT_WINDOW_MINUTES = _positive_integer_setting(
+    "AUTHSHIELD_ROLE_DENIAL_AUDIT_WINDOW_MINUTES", 15
 )
 
 # Password-only access remains a controlled lab stage. For a Vercel demo it

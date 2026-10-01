@@ -1,0 +1,60 @@
+AuthShield 360 database handoff
+===============================
+
+Database engine
+---------------
+The application is configured for PostgreSQL in deployment. Neon is the
+documented hosted PostgreSQL provider. The source schema is defined by Django
+migrations in accounts/migrations/ and school/migrations/. Django also creates
+its standard user, permission, content-type, session, and migration-history
+tables.
+
+This folder contains a visual ER diagram, not a database dump. No production
+rows, Neon password, connection URL, or provider access token is included. The
+local C: and USB copies contain a private access workbook and portal credential
+file, but those files are ignored by Git and excluded from Vercel packaging.
+They are not database credentials and do not transfer Neon ownership.
+
+Create or update a local schema
+-------------------------------
+1. Install PostgreSQL and create a dedicated local database plus a restricted
+   application login. Do not run Django as a PostgreSQL superuser.
+2. Create a private .env from .env.example. Set DJANGO_SECRET_KEY and either
+   DATABASE_URL or the documented DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, and
+   DB_PORT settings. Use local values only.
+3. Install dependencies and apply the tracked migrations:
+
+   python -m pip install -r requirements.txt
+   python manage.py migrate
+   python manage.py showmigrations
+
+4. Create an administrator with createsuperuser if a local administrator is
+   needed. Add fictional demonstration records only to a disposable local DB.
+
+Never run seed_demo, reset, cleanup, or destructive migration commands against
+Neon production or real school records. Confirm the selected database host and
+name before running any management command that writes data.
+
+Application relationships
+-------------------------
+- User has one optional StudentRecord for a student account.
+- User may teach many Course records. A Course may have one teacher.
+- Students and Courses form a many-to-many relationship through Enrollment.
+- Course owns Assignments and relates to ExamResult and AttendanceRecord.
+- User links to EmailOTPChallenge, OTPDeliveryLimit, SMSOTPDeliveryLimit,
+  RoleMFAPolicy updates, KeycloakMFAPolicy updates, audit actors, attendance
+  markers, teacher-attendance rows, and enrollment-change request roles.
+- PasswordResetRequestLimit and PublicRequestThrottle store keyed quota state;
+  they do not store readable source identities.
+- Announcement is a standalone school notice table.
+- StudentPortalAuditEvent, TeacherPortalAuditEvent, and
+  AdministratorPortalAuditEvent are Django proxy models over the same
+  PortalAuditEvent table. They are not separate database tables.
+
+Backups and ownership
+---------------------
+Production backup and restore must be performed by an authorized Neon project
+owner using the provider's current backup/export tools. Store backups in an
+approved encrypted location, verify restoration into a separate database, and
+keep secrets out of Git, Vercel artifacts, and this USB. Copying this folder
+reconstructs the schema, not the production data or cloud account.

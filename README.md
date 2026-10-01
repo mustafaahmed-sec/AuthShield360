@@ -1,180 +1,197 @@
-# AuthShield 360 — Project README and Handoff Guide
+# AuthShield 360
 
-- **Prepared:** 1 October 2026
-- **Audience:** Project reviewers, maintainers, and the next administrator
+**A school portal with role-based access and multi-factor sign-in**<br>
+TechViz competition, hosted by Aptech<br>
+MSG Security Squad | Mentor: Sir Anas
+Team leader: Mustafa Ahmed | Team: Munniba, Aliyan, Mehak, Aisha, Rabia
 
-AuthShield 360 is a fictional school portal created for an identity-security demonstration. It provides separate Student, Teacher, and Administrator experiences, account approval, school records, audit events, password protections, and multi-factor sign-in.
+Prepared 1 October 2026. This README is the single Markdown handoff guide for the project.
 
-## At a glance
+## What the project does
 
-The application uses Python and Django. PostgreSQL stores portal data; the documented production database is hosted on Neon. Vercel hosts the portal web application. Firebase Authentication supplies browser-based phone verification and SMS delivery. Django's configured email backend sends email codes. GitHub holds the source and workflow checks.
+AuthShield 360 is a Django school portal for Students, Teachers, and Administrators. It handles account requests and approvals, role-specific dashboards, class records, attendance, assignments, results, and security audit events. The login flow can require a password followed by Firebase SMS verification and an email code.
 
-This USB copy includes the source tree, this handoff guide, and restricted portal-access materials. It does not include production deployment settings, Vercel project-link metadata, Neon credentials, or a database backup. Copying the folder does not transfer cloud account ownership.
+The project was built for the TechViz competition hosted by Aptech. It demonstrates how an application can connect identity checks to school workflows and protect those workflows with role permissions.
 
-## How the parts connect
+## Handoff contents
 
-- Browser → Django portal on Vercel → PostgreSQL on Neon
-- Browser → Firebase Phone Authentication → reCAPTCHA and SMS verification
-- Django → Firebase token verification → validates the signed phone result
-- Django → configured SMTP/email backend → email OTP and account messages
-- GitHub → source and automated checks → Vercel deployment
-- Optional: browser → Keycloak OIDC → Django callback → portal role, approval, and MFA checks
+The repository root is the **source code**. The project does not need a second nested copy of its source.
 
-The source contains an optional Keycloak integration, but its current documentation and default configuration describe Keycloak sign-in as disabled. The hosted provider setting must be checked in Vercel to establish the live state. Keycloak OIDC and authenticator-app TOTP are separate from Firebase SMS and portal email OTP.
+```text
+AuthShield360/
+├── accounts/             Authentication, account requests, MFA, OTP and migrations
+├── school/               School workflows, permissions, audit and migrations
+├── config/               Django settings, routes and deployment entry points
+├── templates/            Portal pages
+├── static/               CSS, browser scripts and AuthShield artwork
+├── Documentation/        One study guide PDF and one editable jury presentation
+├── Database/             ER diagram and database setup handoff
+├── keycloak-vercel/      Optional Keycloak service source; not proof of a live server
+├── .github/workflows/    Automated code checks
+├── LIVE_LINK.txt         Recorded portal and source links
+├── manage.py             Django management command
+└── README.md             This handoff guide
+```
 
-## Technology responsibilities
+There is no `VIDEO` folder because no video was supplied. There is no `APK` folder because this project is a web portal, not an Android application. The private workbook and `Portal Role Credentials.txt` are present only in the C: and USB copies. Git ignores both, and `.vercelignore` excludes them from deployment packaging. Do not upload them to GitHub, Vercel, or an unprotected shared drive.
 
-| Component | Role |
+The public portal URL recorded for the project is `https://authshield360.vercel.app`. The GitHub source is `https://github.com/mustafaahmed-sec/AuthShield360`. The URL is a handoff reference; this review did not verify the current Vercel deployment or sign in to it.
+
+## Architecture and service roles
+
+| Part | What it does |
 | --- | --- |
-| Django and Python | Pages, validation, authentication, permissions, OTP challenges, audit events, and application logic |
-| PostgreSQL / Neon | Persistent portal accounts and school records |
-| Firebase Authentication | Browser reCAPTCHA and phone/SMS verification, with a signed ID token returned to the portal |
-| SMTP / Django email backend | Email verification codes and account messages |
-| Vercel | Portal hosting |
-| GitHub | Source control and automation |
-| Keycloak | Optional OIDC identity provider and separate optional authenticator-app TOTP |
+| Django and Python | Serves pages, checks passwords, enforces roles, stores OTP challenges, and records application events. |
+| PostgreSQL on Neon | Stores portal accounts, school records, policy settings, quotas, and audit events. Django migrations define the schema. |
+| Firebase Authentication | Runs browser phone verification, including reCAPTCHA and SMS. The browser receives a signed Firebase token that Django verifies. |
+| Django email backend | Sends email OTPs and account messages. It is configured with deployment environment settings. |
+| Vercel | Hosts the web application and runs its server-side code. Documentation and database diagrams are excluded from Vercel packaging. |
+| GitHub | Holds tracked source and runs the repository checks on pushes and pull requests. |
+| Keycloak, optional | Can provide OIDC sign-in and authenticator-app TOTP when its server and Admin API are configured. It does not send the Firebase SMS. |
 
-## Source map
+```text
+Person's browser
+   ├── Django portal on Vercel ─── PostgreSQL database on Neon
+   │       ├── configured email service ─── email OTP
+   │       └── verifies Firebase ID token
+   ├── Firebase Phone Auth ─── reCAPTCHA and SMS carrier
+   └── optional Keycloak OIDC sign-in
 
-- **accounts/**: user model, login, registration requests, approval, email OTP, Firebase token validation, lockouts, MFA policy, Keycloak integration, and authentication audit records.
-- **school/**: Student, Teacher, and Administrator views; courses, enrollment, assignments, results, attendance, account management, and dashboards.
-- **config/**: Django settings, routes, WSGI entry point, and test settings.
-- **templates/**: authentication, dashboard, and school workflow pages.
-- **static/**: CSS, images, and browser JavaScript, including Firebase phone verification.
-- **README.md**: the single project guide, setup instructions, and system overview.
-- **.github/**: repository workflow configuration.
-- **keycloak-vercel/**: optional Keycloak material; its presence does not prove a public Keycloak server is running.
+GitHub source and checks ─── connected Vercel project, if configured
+```
 
-## Roles and account approval
+The normal portal MFA path is **password, SMS OTP, email OTP** when both factors are enabled and available. Keycloak's optional authenticator-app TOTP is separate. Files under `keycloak-vercel/` are source/configuration material; they do not demonstrate that the identity server is currently running or reachable.
 
-- **Students** can see their own permitted profile, course, assignment, result, and attendance information.
-- **Teachers** work with assigned courses and the students in those classes.
-- **Administrators** review access requests, manage portal accounts, use account-lockout controls, review audit activity, and administer school data.
+## Login, request status, and recovery
 
-Student and Teacher sign-ups start as pending access requests. An Administrator must approve them before portal access is granted. Portal roles and school approval remain Django responsibilities even if an external identity provider is configured.
+### Password and SMS first, then email
 
-## Sign-in flow, end to end
+1. The user enters the email and password used for the portal account.
+2. Django checks the password, account approval, role, failed-login state, and lockout.
+3. The browser must pass Firebase reCAPTCHA before it requests SMS.
+4. Firebase sends a code to the registered phone when the provider accepts the request. The user enters that code in the portal.
+5. Firebase returns a signed ID token after code verification. Django validates the token against the configured Firebase project and checks the verified phone against the account.
+6. If the role policy requires email as a second step, Django sends a separate email code. The user enters it in a separate field.
+7. Django creates the authenticated portal session only after the required checks pass, then routes the user to the dashboard for their role.
 
-When both OTP providers are available, the current code follows the SRS sign-in order for Student, Teacher, and Administrator accounts: password, Firebase SMS verification, then email OTP.
+The SMS box and the email box verify different challenges. A success notice or typed digits alone do not prove SMS verification; the server checks the signed Firebase result. Firebase controls its own carrier, region, quota, and abuse rules. The portal cannot force delivery.
 
-1. The person submits a portal email and password.
-2. Django checks the password, account status, approval, failed-login count, and active lockout.
-3. The browser completes Firebase Phone Auth. Its reCAPTCHA check must succeed before Firebase accepts an SMS send request.
-4. The user enters the SMS code. Firebase confirms it and returns a signed ID token to the browser.
-5. The browser sends that token to Django. Django verifies it against the configured Firebase project and checks that it represents a fresh phone verification for the phone saved on that account.
-6. Django creates a database-backed email challenge and sends the code through the configured email backend. The code is stored as a hash, has a purpose and expiry, and is checked for use and attempt limits.
-7. The user enters the email code in the portal. A valid code advances the flow.
-8. Only after the required factors and account checks succeed does Django create the portal session and route the person to the correct role dashboard.
+### Accounts and access requests
 
-The email code and SMS code are separate verification channels. The password is a knowledge factor; email and SMS are possession channels. A visible “sent” message or a typed six-digit value by itself is not sufficient evidence of successful phone verification; Django requires Firebase's signed token.
+Student and Teacher registrations create pending access requests. An Administrator reviews and approves them. Request status checks whether an access request exists; it is a separate action from logging into an approved account. Password recovery uses a purpose-specific email challenge and its own request limits.
 
-Password recovery uses a separate email challenge purpose. Student and Teacher account requests are not the same as approved sign-in accounts. Request status and approval are checked separately from the ordinary login flow.
+### MFA controls
 
-## MFA management and Keycloak
+Administrators can open **Administrator Dashboard → Security → MFA Settings** at `/administrator/security/mfa/`. Portal MFA policies are stored separately for Students, Teachers, and Administrators. The administrator must confirm a change. Enabling an unavailable provider is rejected. If both factors are required, the portal asks for SMS first and email second.
 
-The portal MFA page is located at **Administrator Dashboard → Security → MFA Settings**, route **/administrator/security/mfa/**. It is intended for authorized administrators. The UI stores role policy records and audits changes. Current sign-in decisions in accounts/mfa.py derive the effective channels from provider readiness. If email and Firebase are both ready, every role is required to use both factors, SMS first and email second. The form also prevents disabling that required combination. The page therefore does not currently provide independent per-role switches that can relax the actual login flow while both providers are configured.
+An authorized administrator can turn MFA off for a role. That removes the portal OTP step for that role on future sign-ins and weakens that role's protection. Changing a role policy invalidates pending portal OTP sign-ins for that role. Existing sessions remain active. Password-reset codes are unaffected. Keycloak TOTP is a separate, global control that works only when the Keycloak Admin API and a manageable active flow are configured.
 
-Changing a saved role policy invalidates affected pending sign-in codes. It does not end existing authenticated sessions or invalidate password-reset challenges. A future enhancement would be to make the policy saved for each role the direct source of sign-in decisions, while preserving a safe recovery path and audit trail.
+## Roles and school workflows
 
-Keycloak TOTP is an authenticator-app code, not an SMS. Keycloak becomes part of login only when its server and OIDC configuration are enabled and reachable. The project code can continue portal OTP checks after a Keycloak identity callback; the integration does not make Keycloak send Firebase SMS.
+- **Student:** views permitted profile, course, enrollment, assignment, exam result, and attendance information.
+- **Teacher:** works with assigned courses, class rosters, attendance, and related school records.
+- **Administrator:** reviews access requests, manages portal accounts and school records, uses lockout controls, changes MFA policy, and reviews security events.
 
-## OTP limits and lockouts
+Django checks the user's role and approval status on protected views. The UI is not the access control boundary; the server checks permissions when a request arrives.
 
-These are documented source defaults. A deployment may override them, so verify actual provider environment values before treating them as live settings.
+## Database handoff
 
-| Control | Default described by the project |
-| --- | --- |
-| Email OTP lifetime | 5 minutes |
-| SMS challenge lifetime | 5 minutes |
-| Password-reset code lifetime | 5 minutes |
-| Wait between sign-in code requests | 5 minutes |
-| Sign-in code sends | 3 per account/channel limit window |
-| Send lock after reaching the ceiling | 30 minutes |
-| Incorrect code attempts | Up to 5 before the applicable challenge/account limit is enforced |
-| Password failures | 5 failures in 15 minutes trigger a 5-minute account lock |
-| Repeated password lockouts | Escalate to 15 minutes, then 30 minutes during the repeat-lock period |
-| Password-recovery requests | Default 30 per observed IP in 15 minutes |
+The application uses PostgreSQL in deployments and Django migrations to describe changes to the database. The migration files are under `accounts/migrations/` and `school/migrations/`. Django also creates its standard user-permission, session, and content-type tables.
 
-Firebase has its own quotas, abuse controls, region rules, and SMS charges. Portal limits reduce unnecessary requests but cannot override Firebase or guarantee carrier delivery. An administrator resetting a portal lockout does not remove Firebase-side restrictions.
+`Database/ERD.svg` summarizes the application tables and relationships. `Database/DATABASE_HANDOFF.txt` explains how to create a local database, apply migrations, and handle backups. The USB contains no production database dump or real database password. Copying source files cannot transfer a Neon account or production records. A separate authorized Neon owner must grant account access or provide a protected database backup.
 
-## Audit and security boundaries
+## Security controls in source
 
-The code includes role checks, approval gating, failed-password lockouts, OTP expiry and attempt limits, resend controls, session handling, audit events, and server-side Firebase token verification. Audit events are designed to avoid recording passwords, readable OTPs, or raw session cookies.
+The application code includes server-side role and approval checks, CSRF protection, secure production cookie and HTTPS settings, password lockouts, OTP expiry and attempt limits, resend cooldowns, database-backed quota records, privacy-preserving HMAC quota identifiers, session handling, and audit events. OTP codes are hashed for storage. The Firebase phone result is verified on the server.
 
-These are security controls, not proof that a system is unhackable. Automated application tests do not certify provider settings, every production route, every browser, or every possible attack. This USB copy does not include a completed ZAP/Burp assessment or a complete record of hosted and manual SRS evidence. It makes no claim of a completed penetration test or vulnerability-free status.
+Documented source defaults include a five-minute OTP lifetime, a five-minute sign-in resend wait, a limit of three sends per account/channel in its configured window, a 30-minute send lock after that limit, and up to five code attempts. Password recovery also has an IP limit and a separate per-account email-send limit. Deployment settings can override some values. Firebase imposes additional provider-side controls and charges.
 
-## Configuration and secrets
+These controls lower risk; they do not make an application “unhackable.” A source scan and automated tests are not the same as a production penetration test. The current review did not send real SMS or email codes, log in to production, inspect the Neon database, or test the deployed Vercel service.
 
-The names of expected settings are listed in **.env.example**. The main groups are:
+## Verification record
 
-- Django: DJANGO_SECRET_KEY, DJANGO_DEBUG, DJANGO_ALLOWED_HOSTS.
-- Database: DATABASE_URL or the DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT group.
-- Portal login: AUTHSHIELD_BASELINE_LOGIN, AUTHSHIELD_OTP_ENABLED, AUTHSHIELD_EMAIL_STEP_UP, and lockout settings.
-- OTP timing: AUTHSHIELD_EMAIL_OTP_TTL_SECONDS, AUTHSHIELD_SMS_OTP_TTL_SECONDS, AUTHSHIELD_OTP_RESEND_COOLDOWN_SECONDS, AUTHSHIELD_OTP_MAX_SENDS, AUTHSHIELD_OTP_SEND_LOCKOUT_MINUTES.
-- Email delivery: AUTHSHIELD_GMAIL_ADDRESS and AUTHSHIELD_GMAIL_APP_PASSWORD.
-- Firebase web configuration: AUTHSHIELD_FIREBASE_API_KEY, AUTHSHIELD_FIREBASE_AUTH_DOMAIN, AUTHSHIELD_FIREBASE_PROJECT_ID, AUTHSHIELD_FIREBASE_APP_ID.
-- Optional Keycloak: AUTHSHIELD_KEYCLOAK_ENABLED and its server, realm, client, and secret settings.
+On 1 October 2026, the isolated local Django suite passed **145 tests** using SQLite in-memory settings and an in-memory email backend. Ruff passed. Django's system check reported no issues. `makemigrations --check --dry-run` reported no schema changes pending.
 
-The USB includes **Portal Role Credentials.txt** and **AuthShield Access Directory.xlsx** for the authorized portal administrator. They may contain readable account details, are excluded from Git and Vercel uploads, and should be kept under the administrator's control. The USB contains `.env.example` as a setup template, but no `.env`, `.env.production.local`, or Vercel project-link metadata. Machine-specific local settings and production deployment configuration are kept separately on the maintainer's PC; `.env.production.local` is not read automatically by Django. Vercel production variables and Neon access remain managed through their provider accounts, whose permissions must be granted separately.
+The Codex Security diff review examined all 13 changed security-relevant files and reported no new findings. The earlier source scan found two issues in preview database URL normalization and password-reset audit accuracy; this patch addresses both and includes regression coverage. The security review is source-level. It did not exercise production PostgreSQL locking under concurrency, Firebase delivery, SMTP, Keycloak, or live Vercel behavior.
 
-This guide lists setting names only. It does not include credential values. Keep private keys, SMTP passwords, database URLs, and client secrets out of public repositories, screenshots, blogs, and ordinary email. If the USB or workbook is lost or exposed, revoke or rotate affected credentials promptly.
+The team previously reported that SMS OTP worked for them. That is team-reported live evidence; this review did not repeat a hosted login or request any code. A GitHub push may trigger Vercel only if the repository remains connected to the intended Vercel project. Confirm the latest deployment in Vercel before calling the hosted release complete.
 
-## Local setup and deployment
+## Local Windows setup
 
-### Local Windows setup (fictional demonstration data only)
+Use fictional demonstration data only. Do not run demo seed or cleanup commands against production or real school records.
 
-Prerequisites: Python 3.12 or newer, PostgreSQL 17 with pgAdmin 4, and a modern browser.
+Prerequisites: Python 3.12, PostgreSQL 17, pgAdmin 4, and a current browser.
 
-1. In pgAdmin, create a dedicated local database login role and a local database named authshield360. Give the application role only the permissions needed for this database; do not connect as the PostgreSQL superuser.
-2. Create a private .env from .env.example. Set a fresh Django secret and a local database connection. Add provider settings only for services you intentionally configure. Do not copy production credentials into the demo environment, commit .env, or send it to an evaluator.
-3. From the project folder, run these commands in PowerShell:
+1. Create a dedicated local PostgreSQL database and application role. Do not use the PostgreSQL superuser for the application.
+2. Copy `.env.example` to a private `.env`. Set a new local Django secret and a local database URL. Configure external providers only if you intend to test them. Do not commit `.env` or copy production secrets into the demo.
+3. In PowerShell, from the project root:
 
-    python -m venv .venv
-    .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-    .\.venv\Scripts\python.exe manage.py migrate
-    .\.venv\Scripts\python.exe manage.py seed_demo
-    .\.venv\Scripts\python.exe manage.py configure_demo_logins
-    .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+   .\.venv\Scripts\python.exe manage.py migrate
+   .\.venv\Scripts\python.exe manage.py seed_demo
+   .\.venv\Scripts\python.exe manage.py configure_demo_logins
+   .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+   ```
 
-4. Open http://127.0.0.1:8000/ for the portal. Student and Teacher requests are submitted at /signup/student/ and /signup/teacher/. They remain pending until approved. The status page is /signup/status/.
-5. Run automated checks with:
+4. Visit `http://127.0.0.1:8000/`. Student and Teacher request forms are at `/signup/student/` and `/signup/teacher/`; status is at `/signup/status/`.
+5. Run local checks with isolated settings:
 
-    .\.venv\Scripts\python.exe manage.py test --settings=config.test_settings --noinput
-    .\.venv\Scripts\ruff.exe check accounts config school
-    .\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run --settings=config.test_settings
+   ```powershell
+   .\.venv\Scripts\python.exe manage.py test --settings=config.test_settings --noinput
+   .\.venv\Scripts\ruff.exe check .
+   .\.venv\Scripts\python.exe manage.py check --settings=config.test_settings
+   .\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run --settings=config.test_settings
+   ```
 
-Use the isolated test settings for tests. Seed, reset, and cleanup commands belong only on a disposable local demonstration database. Never run them against production or real school data.
+The isolated test settings use a temporary SQLite database and in-memory email. They do not validate Firebase, a phone carrier, SMTP delivery, Keycloak, Neon, or production data.
 
-The project’s fictional demo login credentials are not repeated in this public-facing guide. Use the private access materials only if you are authorized to do so.
+## Configuration and access
 
-Never run demo seed, reset, or cleanup commands against production or real school data.
+`.env.example` lists the supported environment variable names. The main groups cover Django, database connection, login and lockout rules, email delivery, Firebase web configuration, and optional Keycloak. The example file contains no live passwords. Store actual production credentials in the provider's protected environment settings.
 
-The project documentation describes Vercel as the portal host and Neon as the production database. A GitHub push triggers deployment only when the repository is connected to the intended Vercel project. A successful build or public landing page alone does not prove that the complete authenticated flow works.
+The local access workbook and portal credential file contain sensitive account material. Keep them with the authorized administrator and encrypt the USB. GitHub and Vercel ignore these files. Do not put database URLs, email app passwords, client secrets, OTP values, or user passwords in code, the PDF, the PowerPoint, or screenshots. Anyone who receives the USB may be able to read those two local files, so share the USB only with the person authorized to control the portal.
 
-The hosted database and provider accounts remain online and are not transferred by copying this folder. A new operator needs authorized access to Vercel, Neon, Firebase, email delivery, GitHub, and Keycloak if that optional service is used.
+## Deployment and ownership
 
-## Verification status
+The project uses GitHub for source and CI, Vercel for the portal, Neon for PostgreSQL, Firebase for phone verification, and the configured email provider for email codes. A source folder is not a transfer of these cloud accounts. A new owner needs to be granted appropriate access in each service and must set environment variables in their own provider account.
 
-On 1 October 2026, the full Django test suite passed 136 tests under isolated SQLite test settings. Ruff passed, and Django reported no migration drift. The tests exercised the new OTP delivery-limit migration in the isolated test database. These code checks do not apply migrations to or inspect the hosted database.
+Before an actual handover, the current owner should verify the latest GitHub workflow, Vercel deployment and domain, database migration state and backup, Firebase authorized domains and SMS policy, email delivery, Keycloak status if used, and recovery contacts. Keep the owner account protected by MFA. Rotate credentials if the USB has been exposed.
 
-The project owner and team have reported successful OTP sign-ins for Student, Teacher, and Administrator accounts. That is team-reported live evidence; this code-only review did not request an OTP or repeat a hosted login.
+## Project story for a presentation
 
-The detailed SRS evidence pack and dated supporting records were removed from this USB copy at the owner’s request. No formal penetration-test report, complete hosted performance/persistence record, browser/accessibility review, or demo video is included here. Treat those items as unverified unless separate evidence is provided.
+Schools need different people to see different information. AuthShield 360 connects a role-based school portal to a sign-in process that can ask for both phone and email verification. A student registration waits for administrator approval, a teacher works with assigned classes, and administrators manage the records and security settings. The team used Django for application rules, PostgreSQL for persistent records, Firebase for phone verification, and Vercel for web hosting. The source and checks live in GitHub. The design keeps responsibilities visible so a maintainer can explain what each service does and where cloud ownership still matters.
 
-## Troubleshooting
+## Questions a jury may ask
 
-- **SMS does not arrive:** check Firebase Phone Auth, the authorized deployed domain, reCAPTCHA completion, the account phone in international form, allowed destination regions, Firebase billing, and provider throttling.
-- **Firebase reports a send error:** use the exact Firebase error in the browser and provider console. A portal timer does not prove Firebase accepted the send.
-- **Email code is delayed:** verify the account email, server-side email configuration, spam folder, and deployment logs. Never ask the user for their mailbox password.
-- **Only one factor appears:** check provider readiness, account enrollment, the current role policy, and deployed environment configuration.
-- **A correct password is rejected:** check pending approval, account role, lockout status, and whether the person is using request-status rather than login.
-- **Keycloak is absent or unreachable:** check server-side enablement and a reachable realm. Having Keycloak files or a downloaded ZIP is not the same as running an identity server.
-- **Local works but hosted does not:** compare environment configuration privately, database migrations, allowed domains, and provider logs. Do not paste secrets into support tickets.
+**Why use Django?** It provides request routing, forms, authentication primitives, database models, migrations, and server-side permission checks in one Python web framework.
 
-## USB handoff
+**Why PostgreSQL and Neon?** PostgreSQL stores relational school records with constraints and transactions. Neon provides a hosted PostgreSQL service. Django migrations make the schema reproducible without copying a live database file.
 
-This is a source-folder handoff, not a transfer of cloud ownership or a database backup. Keep the USB and its readable local credentials with the intended administrator; do not upload them to GitHub or Vercel, or send them through an unprotected channel. Another maintainer still needs to be granted access to GitHub, Vercel, Neon, Firebase, email delivery, and Keycloak if used. Consider rotating credentials after transfer if the USB was accessible to anyone else.
+**Why Firebase for SMS?** Firebase Phone Authentication runs the phone verification flow, reCAPTCHA check, and SMS delivery. Django verifies Firebase's signed token before trusting the phone result.
 
-## Project documents
+**Why does email come after SMS?** The configured SRS flow is password, SMS OTP, then email OTP. The system checks each step separately before creating the application session.
 
-This README is the project’s single Markdown handoff guide. The beginner and jury study guide is at **docs/AuthShield360_TechViz_Study_Guide.pdf**. Use it alongside this README to understand the system and prepare for a project demonstration.
+**What does Keycloak do?** It can act as an OIDC identity provider and can require authenticator-app TOTP if the server and its Admin API are configured. It is not the service sending Firebase SMS.
+
+**How do the role controls work?** An administrator saves a separate persisted policy for each role. Future sign-ins follow that policy. Disabling MFA removes portal OTP for the selected role, so this is a security-sensitive administrator action.
+
+**Is it fully security certified?** No. The source and automated checks have been reviewed, but there was no live penetration test or complete production audit in this handoff.
+
+**Is the database included?** Its schema and setup instructions are included as source migrations and database documentation. A live production data dump and provider credentials are not included.
+
+## Future work
+
+Use separate Neon branches and verified migration automation for production and preview. Add a repeatable browser test using Firebase fictional numbers, without sending real messages. Verify production MFA policies and Keycloak state from provider evidence. Record deployment identifiers, accessibility findings, backup restoration results, and response-time measurements. Add monitored provider delivery health and an incident recovery plan. Review SMS as a fallback channel against passkeys or authenticator-app MFA for future releases.
+
+## Official references
+
+- Django security: https://docs.djangoproject.com/en/5.2/topics/security/
+- Django authentication: https://docs.djangoproject.com/en/5.2/topics/auth/
+- Django database models and migrations: https://docs.djangoproject.com/en/5.2/topics/db/
+- Firebase Phone Authentication for the web: https://firebase.google.com/docs/auth/web/phone-auth
+- Neon database branching: https://neon.com/docs/get-started-with-neon/workflow-primer
+- Vercel Functions: https://vercel.com/docs/functions
+- GitHub Actions: https://docs.github.com/en/actions
+- Keycloak Server Administration Guide: https://www.keycloak.org/docs/latest/server_admin/
