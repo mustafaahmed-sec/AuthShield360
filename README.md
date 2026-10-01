@@ -9,7 +9,7 @@ AuthShield 360 is a fictional school portal created for an identity-security dem
 
 The application uses Python and Django. PostgreSQL stores portal data; the documented production database is hosted on Neon. Vercel hosts the portal web application. Firebase Authentication supplies browser-based phone verification and SMS delivery. Django's configured email backend sends email codes. GitHub holds the source and workflow checks.
 
-This USB copy includes the source tree and local project materials. Copying the folder does not transfer cloud account ownership or include a database backup.
+This USB copy includes the source tree, this handoff guide, and restricted portal-access materials. It does not include production deployment settings, Vercel project-link metadata, Neon credentials, or a database backup. Copying the folder does not transfer cloud account ownership.
 
 ## How the parts connect
 
@@ -115,7 +115,7 @@ The names of expected settings are listed in **.env.example**. The main groups a
 - Firebase web configuration: AUTHSHIELD_FIREBASE_API_KEY, AUTHSHIELD_FIREBASE_AUTH_DOMAIN, AUTHSHIELD_FIREBASE_PROJECT_ID, AUTHSHIELD_FIREBASE_APP_ID.
 - Optional Keycloak: AUTHSHIELD_KEYCLOAK_ENABLED and its server, realm, client, and secret settings.
 
-The USB handoff also keeps local access material: **.env**, **.env.production.local**, **Portal Role Credentials.txt**, and **AuthShield Access Directory.xlsx**. `config/settings.py` loads only `.env`; `.env.production.local` is not read automatically by the Django app. The role credential text file and environment files contain readable secrets, and the workbook may contain account details. These files are excluded from Git and the Vercel upload. Vercel production settings are managed in the Vercel project, and account permissions must be granted by each provider.
+The USB includes **Portal Role Credentials.txt** and **AuthShield Access Directory.xlsx** for the authorized portal administrator. They may contain readable account details, are excluded from Git and Vercel uploads, and should be kept under the administrator's control. The USB contains `.env.example` as a setup template, but no `.env`, `.env.production.local`, or `.vercel` folder. Machine-specific local settings and production deployment configuration are kept separately on the maintainer's PC; `.env.production.local` is not read automatically by Django. Vercel production variables and Neon access remain managed through their provider accounts, whose permissions must be granted separately.
 
 This guide lists setting names only. It does not include credential values. Keep private keys, SMTP passwords, database URLs, and client secrets out of public repositories, screenshots, blogs, and ordinary email. If the USB or workbook is lost or exposed, revoke or rotate affected credentials promptly.
 
@@ -126,7 +126,7 @@ This guide lists setting names only. It does not include credential values. Keep
 Prerequisites: Python 3.12 or newer, PostgreSQL 17 with pgAdmin 4, and a modern browser.
 
 1. In pgAdmin, create a dedicated local database login role and a local database named authshield360. Give the application role only the permissions needed for this database; do not connect as the PostgreSQL superuser.
-2. Create a private .env from .env.example. Set a fresh Django secret and the local database connection. Add provider settings only for services you intentionally configure. Do not reuse production credentials from this USB copy, commit .env, or send it to an evaluator.
+2. Create a private .env from .env.example. Set a fresh Django secret and a local database connection. Add provider settings only for services you intentionally configure. Do not copy production credentials into the demo environment, commit .env, or send it to an evaluator.
 3. From the project folder, run these commands in PowerShell:
 
     python -m venv .venv
@@ -149,7 +149,7 @@ The project’s fictional demo login credentials are not repeated in this public
 
 Never run demo seed, reset, or cleanup commands against production or real school data.
 
-The project documentation describes Vercel as the portal host and Neon as the production database. **render.yaml** describes an alternative preview service; it does not establish that Render is the live production host. A GitHub push triggers deployment only when the repository is connected to the intended Vercel project. A successful build or public landing page alone does not prove that the complete authenticated flow works.
+The project documentation describes Vercel as the portal host and Neon as the production database. A GitHub push triggers deployment only when the repository is connected to the intended Vercel project. A successful build or public landing page alone does not prove that the complete authenticated flow works.
 
 The hosted database and provider accounts remain online and are not transferred by copying this folder. A new operator needs authorized access to Vercel, Neon, Firebase, email delivery, GitHub, and Keycloak if that optional service is used.
 
