@@ -5,7 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import EmailOTPChallenge, KeycloakMFAPolicy, RoleMFAPolicy, User
-from .otp import firebase_phone_auth_available, normalize_phone_number
+from .otp import firebase_phone_auth_available
 
 
 def email_otp_available():
@@ -22,9 +22,7 @@ def _role_policy_defaults(role):
         "enabled": True,
         "sms_enabled": sms_enabled,
         "email_enabled": email_enabled,
-        "require_both_factors": (
-            settings.AUTHSHIELD_EMAIL_STEP_UP and email_enabled and sms_enabled
-        ),
+        "require_both_factors": email_enabled and sms_enabled,
     }
 
 
@@ -54,15 +52,11 @@ def get_keycloak_mfa_policy():
 
 def policy_for_user(user):
     """Return effective OTP channels, honoring deployment and provider availability."""
-    policy = get_role_mfa_policy(user.role)
     email_available = email_otp_available()
-    sms_available = (
-        firebase_phone_auth_available()
-        and bool(normalize_phone_number(user.phone_number))
-    )
-    # MFA is mandatory for every portal role. Email remains available as the
-    # fallback for users without an enrolled phone and for Firebase outages.
-    sms_enabled = policy.sms_enabled and sms_available
+    sms_available = firebase_phone_auth_available()
+    # When both providers are configured, require both methods for every role.
+    # A missing phone number is an enrollment problem, not a reason to skip MFA.
+    sms_enabled = sms_available
     email_enabled = email_available
     if not email_enabled and sms_available:
         sms_enabled = True
@@ -70,9 +64,7 @@ def policy_for_user(user):
         "enabled": True,
         "sms": sms_enabled,
         "email": email_enabled,
-        "require_both": bool(
-            policy.require_both_factors and sms_enabled and email_enabled
-        ),
+        "require_both": bool(sms_enabled and email_enabled),
     }
 
 
@@ -98,8 +90,12 @@ def channel_is_allowed(user, channel, *, phase="primary"):
     policy = policy_for_user(user)
     if not policy["enabled"]:
         return False
+    if phase == "sms_step_up":
+        return policy["require_both"] and channel == "sms" and policy["sms"]
     if phase == "email_step_up":
         return policy["require_both"] and channel == "email" and policy["email"]
+    if phase == "primary" and policy["require_both"]:
+        return channel == "sms" and policy["sms"]
     return channel in allowed_channels(user)
 
 
@@ -113,6 +109,10 @@ def ensure_method_configuration(form, role, *, sms_available, email_available):
         form.cleaned_data.get("sms_enabled") and form.cleaned_data.get("email_enabled")
     ):
         form.add_error("require_both_factors", "Requiring both factors needs SMS and email enabled.")
+    if sms_available and email_available:
+        for field in ("sms_enabled", "email_enabled", "require_both_factors"):
+            if not form.cleaned_data.get(field):
+                form.add_error(field, "SMS-first, then email verification is required for every role when both providers are configured.")
     if not form.cleaned_data.get("enabled"):
         form.add_error("enabled", f"MFA is required for every {role_display_name(role).lower()} account and cannot be disabled.")
     if form.cleaned_data.get("require_both_factors") and not form.cleaned_data.get("enabled"):

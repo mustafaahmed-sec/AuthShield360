@@ -1,12 +1,18 @@
-AUTHSHIELD 360 | {% if is_password_reset %}ACCOUNT RECOVERY{% else %}SECURE SIGN-IN{% endif %}
+AUTHSHIELD 360 | {{ purpose_label|upper }}
 
-{% if is_password_reset %}Reset your password{% else %}Verify your sign-in{% endif %}
+{{ purpose_heading }}
 
-Dear {{ recipient_name }},
+Dear {% if recipient_role %}{{ recipient_role }}{% if recipient_name != 'there' %} {{ recipient_name }}{% endif %}{% else %}{{ recipient_name }}{% endif %},
 
-{% if is_password_reset %}We received a password reset request for your AuthShield 360 account. Enter this one-time code on the password reset page to choose a new password:{% else %}We received a sign-in request for your AuthShield 360 account. Enter this one-time code on the sign-in page to continue:{% endif %}
+{% if recipient_role %}Account type: {{ recipient_role }}{% if recipient_name != 'there' %}
+Account name: {{ recipient_name }}{% endif %}{% if student_identifier %}
+Student ID: {{ student_identifier }}{% endif %}
+{% endif %}
+{{ purpose_instruction }}
 
 {{ code }}
+
+You can copy and paste the six-digit code into the verification field.
 
 This code expires in {{ expiration }} and can only be used once. Requesting again while this code is active will reuse the same code. After 30 seconds, you can request a replacement; the replacement invalidates this one.
 

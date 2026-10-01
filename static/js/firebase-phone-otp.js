@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {
   getAuth,
+  initializeRecaptchaConfig,
   RecaptchaVerifier,
   signInWithPhoneNumber,
   signOut,
@@ -18,6 +19,7 @@ if (root) {
   const resendButton = document.getElementById("resend-sms-code");
   const status = document.getElementById("firebase-phone-status");
   const recaptchaContainer = document.getElementById("firebase-recaptcha-container");
+  const captchaComplete = document.getElementById("firebase-captcha-complete");
   const verifyForm = document.getElementById("firebase-sms-verify-form");
   const codeField = document.getElementById("sms-code-field");
   const codeInput = document.getElementById("id_code");
@@ -28,6 +30,8 @@ if (root) {
   let recaptchaVerifier;
   let confirmationResult;
   let sending = false;
+  let captchaVerified = false;
+  let captchaVisible = false;
 
   function setStatus(message, isError = false) {
     status.textContent = message;
@@ -45,19 +49,72 @@ if (root) {
     if (!response.ok) {
       const error = new Error(body.error || "The request could not be completed.");
       error.status = response.status;
+      error.nextAvailableAt = body.nextAvailableAt;
       throw error;
     }
     return body;
   }
 
+  function canSendNow() {
+    const cooldownUntil = Number(
+      document.querySelector("[data-otp-countdown]")?.dataset.resendAt
+      || document.querySelector("[data-otp-resend-countdown]")?.dataset.resendAt
+      || 0
+    );
+    return cooldownUntil <= Date.now() / 1000;
+  }
+
+  function updateSendState() {
+    const enabled = captchaVerified && !sending && canSendNow();
+    sendButton.disabled = !enabled;
+    resendButton.disabled = resendButton.hidden ? !canSendNow() : (sending || !canSendNow());
+    sendButton.dataset.captchaVerified = captchaVerified ? "true" : "false";
+  }
+
   async function resetRecaptcha() {
+    captchaVerified = false;
+    captchaVisible = false;
+    sendButton.dataset.captchaVerified = "false";
     if (recaptchaVerifier) {
       await recaptchaVerifier.clear();
       recaptchaVerifier = null;
     }
     recaptchaContainer.replaceChildren();
-    recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainer, { size: "normal" });
+    recaptchaContainer.hidden = false;
+    captchaComplete.hidden = true;
+    recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainer, {
+      size: "normal",
+      callback: () => {
+        captchaVerified = true;
+        updateSendState();
+        setStatus("Security check complete. You can request the SMS code.");
+      },
+      "expired-callback": () => {
+        captchaVerified = false;
+        updateSendState();
+        setStatus("The security check expired. Complete it again before requesting a code.", true);
+      },
+    });
     await recaptchaVerifier.render();
+    captchaVisible = true;
+    updateSendState();
+  }
+
+  async function prepareFirebase() {
+    const app = initializeApp(config);
+    if (config.appCheckSiteKey) {
+      const { initializeAppCheck, ReCaptchaEnterpriseProvider } = await import(
+        "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js"
+      );
+      initializeAppCheck(app, {
+        provider: new ReCaptchaEnterpriseProvider(config.appCheckSiteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+    }
+    auth = getAuth(app);
+    auth.languageCode = "en";
+    await initializeRecaptchaConfig(auth);
+    await resetRecaptcha();
   }
 
   function explainFirebaseError(error) {
@@ -85,27 +142,18 @@ if (root) {
 
   async function requestSms() {
     if (sending) return;
+    if (!captchaVerified) {
+      setStatus("Complete the security check before requesting an SMS code.", true);
+      return;
+    }
     sending = true;
-    sendButton.disabled = true;
-    resendButton.disabled = true;
-    setStatus("Checking the request and preparing the security check…");
+    updateSendState();
+    setStatus("Checking the request and sending your SMS code…");
     try {
-      await postJson(authorizeUrl);
-      if (!auth) {
-        const app = initializeApp(config);
-        if (config.appCheckSiteKey) {
-          const { initializeAppCheck, ReCaptchaEnterpriseProvider } = await import(
-            "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js"
-          );
-          initializeAppCheck(app, {
-            provider: new ReCaptchaEnterpriseProvider(config.appCheckSiteKey),
-            isTokenAutoRefreshEnabled: true,
-          });
-        }
-        auth = getAuth(app);
-        auth.languageCode = "en";
+      const authorization = await postJson(authorizeUrl);
+      if (authorization.nextAvailableAt) {
+        window.authShieldOtpCountdown?.updateResendAt(authorization.nextAvailableAt);
       }
-      await resetRecaptcha();
       confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
       const sent = await postJson(sentUrl);
       window.authShieldOtpCountdown?.update(sent.expiresAt, sent.resendAvailableAt);
@@ -115,23 +163,29 @@ if (root) {
       verifyButton.disabled = true;
       sendButton.hidden = true;
       resendButton.hidden = false;
+      captchaVerified = false;
+      captchaVisible = false;
+      sendButton.dataset.captchaVerified = "false";
+      recaptchaContainer.hidden = true;
+      captchaComplete.hidden = false;
       codeInput.focus();
-      setStatus("The SMS request was accepted. Enter the six-digit code from the text message.");
+      setStatus("SMS requested. Your security check was completed; enter the six-digit code from the text message.");
     } catch (error) {
+      if (error.nextAvailableAt) {
+        window.authShieldOtpCountdown?.updateResendAt(error.nextAvailableAt);
+      }
       setStatus(error.status ? error.message : explainFirebaseError(error), true);
-      if (recaptchaVerifier && error?.code?.startsWith("auth/")) {
+      if (recaptchaVerifier) {
         try {
-          recaptchaVerifier.clear();
+          await resetRecaptcha();
         } catch {
-          // The failed verifier may already have been disposed by Firebase.
+          captchaVerified = false;
+          updateSendState();
         }
-        recaptchaVerifier = null;
-        recaptchaContainer.replaceChildren();
       }
     } finally {
       sending = false;
-      sendButton.disabled = false;
-      if (!confirmationResult) resendButton.disabled = false;
+      updateSendState();
     }
   }
 
@@ -139,13 +193,39 @@ if (root) {
     sendButton.disabled = true;
     setStatus("SMS sign-in is not configured for this portal. Choose Email or contact the administrator.", true);
   } else {
+    sendButton.disabled = true;
+    sendButton.dataset.captchaVerified = "false";
+    setStatus("Preparing the security check…");
+    prepareFirebase().then(() => {
+      if (!captchaVerified) setStatus("Complete the security check before requesting an SMS code.");
+      updateSendState();
+    }).catch(() => {
+      sendButton.disabled = true;
+      setStatus("The security check could not load. Refresh the page and try again.", true);
+    });
+
     sendButton.addEventListener("click", requestSms);
-    resendButton.addEventListener("click", requestSms);
+    resendButton.addEventListener("click", async () => {
+      if (sending) return;
+      if (!captchaVerified) {
+        sendButton.disabled = true;
+        resendButton.disabled = true;
+        setStatus("Complete the security check to request a replacement SMS code.");
+        if (!captchaVisible) {
+          try {
+            await resetRecaptcha();
+          } catch {
+            setStatus("The security check could not load. Refresh the page and try again.", true);
+          }
+        }
+        return;
+      }
+      await requestSms();
+    });
     codeInput.addEventListener("input", () => {
       codeInput.value = codeInput.value.replace(/\D/g, "").slice(0, 6);
       verifyButton.disabled = !confirmationResult || codeInput.value.length !== 6;
     });
-
     verifyForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!confirmationResult || codeInput.value.length !== 6) return;

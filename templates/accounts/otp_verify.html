@@ -8,40 +8,38 @@
       <h1 id="otp-title">Enter your code</h1>
       {% if messages %}{% for message in messages %}<div class="status-banner status-{{ message.tags|default:'info' }}" role="status">{{ message }}</div>{% endfor %}{% endif %}
       <p class="otp-countdown" data-otp-countdown data-expires-at="{{ otp_expires_at }}" data-resend-at="{{ otp_resend_available_at }}" role="timer"{% if not otp_sms_sent %} hidden{% endif %}>Code expires soon</p>
-      {% if step_up or channel == 'email' %}
-        {% if step_up %}
-          <p class="muted">Your SMS code was accepted. Enter the additional code sent to {{ destination }} to finish signing in.</p>
-        {% else %}
-          <p class="muted">Enter the latest one-time code sent by email to {{ destination }}. If you requested a new code or started sign-in in another tab, only the newest code works.</p>
-        {% endif %}
+      <p class="muted" data-otp-resend-countdown data-resend-at="{{ otp_resend_available_at }}">You can request another code now.</p>
+      {% if channel == 'email' %}
+        <p class="muted">{% if step_up %}SMS verification is complete. Enter the latest one-time code sent by email to {{ destination }} to finish signing in.{% else %}Enter the latest one-time code sent by email to {{ destination }}. Only the newest email code works.{% endif %}</p>
         <form method="post" action="{% url 'otp_verify' %}" data-busy-label="Verifying…">
           {% csrf_token %}
           <div class="form-field">
             <label for="id_code">One-time code</label>
             <input id="id_code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="Enter your 6-digit code" required autofocus>
           </div>
-          <button class="button full" type="submit" data-otp-verify>Verify and sign in</button>
+          <button class="button full" type="submit" data-otp-verify>{% if step_up %}Verify email and sign in{% else %}Verify and sign in{% endif %}</button>
         </form>
       {% elif channel == 'sms' %}
-        <p class="muted">We’ll send a one-time SMS code to {{ destination }} after the security check. Firebase processes the phone number for verification, and carrier rates may apply.</p>
+        <p class="muted">{% if step_up %}Your email verification is complete. Send a one-time SMS code to {{ destination }} to finish signing in.{% else %}We’ll send a one-time SMS code to {{ destination }} after the security check.{% if requires_both_factors %} If it is accepted, we’ll send a separate code to your email.{% endif %}{% endif %} Firebase processes the phone number for verification, and carrier rates may apply.</p>
         {{ firebase_phone_config|json_script:"firebase-phone-config" }}
         <div id="firebase-phone-auth" data-phone-number="{{ firebase_phone_number }}" data-authorize-url="{% url 'otp_sms_authorize_send' %}" data-sent-url="{% url 'otp_sms_mark_sent' %}" data-failure-url="{% url 'otp_sms_record_failure' %}">
           <div id="firebase-recaptcha-container" class="form-field" aria-label="Security check"></div>
-          <button class="button full" id="send-sms-code" type="button">Send SMS code</button>
-          <p id="firebase-phone-status" class="muted" role="status" aria-live="polite">Complete the security check to receive your text message.</p>
+          <p id="firebase-captcha-complete" class="status-banner status-success" role="status" hidden>✓ Security check complete. The SMS request was accepted.</p>
+          <button class="button full" id="send-sms-code" data-captcha-required="true" data-captcha-verified="false" type="button"{% if step_up %} data-step-up="true"{% endif %} disabled>Send SMS code</button>
+          <p id="firebase-phone-status" class="muted" role="status" aria-live="polite">Complete the security check before requesting an SMS code.</p>
         </div>
         <form id="firebase-sms-verify-form" method="post" action="{% url 'otp_verify' %}" data-busy-label="Verifying…">
           {% csrf_token %}
-          <div class="form-field" id="sms-code-field">
+          <div class="form-field" id="sms-code-field" hidden>
             <label for="id_code">One-time code</label>
             <input id="id_code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="Enter your 6-digit code" required>
           </div>
           <input type="hidden" name="firebase_id_token" id="firebase-id-token">
-          <button class="button full" id="verify-sms-code" type="submit" data-otp-verify disabled>Verify and sign in</button>
+          <button class="button full" id="verify-sms-code" type="submit" data-otp-verify disabled>{% if requires_both_factors and not step_up %}Verify SMS and continue{% elif step_up %}Verify SMS and sign in{% else %}Verify and sign in{% endif %}</button>
         </form>
       {% endif %}
       <div class="form-actions">
-        {% if channel == 'sms' and not step_up %}
+        {% if channel == 'sms' %}
           <button class="button secondary" id="resend-sms-code" data-otp-resend data-idle-label="Send a new code" type="button" hidden>Send a new code</button>
         {% else %}
           <form method="post" action="{% url 'otp_resend' %}">{% csrf_token %}<button class="button secondary" data-otp-resend data-idle-label="Send a new code" type="submit">Send a new code</button></form>
@@ -52,5 +50,6 @@
     <aside class="side-card"><span class="eyebrow">Keep your account safe</span><h2>Never share your code</h2><p>AuthShield staff will never ask you to tell them your one-time code.</p><p>The sign-in step expires automatically. If you did not request it, restart sign-in and contact your administrator.</p></aside>
   </div>
   <script src="{% static 'js/otp-countdown.js' %}?v={{ static_version }}" defer></script>
-  {% if channel == 'sms' and not step_up %}<script type="module" src="{% static 'js/firebase-phone-otp.js' %}?v={{ static_version }}"></script>{% endif %}
+  <script src="{% static 'js/otp-code-input.js' %}?v={{ static_version }}" defer></script>
+  {% if channel == 'sms' %}<script type="module" src="{% static 'js/firebase-phone-otp.js' %}?v={{ static_version }}"></script>{% endif %}
 {% endblock %}

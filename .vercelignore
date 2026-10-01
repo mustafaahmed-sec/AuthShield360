@@ -11,7 +11,11 @@ __pycache__
 staticfiles
 media
 .vercel-deploy-credentials.txt
+AuthShield Access Directory.xlsx
 skills-lock.json
 docs/evidence/
 tmp/
 output/
+*.sqlite3
+*.sqlite
+AuthShield360_TechViz_Study_Guide.pdf

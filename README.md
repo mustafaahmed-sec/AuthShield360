@@ -1,145 +1,178 @@
-# AuthShield 360
+# AuthShield 360 — Project README and Handoff Guide
 
-A fictional school portal built for the Aptech TechWiz 7 identity-security demonstration. It combines Student, Teacher, and Administrator workflows with account approval, course and attendance records, audit logging, and configurable multi-factor sign-in. The project uses Django and PostgreSQL, with email OTP and Firebase Phone Auth integrations; Keycloak is available as an optional identity provider.
+- **Prepared:** 1 October 2026
+- **Audience:** Project reviewers, maintainers, and the next administrator
 
-## Portfolio snapshot
+AuthShield 360 is a fictional school portal created for an identity-security demonstration. It provides separate Student, Teacher, and Administrator experiences, account approval, school records, audit events, password protections, and multi-factor sign-in.
 
-AuthShield 360 demonstrates how a role-based school portal can connect authentication policy to real application workflows. Administrators can manage SMS and email verification per role, require both factors, review provider readiness, and manage Keycloak authenticator-app TOTP separately. Changing a role's policy immediately invalidates its pending portal OTP sign-in attempts; it leaves active sessions and password-reset challenges alone.
+## At a glance
 
-**Stack:** Python, Django, PostgreSQL, Neon, Firebase Authentication, SMTP, Keycloak (optional), Vercel, and GitHub Actions.
+The application uses Python and Django. PostgreSQL stores portal data; the documented production database is hosted on Neon. Vercel hosts the portal web application. Firebase Authentication supplies browser-based phone verification and SMS delivery. Django's configured email backend sends email codes. GitHub holds the source and workflow checks.
 
-**LinkedIn-ready project description:**
+This USB copy includes the source tree and local project materials. Copying the folder does not transfer cloud account ownership or include a database backup.
 
-> Built AuthShield 360, a Django and PostgreSQL school-portal prototype with Student, Teacher, and Administrator workflows. Implemented role-scoped dashboards, approval-based account requests, attendance and coursework tools, audit logging, and administrator-managed MFA policies for email and Firebase phone verification. Added optional Keycloak integration and automated coverage for authentication and access-control behavior. Live SMS delivery and end-to-end hosted sign-in remain external verification steps; the deployed demo is access restricted.
+## How the parts connect
 
-The project uses fictional school records. Automated tests use isolated test settings and simulated identity providers; a deployment status or rendered page is not evidence of live SMS delivery or a completed hosted login.
+- Browser → Django portal on Vercel → PostgreSQL on Neon
+- Browser → Firebase Phone Authentication → reCAPTCHA and SMS verification
+- Django → Firebase token verification → validates the signed phone result
+- Django → configured SMTP/email backend → email OTP and account messages
+- GitHub → source and automated checks → Vercel deployment
+- Optional: browser → Keycloak OIDC → Django callback → portal role, approval, and MFA checks
 
-## What each tool does
+The source contains an optional Keycloak integration, but its current documentation and default configuration describe Keycloak sign-in as disabled. The hosted provider setting must be checked in Vercel to establish the live state. Keycloak OIDC and authenticator-app TOTP are separate from Firebase SMS and portal email OTP.
 
-- **Django** runs the web application and provides the account, form, and administration framework.
-- **PostgreSQL** stores accounts and fictional school data persistently.
-- **pgAdmin** is a developer tool for creating and inspecting the PostgreSQL database.
-- **Django Admin** is the application's restricted interface for managing its accounts and records.
+## Technology responsibilities
 
-## Prerequisites
+| Component | Role |
+| --- | --- |
+| Django and Python | Pages, validation, authentication, permissions, OTP challenges, audit events, and application logic |
+| PostgreSQL / Neon | Persistent portal accounts and school records |
+| Firebase Authentication | Browser reCAPTCHA and phone/SMS verification, with a signed ID token returned to the portal |
+| SMTP / Django email backend | Email verification codes and account messages |
+| Vercel | Portal hosting |
+| GitHub | Source control and automation |
+| Keycloak | Optional OIDC identity provider and separate optional authenticator-app TOTP |
 
-- Python 3.12 or newer (3.12 is the minimum version checked in CI; deployment currently uses 3.14)
-- PostgreSQL 17 with pgAdmin 4
-- A modern browser
+## Source map
 
-## Local setup on Windows
+- **accounts/**: user model, login, registration requests, approval, email OTP, Firebase token validation, lockouts, MFA policy, Keycloak integration, and authentication audit records.
+- **school/**: Student, Teacher, and Administrator views; courses, enrollment, assignments, results, attendance, account management, and dashboards.
+- **config/**: Django settings, routes, WSGI entry point, and test settings.
+- **templates/**: authentication, dashboard, and school workflow pages.
+- **static/**: CSS, images, and browser JavaScript, including Firebase phone verification.
+- **README.md**: the single project guide, setup instructions, and system overview.
+- **.github/**: repository workflow configuration.
+- **keycloak-vercel/**: optional Keycloak material; its presence does not prove a public Keycloak server is running.
 
-1. Create a local PostgreSQL login role named `authshield_app` with a password and permission to log in. Create database `authshield360` owned by that role. Do this in pgAdmin as the PostgreSQL administrator. The application must use this dedicated role rather than the `postgres` superuser.
-2. Copy `.env.example` to `.env`. Replace `DJANGO_SECRET_KEY` with a random value and put the role password after `DB_PASSWORD=`. Set `AUTHSHIELD_BASELINE_LOGIN=true` only for the local comparison stage and choose unique random values of 12–50 characters for the three `DEMO_*_PASSWORD` entries (at least 25 for the Administrator). Each password must include a lowercase letter, uppercase letter, number, and special character. The current project setup already generated these values in its ignored `.env`; keep them private. Do not commit or share `.env`.
-3. From this folder, run the commands below in PowerShell:
+## Roles and account approval
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe manage.py migrate
-.\.venv\Scripts\python.exe manage.py seed_demo
-.\.venv\Scripts\python.exe manage.py configure_demo_logins
-.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
-```
+- **Students** can see their own permitted profile, course, assignment, result, and attendance information.
+- **Teachers** work with assigned courses and the students in those classes.
+- **Administrators** review access requests, manage portal accounts, use account-lockout controls, review audit activity, and administer school data.
 
-4. Open `http://127.0.0.1:8000/` for the portal, `/signup/student/` for Student registration, and `/signup/teacher/` for a Teacher access request. New requests remain inactive until an Administrator approves them. Applicants can check their status at `/signup/status/` with the same email and password, then sign in after approval.
-5. Run all repeatable tests with `python manage.py test --settings=config.test_settings`. The test settings use an isolated in-memory SQLite database and do not change the local PostgreSQL database. For linting and migration checks, install `requirements-dev.txt`, then run `python -m ruff check .` and `python manage.py makemigrations --check --dry-run --settings=config.test_settings`.
+Student and Teacher sign-ups start as pending access requests. An Administrator must approve them before portal access is granted. Portal roles and school approval remain Django responsibilities even if an external identity provider is configured.
 
-## Password-only login protection and audit trail
+## Sign-in flow, end to end
 
-Login and request-status password checks use configurable limits, shown in `.env.example`: five failed attempts for an account within 15 minutes trigger a five-minute account lock by default. If the account is locked again within 24 hours, the next cooldowns rise to 15 minutes and then 30 minutes, capped at 30 minutes. Five fresh failed attempts are required after each lock. A successful sign-in, completed password reset, or administrator unlock resets the escalation. Password recovery stays available while sign-in is locked. As a separate source-level throttle, 30 failures from one observed IP in 15 minutes pause new attempts from that IP for one minute. The IP limit is deliberately higher because multiple legitimate users can share a network address. Administrators can unlock selected accounts from Django Admin's account list; the lock timestamp is read-only there, so unlocking is audit-logged.
+When both OTP providers are available, the current code follows the SRS sign-in order for Student, Teacher, and Administrator accounts: password, Firebase SMS verification, then email OTP.
 
-Authenticated sessions use a rolling 15-minute idle timeout. A POST to Sign out invalidates the session; replaying its old cookie must not restore access. The audit trail records event time, account email and role, action, authentication mode, factor, success or failure, the IP address seen by Django, a short SHA-256 session hint, and elapsed authentication time where measured. It never stores passwords, OTP values, or raw session cookies. The Admin portal shows recent events; Django Admin provides filters and a selected-event CSV export. Audit rows are read-only.
+1. The person submits a portal email and password.
+2. Django checks the password, account status, approval, failed-login count, and active lockout.
+3. The browser completes Firebase Phone Auth. Its reCAPTCHA check must succeed before Firebase accepts an SMS send request.
+4. The user enters the SMS code. Firebase confirms it and returns a signed ID token to the browser.
+5. The browser sends that token to Django. Django verifies it against the configured Firebase project and checks that it represents a fresh phone verification for the phone saved on that account.
+6. Django creates a database-backed email challenge and sends the code through the configured email backend. The code is stored as a hash, has a purpose and expiry, and is checked for use and attempt limits.
+7. The user enters the email code in the portal. A valid code advances the flow.
+8. Only after the required factors and account checks succeed does Django create the portal session and route the person to the correct role dashboard.
 
-The IP field records Django's peer address locally. On Vercel only, it uses Vercel's platform-set `x-vercel-forwarded-for` header (or its `x-forwarded-for` equivalent), which Vercel overwrites to prevent client spoofing; other deployments continue to use `REMOTE_ADDR` unless their trusted-proxy setup is configured separately. Localhost records `127.0.0.1`. See [the safe local reset and restart procedure](docs/RESTART_AND_RESET.md) before demonstrating persistence; it does not reset or migrate the live Vercel database.
+The email code and SMS code are separate verification channels. The password is a knowledge factor; email and SMS are possession channels. A visible “sent” message or a typed six-digit value by itself is not sufficient evidence of successful phone verification; Django requires Firebase's signed token.
+
+Password recovery uses a separate email challenge purpose. Student and Teacher account requests are not the same as approved sign-in accounts. Request status and approval are checked separately from the ordinary login flow.
+
+## MFA management and Keycloak
+
+The portal MFA page is located at **Administrator Dashboard → Security → MFA Settings**, route **/administrator/security/mfa/**. It is intended for authorized administrators. The UI stores role policy records and audits changes. Current sign-in decisions in accounts/mfa.py derive the effective channels from provider readiness. If email and Firebase are both ready, every role is required to use both factors, SMS first and email second. The form also prevents disabling that required combination. The page therefore does not currently provide independent per-role switches that can relax the actual login flow while both providers are configured.
+
+Changing a saved role policy invalidates affected pending sign-in codes. It does not end existing authenticated sessions or invalidate password-reset challenges. A future enhancement would be to make the policy saved for each role the direct source of sign-in decisions, while preserving a safe recovery path and audit trail.
+
+Keycloak TOTP is an authenticator-app code, not an SMS. Keycloak becomes part of login only when its server and OIDC configuration are enabled and reachable. The project code can continue portal OTP checks after a Keycloak identity callback; the integration does not make Keycloak send Firebase SMS.
+
+## OTP limits and lockouts
+
+These are documented source defaults. A deployment may override them, so verify actual provider environment values before treating them as live settings.
+
+| Control | Default described by the project |
+| --- | --- |
+| Email OTP lifetime | 5 minutes |
+| SMS challenge lifetime | 5 minutes |
+| Password-reset code lifetime | 5 minutes |
+| Wait between sign-in code requests | 5 minutes |
+| Sign-in code sends | 3 per account/channel limit window |
+| Send lock after reaching the ceiling | 30 minutes |
+| Incorrect code attempts | Up to 5 before the applicable challenge/account limit is enforced |
+| Password failures | 5 failures in 15 minutes trigger a 5-minute account lock |
+| Repeated password lockouts | Escalate to 15 minutes, then 30 minutes during the repeat-lock period |
+| Password-recovery requests | Default 30 per observed IP in 15 minutes |
+
+Firebase has its own quotas, abuse controls, region rules, and SMS charges. Portal limits reduce unnecessary requests but cannot override Firebase or guarantee carrier delivery. An administrator resetting a portal lockout does not remove Firebase-side restrictions.
+
+## Audit and security boundaries
+
+The code includes role checks, approval gating, failed-password lockouts, OTP expiry and attempt limits, resend controls, session handling, audit events, and server-side Firebase token verification. Audit events are designed to avoid recording passwords, readable OTPs, or raw session cookies.
+
+These are security controls, not proof that a system is unhackable. Automated application tests do not certify provider settings, every production route, every browser, or every possible attack. This USB copy does not include a completed ZAP/Burp assessment or a complete record of hosted and manual SRS evidence. It makes no claim of a completed penetration test or vulnerability-free status.
+
+## Configuration and secrets
+
+The names of expected settings are listed in **.env.example**. The main groups are:
+
+- Django: DJANGO_SECRET_KEY, DJANGO_DEBUG, DJANGO_ALLOWED_HOSTS.
+- Database: DATABASE_URL or the DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT group.
+- Portal login: AUTHSHIELD_BASELINE_LOGIN, AUTHSHIELD_OTP_ENABLED, AUTHSHIELD_EMAIL_STEP_UP, and lockout settings.
+- OTP timing: AUTHSHIELD_EMAIL_OTP_TTL_SECONDS, AUTHSHIELD_SMS_OTP_TTL_SECONDS, AUTHSHIELD_OTP_RESEND_COOLDOWN_SECONDS, AUTHSHIELD_OTP_MAX_SENDS, AUTHSHIELD_OTP_SEND_LOCKOUT_MINUTES.
+- Email delivery: AUTHSHIELD_GMAIL_ADDRESS and AUTHSHIELD_GMAIL_APP_PASSWORD.
+- Firebase web configuration: AUTHSHIELD_FIREBASE_API_KEY, AUTHSHIELD_FIREBASE_AUTH_DOMAIN, AUTHSHIELD_FIREBASE_PROJECT_ID, AUTHSHIELD_FIREBASE_APP_ID.
+- Optional Keycloak: AUTHSHIELD_KEYCLOAK_ENABLED and its server, realm, client, and secret settings.
+
+This guide lists setting names only. It does not include credential values. Keep private keys, SMTP passwords, database URLs, and client secrets out of public repositories, screenshots, blog posts, and ordinary email. The USB also contains local environment/deployment material and an access-directory workbook; restrict it to intended administrators. Rotate credentials if the USB or workbook is lost or shared beyond that group.
+
+## Local setup and deployment
+
+### Local Windows setup (fictional demonstration data only)
+
+Prerequisites: Python 3.12 or newer, PostgreSQL 17 with pgAdmin 4, and a modern browser.
+
+1. In pgAdmin, create a dedicated local database login role and a local database named authshield360. Give the application role only the permissions needed for this database; do not connect as the PostgreSQL superuser.
+2. Create a private .env from .env.example. Set a fresh Django secret and the local database connection. Add provider settings only for services you intentionally configure. Do not reuse production credentials from this USB copy, commit .env, or send it to an evaluator.
+3. From the project folder, run these commands in PowerShell:
+
+    python -m venv .venv
+    .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+    .\.venv\Scripts\python.exe manage.py migrate
+    .\.venv\Scripts\python.exe manage.py seed_demo
+    .\.venv\Scripts\python.exe manage.py configure_demo_logins
+    .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+
+4. Open http://127.0.0.1:8000/ for the portal. Student and Teacher requests are submitted at /signup/student/ and /signup/teacher/. They remain pending until approved. The status page is /signup/status/.
+5. Run automated checks with:
+
+    .\.venv\Scripts\python.exe manage.py test --settings=config.test_settings --noinput
+    .\.venv\Scripts\ruff.exe check accounts config school
+    .\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run --settings=config.test_settings
+
+Use the isolated test settings for tests. Seed, reset, and cleanup commands belong only on a disposable local demonstration database. Never run them against production or real school data.
+
+The project’s fictional demo login credentials are not repeated in this public-facing guide. Use the private access materials only if you are authorized to do so.
+
+Never run demo seed, reset, or cleanup commands against production or real school data.
+
+The project documentation describes Vercel as the portal host and Neon as the production database. **render.yaml** describes an alternative preview service; it does not establish that Render is the live production host. A GitHub push triggers deployment only when the repository is connected to the intended Vercel project. A successful build or public landing page alone does not prove that the complete authenticated flow works.
+
+The hosted database and provider accounts remain online and are not transferred by copying this folder. A new operator needs authorized access to Vercel, Neon, Firebase, email delivery, GitHub, and Keycloak if that optional service is used.
+
+## Verification status
+
+On 1 October 2026, the full Django test suite passed 136 tests under isolated SQLite test settings. Ruff passed, and Django reported no migration drift. The tests exercised the new OTP delivery-limit migration in the isolated test database. These code checks do not apply migrations to or inspect the hosted database.
+
+The project owner and team have reported successful OTP sign-ins for Student, Teacher, and Administrator accounts. That is team-reported live evidence; this code-only review did not request an OTP or repeat a hosted login.
+
+The detailed SRS evidence pack and dated supporting records were removed from this USB copy at the owner’s request. No formal penetration-test report, complete hosted performance/persistence record, browser/accessibility review, or demo video is included here. Treat those items as unverified unless separate evidence is provided.
 
 ## Troubleshooting
 
-- If Django cannot connect to PostgreSQL, confirm the PostgreSQL service is running and that `DB_HOST`, `DB_PORT`, `DB_NAME`, and `DB_USER` in the local `.env` match the database setup.
-- If the portal reports missing database tables, run `python manage.py migrate` from the project folder.
-- If fictional school records are missing, run `python manage.py seed_demo`. To rebuild the generated demo roster and refresh its assignment due dates, use `python manage.py seed_demo --reset`.
-- To add any missing sample assignments without touching accounts or student records, run `python manage.py seed_demo --assignments-only`.
-- The Student dashboard shows course averages only after results exist. “Due soon” includes assignments due today through 14 days from today; an empty list means no enrolled-course assignments fall in that window.
+- **SMS does not arrive:** check Firebase Phone Auth, the authorized deployed domain, reCAPTCHA completion, the account phone in international form, allowed destination regions, Firebase billing, and provider throttling.
+- **Firebase reports a send error:** use the exact Firebase error in the browser and provider console. A portal timer does not prove Firebase accepted the send.
+- **Email code is delayed:** verify the account email, server-side email configuration, spam folder, and deployment logs. Never ask the user for their mailbox password.
+- **Only one factor appears:** check provider readiness, account enrollment, the current role policy, and deployed environment configuration.
+- **A correct password is rejected:** check pending approval, account role, lockout status, and whether the person is using request-status rather than login.
+- **Keycloak is absent or unreachable:** check server-side enablement and a reachable realm. Having Keycloak files or a downloaded ZIP is not the same as running an identity server.
+- **Local works but hosted does not:** compare environment configuration privately, database migrations, allowed domains, and provider logs. Do not paste secrets into support tickets.
 
-The seed command creates a balanced fictional roster of 486 students, 32 teachers, and 3 administrators for the 2026–27 school year. Student counts are distributed 37–38 per grade from Kindergarten through Grade 12; ages follow the grade with a small, realistic variation. Every student is enrolled in four grade-appropriate course sections and has exam results plus three term assignments per course, so the Teacher dashboard displays a complete class roster and academic records. Seeded assignments have staggered due dates one, three, and five weeks ahead; this gives the Student dashboard both near-term and later work. The 485 generated student names are all unique: about three quarters use familiar US English-language naming styles, with the rest drawn from several cultural naming traditions common in US schools. Names are fictional and do not represent or record students' actual religion or ethnicity. The three administrator display names are Sara Miller, Grace Thompson, and Amina Qureshi. All generated users receive unusable passwords. The three primary demo login emails remain `ali.student@example.test`, `mina.teacher@example.test`, and `sara.admin@example.test`; their passwords remain in the ignored local `.env` file under `DEMO_STUDENT_PASSWORD`, `DEMO_TEACHER_PASSWORD`, and `DEMO_ADMIN_PASSWORD`. The two additional Administrator accounts are provisioned without passwords until the primary Admin explicitly assigns credentials. Never put passwords in screenshots, reports, or GitHub. You can set a new password interactively with `manage.py changepassword <email>`.
+## USB handoff
 
-## Repeatable demo reset
+This is a full source-folder handoff, not a transfer of cloud ownership or a database backup. The USB contains credentials in protected local configuration material and in the access-directory workbook. Keep it with the intended administrator; do not upload or share it through an unprotected channel. Before another maintainer uses it, agree on which accounts they may access, transfer credentials securely, and consider rotating them afterward.
 
-`manage.py seed_demo` can be run again without duplicating the reserved fictional roster. It counts only the 485 generated Student accounts and three primary demo logins, so real pending or approved signups do not affect the target. Normal reruns preserve administrator edits to existing courses, school records, assignments, scores, and enrollments. `manage.py seed_demo --reset` deletes generated `demo.*` accounts and rebuilds their records. It retains courses so historical roster requests remain valid, and restores seeded course assignments and school data. The three primary demo accounts and their passwords remain. The existing `SCI-101` course remains the Grade 10 A science section. Run `manage.py configure_demo_logins` afterward only if the primary demo passwords need to be restored from `.env`.
+## Project documents
 
-## Current architecture
-
-The browser calls Django. Django reads and writes PostgreSQL through its models. The `accounts` app defines a custom email-based User with Student, Teacher, and Administrator roles. Public forms accept Student and Teacher access requests; both require administrator approval. The `school` app defines student records, courses, enrollments, assignments, exam results, and dated course attendance. Student dashboards show their enrolled courses, average exam percentage per course, assignments due in the next 14 days, their own attendance, and their own records. Teachers can mark attendance for enrolled students in assigned courses, and their dashboards query only assigned courses and related records. Teacher forms can add assignments and results only within those courses. Administrators can review and correct attendance in Django Admin. Administrator dashboard access requires an Administrator role and Django staff/superuser privileges; Django Admin provides authorized record management. Password-only login is a selectable comparison stage controlled by `AUTHSHIELD_BASELINE_LOGIN`; it must not be enabled on a public deployment without the protected-demo condition. The deployed login page renders the configured verification flow, but live OTP delivery and authenticated sign-in have not been verified.
-
-From the Administrator dashboard, **MFA settings** opens `/administrator/security/mfa/`. There, authorized administrators can configure portal email and Firebase SMS methods for each role and require both factors. Keycloak authenticator-app TOTP is a separate global browser-flow setting and is available only when the server-side Admin API can safely manage the active flow. These controls do not turn Firebase SMS into Keycloak TOTP or vice versa.
-
-Administrators can publish announcements in Django Admin for everyone or for one role. Optional start and end dates control when an active announcement appears on Student, Teacher, and Administrator dashboards.
-
-The request flow is: browser form → Django view → validated form → PostgreSQL model. Student and Teacher signup store Django password hashes and set the account to pending and inactive. Only an Administrator can approve or reject that request; approval activates the account, and approved students receive an initial fictional school record. Applicants can check the request status using their email and password. Rejected applicants may resubmit with the same role, email, and password, and administrators may reopen rejected requests in the portal. Sign-in checks the password hash and approval state before creating a Django session. Each dashboard query uses the current session user to filter records. Teachers can search their assigned students, filter by grade/course, and edit a restricted set of student school-record fields; those edits are logged. Teachers cannot create or remove roster enrollments: they send an add/removal request, and only an Administrator can approve it. Sign-out ends the session using a POST request.
-
-| Role | Read access | Write access |
-| --- | --- | --- |
-| Guest | Public landing, separate Student/Teacher request forms, own request-status lookup | Submit a pending Student or Teacher request; no Administrator role is offered publicly |
-| Student | Own school record, enrolled courses, assignments, results | None yet |
-| Teacher | Own courses, assigned students and their related records | Create assignments and results for assigned courses; edit allowed student-record fields; request (but cannot directly apply) roster enrollment changes |
-| Administrator | Portal totals, requests, account data, and activity records | Approve/reject requests; activate/deactivate/delete Student and Teacher accounts; approve/reject roster changes; manage courses and academic data |
-
-See [the requirement map](docs/REQUIREMENTS.md) for the full SRS checklist and teacher clarifications.
-
-## File map
-
-| File | Purpose |
-| --- | --- |
-| `config/settings.py` | Loads local secrets, registers apps, and connects Django to PostgreSQL. |
-| `accounts/models.py`, `accounts/forms.py`, `accounts/views.py` | Define accounts, Student/Teacher access requests and status lookup, and controlled baseline login. |
-| `accounts/mfa.py`, `accounts/mfa_admin.py`, `templates/school/admin_mfa_settings.html` | Apply per-role portal MFA policy and expose authorized administrator controls. |
-| `accounts/admin.py` | Makes authorized account management available in Django Admin. |
-| `accounts/management/commands/configure_demo_logins.py` | Prepares three fictional role logins from local `.env` values. |
-| `school/models.py`, `school/forms.py`, `school/views.py` | Define school data and shared role dashboards. |
-| `school/admin_views.py`, `school/teacher_views.py`, `school/access.py` | Keep administrator and teacher workflows separate and enforce shared portal role checks. |
-| `accounts/tests.py`, `school/tests.py`, `school/test_seed_demo.py`, `config/tests.py`, `config/test_settings.py` | Automated coverage for login, requests, roles, roster changes, seed reruns, and deployment redirects on isolated SQLite. |
-| `school/management/commands/seed_demo.py` | Creates the balanced fictional 486-student, 32-teacher, 3-administrator roster and linked classwork. |
-| `school/data/demo_students.json` | Supplies 485 distinct fictional student names and gender values for the demo roster. |
-| `templates/`, `static/css/site.css` | Render and style the portal pages. |
-| `docs/REQUIREMENTS.md` | Tracks SRS obligations, teacher clarifications, and open decisions. |
-| `.github/workflows/checks.yml`, `requirements-dev.txt`, `ruff.toml` | Run all tests, check migrations, and lint Python on pushes and pull requests. |
-
-The portal displays dates and audit activity in Pakistan Standard Time (`Asia/Karachi`). Application audit events are also written to server logs without credentials.
-
-## Remaining portfolio and submission proof
-
-1. Complete a participant-owned live SMS and email challenge on the protected hosted demo; no automated test can prove real carrier delivery.
-2. Record the remaining hosted timing, restart, compatibility, and accessibility evidence and update the test matrix.
-3. Record the required human-visible demonstration and publish only a demo URL that is intentionally accessible to the intended audience.
-
-## OTP sign-in configuration
-
-The login supports email OTP through Gmail SMTP and SMS verification through Firebase Authentication. Sign-in email codes expire after `AUTHSHIELD_EMAIL_OTP_TTL_SECONDS` (60 seconds by default), and the page shows a live minutes-and-seconds countdown plus the resend wait. Password-reset codes expire after `AUTHSHIELD_PASSWORD_RESET_OTP_TTL_SECONDS` (300 seconds by default); another code is available after that five-minute cooldown. The branded HTML email greets the account holder by name, displays the code clearly, and includes a plain-text version for email clients that do not display HTML. Repeated requests while a code is active reuse the same code instead of sending duplicate messages. Migration `0006_email_otp_challenge` stores one hashed active challenge for each account and purpose; `0007_password_reset_request_limit` adds a persistent password-reset request counter. Migrations `0009_smsotpdeliverylimit` and `0010_smsotpdeliverylimit_verification_attempts` add persistent per-account SMS send and wrong-code limits shared across sign-in sessions. Migration `0012_keycloakmfapolicy_rolemfapolicy` stores administrator-managed per-role portal policy and the optional Keycloak TOTP setting. A changed role policy invalidates pending portal sign-in and email-step-up attempts; it does not end active sessions or affect password-reset challenges. The default SMS policy allows up to four requests per account in 15 minutes with a 60-second cooldown and stops after five incorrect codes for that account during the window. Apply migrations to the intended database before deploying code that uses them. The password recovery flow checks the new password against the portal's password rules and uses the same generic response for known and unknown addresses. Valid reset requests are rate-limited to 30 per observed IP in 15 minutes by default; the stored IP identifier is HMAC-fingerprinted rather than saved raw, and old buckets are cleaned as new requests arrive. Valid submissions have a nine-second minimum response time to reduce timing differences between existing and unknown addresses. SMTP delivery remains synchronous, so an unusually slow SMTP operation can still exceed that floor; strict response-time equality needs a durable email queue, which cannot safely be replaced by an in-request background thread on Vercel. Firebase controls its SMS code format and delivery; the portal limits the pending sign-in session to `AUTHSHIELD_SMS_OTP_TTL_SECONDS` (300 seconds by default). The browser uses Firebase's reCAPTCHA-protected phone flow, and Django verifies the signed Firebase ID token and checks that it proves fresh verification of the phone number saved on the account. The Administrator dashboard includes a role-based policy page at `/administrator/security/mfa/`; use it to choose the active methods after their providers are configured. `AUTHSHIELD_EMAIL_STEP_UP=true` can still set initial policy defaults to require SMS followed by email. See [`docs/IDENTITY_SECURITY_TEST_MATRIX.md`](docs/IDENTITY_SECURITY_TEST_MATRIX.md) for current local evidence and remaining live-provider checks.
-
-For free low-volume email testing, enable 2-Step Verification on the project Gmail account, create a Google App Password, then store `AUTHSHIELD_GMAIL_ADDRESS` and `AUTHSHIELD_GMAIL_APP_PASSWORD` as server-side environment variables in Vercel or the ignored local `.env`. Do not use the account's regular password, commit the App Password, or share it in chat. Gmail SMTP uses `smtp.gmail.com` on port `587` with TLS.
-
-To enable Firebase SMS, create a Firebase project and Web app, turn on **Authentication → Phone**, allow the Pakistan region in the SMS region policy, and add the portal’s exact deployed domain under Authorized domains. Put the Web app's `apiKey`, `authDomain`, `projectId`, and `appId` into `AUTHSHIELD_FIREBASE_API_KEY`, `AUTHSHIELD_FIREBASE_AUTH_DOMAIN`, `AUTHSHIELD_FIREBASE_PROJECT_ID`, and `AUTHSHIELD_FIREBASE_APP_ID` in Vercel. These Web app values are public configuration; never add a Firebase service-account JSON key to the browser or Git. Store matching values in the ignored local `.env` for local development. Enter phone numbers in international format such as `+923001234567`; Pakistani `03xx` input is also converted automatically. Use actual numbers controlled by the project team for live delivery.
-
-**Billing note:** Firebase's current rules require a linked Cloud Billing account (Blaze) to send real Phone Auth SMS, and SMS is billed per message; Firebase does not provide unlimited free real SMS. A free-trial credit may temporarily offset eligible charges, but billing is still linked. Firebase fictional test numbers can be used to exercise the flow without sending a text or consuming SMS quota. Review Google's current [Firebase Auth limits and pricing](https://firebase.google.com/docs/auth/limits) before enabling live sends. If the team does not approve billing, leave Firebase SMS unconfigured and use email OTP or Firebase's fictional test numbers for a no-SMS demo.
-
-## Optional Keycloak sign-in with Firebase SMS verification
-
-When `AUTHSHIELD_KEYCLOAK_ENABLED=true`, Keycloak becomes the portal's password and identity provider using the server-side OpenID Connect authorization-code flow. After Keycloak returns a verified identity, AuthShield checks that the linked Django account is active and approved, then runs the existing Firebase phone verification and optional email step-up. Firebase remains the SMS sender and its signed phone-verification token is still checked by Django. Leave Keycloak's own OTP requirement off for this client if Firebase SMS is the intended second factor; otherwise users will be asked for two separate factors. Student and Teacher access requests remain in Django so administrator approval and school roles continue to gate portal access.
-
-Keycloak must be a separate reachable server. The downloaded ZIP alone does not provide a running or Vercel-accessible identity service. Create a realm and a confidential OpenID Connect client with Standard Flow enabled. Set the exact callback URI to `https://<portal-host>/login/keycloak/callback/` (and the corresponding local URI for local development). Configure Keycloak's SMTP settings so it can send email verification and password-update messages. Enable user registration and email verification in the realm, require unique email addresses, and use the account email as the portal identity; the portal rejects identities whose Keycloak `email_verified` claim is not true. The portal's Create account route opens Keycloak's registration flow, then asks for the school role and phone number for the Django access request. Keycloak's sign-in page handles password recovery.
-
-Set `AUTHSHIELD_KEYCLOAK_SERVER_URL`, `AUTHSHIELD_KEYCLOAK_REALM`, `AUTHSHIELD_KEYCLOAK_CLIENT_ID`, and `AUTHSHIELD_KEYCLOAK_CLIENT_SECRET` in the local environment or Vercel project settings, then enable `AUTHSHIELD_KEYCLOAK_ENABLED`. This mode requires `AUTHSHIELD_OTP_ENABLED=true` and all Firebase Phone Auth web-app settings. The secret must remain server-side. Apply migration `0008_user_keycloak_subject` before enabling the flow. A verified Keycloak email can be linked to one existing Django account the first time it signs in; Keycloak passwords are not migrated from Django, so existing users need a Keycloak identity and password before switching the live portal. The account's local approval state and Firebase phone number remain in Django.
-
-For administrator actions to also update Keycloak, create a dedicated confidential service-account client and grant its service account the realm-level `manage-users` role. Put its client ID and secret in `AUTHSHIELD_KEYCLOAK_ADMIN_CLIENT_ID` and `AUTHSHIELD_KEYCLOAK_ADMIN_CLIENT_SECRET`. With that configured, the portal can synchronize account enable/disable, deletion, unlock, and password-reset-email actions. Without it, administrators use the linked Keycloak Admin Console for identity actions; Django still blocks unapproved or inactive users from entering school pages.
-
-For the separate GitHub-to-Vercel Keycloak container setup, deployment environment variables, domain/callback wiring, and platform limitations, follow [`keycloak-vercel/README.md`](keycloak-vercel/README.md).
-
-## Vercel deployment preparation
-
-This repository is configured for an access-restricted Vercel demonstration. Vercel detects `manage.py`, uses `config/wsgi.py`, and collects static files from `STATIC_ROOT`. The deployed site uses a hosted PostgreSQL database; the laptop's PostgreSQL server remains local. The hosted connection is supplied to Vercel as `DATABASE_URL`. Keep all deployment secrets in Vercel environment variables, never in GitHub or `.env.example`.
-
-Use a new `DJANGO_SECRET_KEY` for Vercel, set `DJANGO_DEBUG=false`, and set `AUTHSHIELD_BASELINE_LOGIN=true` only for the temporary password comparison. Set `AUTHSHIELD_PROTECTED_DEMO=true` only after Vercel Authentication protects the deployment. The local `.env` remains ignored and is not uploaded. Hosted database migrations, fictional seed data, and new demo passwords must be prepared separately from the local database.
-
-The demo is deployed from the public `mustafaahmed-sec/AuthShield360` repository. The public [authshield360.vercel.app](https://authshield360.vercel.app/) alias redirects to the current protected deployment URL when `AUTHSHIELD_PROTECTED_DEMO=true`; viewers need access through the Vercel account/team. If the deployment URL is unavailable, the alias fails closed. The app uses the hosted Neon PostgreSQL database through Vercel's `DATABASE_URL` environment variable.
-
-This online build is for fictional school data and controlled demonstration. Do not use real school credentials or records. The production sign-in page currently renders the SMS and email verification step; this confirms page delivery and configuration only, not successful provider delivery or an authenticated session. Complete a participant-owned test-account flow before presenting live MFA as verified. Deployment secrets are stored in Vercel; local demo-account passwords are kept in ignored files and must never be committed or shared publicly.
+This README is the project’s single Markdown handoff guide. The private beginner and jury study guide is at **output/pdf/AuthShield360_TechViz_Study_Guide.pdf**. Use it alongside this README to understand the system and prepare for a project demonstration.

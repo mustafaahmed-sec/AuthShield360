@@ -29,8 +29,8 @@
               {% for error in form.sms_enabled.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
               {% for error in form.email_enabled.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
             </fieldset>
-            <p class="muted">At least one additional code is required after the password. If “Require both” is enabled, users with a usable phone complete SMS and email verification.</p>
-            <label class="mfa-toggle mfa-sub-option">{{ form.require_both_factors }}<span><strong>Require both</strong><small>Send SMS first, then require a separate email code. If no usable phone is enrolled, email remains the required second factor.</small></span></label>
+            <p class="muted">When email and Firebase are configured and the account has a valid phone, every role uses both factors in the same order. Email-only verification is used if SMS is unavailable or no phone is enrolled.</p>
+            <label class="mfa-toggle mfa-sub-option">{{ form.require_both_factors }}<span><strong>Require both</strong><small>SMS is verified first, then a separate email code. This is required for every role when both providers are ready.</small></span></label>
             {% for error in form.require_both_factors.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
           {% endwith %}
         </section>

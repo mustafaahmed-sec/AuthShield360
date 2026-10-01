@@ -9,7 +9,7 @@ class RoleMFAPolicyForm(forms.Form):
     email_enabled = forms.BooleanField(required=False, label="Email OTP")
     require_both_factors = forms.BooleanField(required=False, label="Require SMS and then email")
 
-    def __init__(self, *args, mandatory=False, require_email=False, **kwargs):
+    def __init__(self, *args, mandatory=False, require_email=False, mandatory_both=False, **kwargs):
         super().__init__(*args, **kwargs)
         if mandatory:
             self.fields["enabled"].disabled = True
@@ -17,6 +17,10 @@ class RoleMFAPolicyForm(forms.Form):
         if require_email:
             self.fields["email_enabled"].disabled = True
             self.fields["email_enabled"].initial = True
+        if mandatory_both:
+            for name in ("sms_enabled", "email_enabled", "require_both_factors"):
+                self.fields[name].disabled = True
+                self.fields[name].initial = True
 
 
 class MFASaveConfirmationForm(forms.Form):

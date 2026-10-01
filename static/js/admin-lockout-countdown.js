@@ -1,5 +1,5 @@
 (() => {
-  const timers = document.querySelectorAll("[data-admin-lockout-countdown]");
+  const timers = document.querySelectorAll("[data-admin-lockout-countdown], [data-otp-send-countdown]");
   if (!timers.length) return;
 
   const format = seconds => {
@@ -14,6 +14,19 @@
       const remaining = Math.max(0, Math.ceil(Number(timer.dataset.until || 0) - now));
       if (remaining) {
         timer.textContent = format(remaining);
+        return;
+      }
+
+      if (timer.matches("[data-otp-send-countdown]")) {
+        timer.textContent = "Ready";
+        const deliveryWait = timer.closest("[data-otp-delivery-wait]");
+        const activeTimers = [...(deliveryWait?.querySelectorAll("[data-otp-send-countdown]") || [])]
+          .some(item => Number(item.dataset.until || 0) > now);
+        if (!activeTimers) {
+          const state = deliveryWait?.querySelector("[data-otp-delivery-state]");
+          if (state) state.textContent = "Code requests available";
+          deliveryWait?.querySelector("form")?.remove();
+        }
         return;
       }
 

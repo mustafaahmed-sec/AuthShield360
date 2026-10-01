@@ -179,6 +179,29 @@ class SMSOTPDeliveryLimit(models.Model):
     verification_attempts = models.PositiveSmallIntegerField(default=0)
 
 
+class OTPDeliveryLimit(models.Model):
+    """Persistent per-account send cooldown and lock for each sign-in factor."""
+
+    class Channel(models.TextChoices):
+        EMAIL = "email", "Email"
+        SMS = "sms", "SMS"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="otp_delivery_limits",
+    )
+    channel = models.CharField(max_length=8, choices=Channel.choices)
+    last_requested_at = models.DateTimeField(blank=True, null=True)
+    request_count = models.PositiveSmallIntegerField(default=0)
+    locked_until = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("user", "channel"), name="unique_user_otp_delivery_channel"),
+        ]
+
+
 class RoleMFAPolicy(models.Model):
     """Portal OTP policy for one account role."""
 

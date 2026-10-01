@@ -16,13 +16,24 @@
     <h2 id="leadership-title">School leadership</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Name</th><th>Designation</th><th>Portal access</th></tr></thead>
+        <thead><tr><th>Name</th><th>Designation</th><th>Portal access</th><th>OTP send timer</th></tr></thead>
         <tbody>
           {% for admin_account in admin_accounts %}
             <tr>
               <td>{{ admin_account.full_name }}</td>
               <td>{{ admin_account.get_designation_display|default:"Administrator" }}</td>
               <td>Administrator</td>
+              <td>
+                {% if admin_account.otp_delivery_waits %}
+                  <div data-otp-delivery-wait>
+                    <strong data-otp-delivery-state>Code sending paused</strong>
+                    {% for wait in admin_account.otp_delivery_waits %}<div>{{ wait.channel }} · <time data-otp-send-countdown data-until="{{ wait.until }}" role="timer">{{ wait.remaining }}</time></div>{% endfor %}
+                    <form method="post" action="{% url 'reset_otp_delivery_lock' admin_account.pk %}" onsubmit="return confirm('Clear this account’s email and SMS code-send timers? Password lockouts and incorrect-code limits will remain unchanged.');">
+                      {% csrf_token %}<button class="button compact secondary" type="submit">Reset OTP timer</button>
+                    </form>
+                  </div>
+                {% else %}<span class="muted">No active OTP wait</span>{% endif %}
+              </td>
             </tr>
           {% endfor %}
         </tbody>
@@ -116,11 +127,11 @@
       <button class="button compact" type="submit">Apply</button>
       <a class="button compact secondary" href="{% url 'admin_management' %}">Clear</a>
     </form>
-    <p class="muted">Use “Locked login” to find active lockouts. The timer shows minutes and seconds; unlocking clears only the current lockout.</p>
+      <p class="muted">Password lockouts and OTP send timers are separate. Resetting an OTP timer clears email and SMS resend waits, but does not clear password lockouts or incorrect-code limits.</p>
     {% if accounts %}
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Grade</th><th>Approval</th><th>Access</th><th>Sign-in lockout</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Grade</th><th>Approval</th><th>Access</th><th>Sign-in lockout</th><th>OTP send timer</th><th>Actions</th></tr></thead>
           <tbody>
             {% for account in accounts %}
               <tr>
@@ -149,6 +160,17 @@
                   {% else %}
                     <span class="muted">Not locked</span>
                   {% endif %}
+                </td>
+                <td>
+                  {% if account.otp_delivery_waits %}
+                    <div data-otp-delivery-wait>
+                      <strong data-otp-delivery-state>Code sending paused</strong>
+                      {% for wait in account.otp_delivery_waits %}<div>{{ wait.channel }} · <time data-otp-send-countdown data-until="{{ wait.until }}" role="timer">{{ wait.remaining }}</time></div>{% endfor %}
+                      <form method="post" action="{% url 'reset_otp_delivery_lock' account.pk %}" onsubmit="return confirm('Clear this account’s email and SMS code-send timers? Password lockouts and incorrect-code limits will remain unchanged.');">
+                        {% csrf_token %}<button class="button compact secondary" type="submit">Reset OTP timer</button>
+                      </form>
+                    </div>
+                  {% else %}<span class="muted">No active OTP wait</span>{% endif %}
                 </td>
                 <td>
                   <div class="inline-actions">
@@ -185,7 +207,7 @@
       <p class="empty">No accounts match those filters.</p>
     {% endif %}
   </section>
-  {% if active_lockout_count %}<script src="{% static 'js/admin-lockout-countdown.js' %}?v={{ static_version }}" defer></script>{% endif %}
+  {% if active_lockout_count or active_otp_delivery_wait_count %}<script src="{% static 'js/admin-lockout-countdown.js' %}?v={{ static_version }}" defer></script>{% endif %}
 
   <section class="panel management-section">
     <h2>Recent security and account activity</h2>

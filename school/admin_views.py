@@ -1,12 +1,13 @@
 """Administrator-only account, roster, and activity controls."""
 
 from math import ceil
+from datetime import timedelta
 from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q
@@ -15,7 +16,7 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django.views.decorators.http import require_http_methods, require_POST
 
-from accounts.models import User
+from accounts.models import OTPDeliveryLimit, User
 from accounts.keycloak import (
     KeycloakAdminError,
     keycloak_clear_user_login_failures,
@@ -67,6 +68,8 @@ def admin_management(request):
             account.lockout_remaining_seconds = max(0, ceil((account.locked_until - now).total_seconds()))
             minutes, seconds = divmod(account.lockout_remaining_seconds, 60)
             account.lockout_remaining_display = f"{minutes:02d}:{seconds:02d}"
+    admin_accounts = list(User.objects.filter(role=User.Role.ADMIN).order_by("designation", "full_name"))
+    _attach_otp_delivery_waits(list(account_page.object_list) + admin_accounts, now)
     context = {
         "keycloak_enabled": settings.AUTHSHIELD_KEYCLOAK_ENABLED,
         "keycloak_admin_api_enabled": settings.AUTHSHIELD_KEYCLOAK_ADMIN_API_ENABLED,
@@ -86,7 +89,11 @@ def admin_management(request):
             ).select_related("requester", "student", "course").order_by("created_at", "pk"),
             20,
         ).get_page(request.GET.get("change_page")),
-        "admin_accounts": User.objects.filter(role=User.Role.ADMIN).order_by("designation", "full_name"),
+        "admin_accounts": admin_accounts,
+        "active_otp_delivery_wait_count": sum(
+            bool(account.otp_delivery_waits)
+            for account in list(account_page.object_list) + admin_accounts
+        ),
         "student_events": PortalAuditEvent.objects.filter(actor_role=User.Role.STUDENT)[:20],
         "teacher_events": PortalAuditEvent.objects.filter(actor_role=User.Role.TEACHER)[:20],
         "admin_events": PortalAuditEvent.objects.filter(actor_role=User.Role.ADMIN)[:20],
@@ -106,6 +113,93 @@ def admin_management(request):
         ).count(),
     }
     return render(request, "school/admin_management.html", context)
+
+
+def _attach_otp_delivery_waits(accounts, now=None):
+    now = now or timezone.now()
+    account_ids = [account.pk for account in accounts]
+    waits_by_user = {account.pk: [] for account in accounts}
+    limits = OTPDeliveryLimit.objects.filter(user_id__in=account_ids).order_by("channel")
+    for limit in limits:
+        available_at = limit.locked_until if limit.locked_until and limit.locked_until > now else None
+        if available_at is None and limit.locked_until and limit.locked_until <= now:
+            continue
+        if available_at is None and limit.last_requested_at:
+            candidate = limit.last_requested_at + timedelta(
+                seconds=settings.AUTHSHIELD_OTP_RESEND_COOLDOWN_SECONDS
+            )
+            if candidate > now:
+                available_at = candidate
+        if available_at:
+            seconds = max(0, ceil((available_at - now).total_seconds()))
+            minutes, remainder = divmod(seconds, 60)
+            waits_by_user[limit.user_id].append({
+                "channel": limit.get_channel_display(),
+                "until": available_at.timestamp(),
+                "remaining": f"{minutes:02d}:{remainder:02d}",
+            })
+    for account in accounts:
+        account.otp_delivery_waits = waits_by_user.get(account.pk, [])
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def reset_otp_delivery_lock(request, user_id):
+    is_admin = request.user.is_portal_admin
+    is_sara = (
+        request.user.is_portal_teacher
+        and request.user.email.lower() == "sara.ahmed.authshield@gmail.com"
+    )
+    if not is_admin and not is_sara:
+        from .audit import record_role_denial
+
+        record_role_denial(request.user, "OTP delivery lock management", request)
+        raise PermissionDenied("Only an Administrator or Sara Ahmed can reset OTP send timers.")
+
+    account = get_object_or_404(User.objects.select_for_update(), pk=user_id)
+    if is_sara and (
+        account.role != User.Role.STUDENT
+        or not account.is_active
+        or account.approval_status != User.ApprovalStatus.APPROVED
+    ):
+        from .audit import record_role_denial
+
+        record_role_denial(request.user, "student OTP delivery lock management", request)
+        raise PermissionDenied("Sara Ahmed can reset OTP send timers for approved student accounts only.")
+    if account.role not in User.Role.values:
+        raise PermissionDenied("OTP send timers can only be reset for portal accounts.")
+
+    now = timezone.now()
+    waits = list(OTPDeliveryLimit.objects.select_for_update().filter(user=account))
+    active_wait = any(
+        (limit.locked_until and limit.locked_until > now)
+        or (
+            limit.last_requested_at
+            and limit.last_requested_at + timedelta(seconds=settings.AUTHSHIELD_OTP_RESEND_COOLDOWN_SECONDS) > now
+        )
+        for limit in waits
+    )
+    if not active_wait:
+        messages.error(request, f"{account.full_name} has no active OTP send timer to reset.")
+    else:
+        OTPDeliveryLimit.objects.filter(user=account).update(
+            request_count=0,
+            last_requested_at=None,
+            locked_until=None,
+        )
+        record_event(
+            request.user,
+            "otp_delivery_lock_reset",
+            "Reset the account's email and SMS code-send cooldowns. Password lockouts and invalid-code attempt counters were not changed.",
+            target_name=account.email,
+            request=request,
+            factor=PortalAuditEvent.Factor.ACCESS,
+            outcome=PortalAuditEvent.Outcome.SUCCESS,
+        )
+        messages.success(request, f"OTP send timers cleared for {account.full_name}. They can request a new code.")
+
+    return redirect("admin_management" if is_admin else "teacher_students")
 
 
 @login_required

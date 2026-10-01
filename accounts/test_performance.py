@@ -8,9 +8,10 @@ from unittest.mock import patch
 
 from django.core import mail
 from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 from django.urls import reverse
 
-from .models import SMSOTPDeliveryLimit, User
+from .models import OTPDeliveryLimit, User
 
 
 class SRSAuthenticationPerformanceTests(TestCase):
@@ -63,8 +64,12 @@ class SRSAuthenticationPerformanceTests(TestCase):
         results = []
         for role, user in self.users.items():
             runs = []
-            for _ in range(3):
+            for run in range(3):
                 mail.outbox.clear()
+                if run:
+                    OTPDeliveryLimit.objects.filter(user=user, channel="email").update(
+                        last_requested_at=timezone.now() - timedelta(seconds=301),
+                    )
                 browser = Client()
                 started = time.perf_counter()
                 response = browser.post(reverse("login"), {
@@ -96,8 +101,12 @@ class SRSAuthenticationPerformanceTests(TestCase):
         results = []
         for role, user in self.users.items():
             runs = []
-            for _ in range(3):
+            for run in range(3):
                 mail.outbox.clear()
+                if run:
+                    OTPDeliveryLimit.objects.filter(user=user, channel="email").update(
+                        last_requested_at=timezone.now() - timedelta(seconds=301),
+                    )
                 browser = Client()
                 started = time.perf_counter()
                 first = browser.post(reverse("login"), {
@@ -133,21 +142,23 @@ class SRSAuthenticationPerformanceTests(TestCase):
                 for run in range(3):
                     mail.outbox.clear()
                     if run:
-                        limit = SMSOTPDeliveryLimit.objects.get(user=user)
-                        limit.last_requested_at -= timedelta(seconds=61)
-                        limit.save(update_fields=("last_requested_at",))
+                        OTPDeliveryLimit.objects.filter(user=user).update(
+                            last_requested_at=timezone.now() - timedelta(seconds=301),
+                        )
                     browser = Client()
                     started = time.perf_counter()
                     first = browser.post(reverse("login"), {
                         "username": user.email, "password": self.password, "otp_channel": "sms",
                     })
                     self.assertRedirects(first, reverse("otp_verify"), fetch_redirect_response=False)
+                    self.assertEqual(browser.session["authshield_otp_channel"], "sms")
                     self.assertEqual(browser.post(reverse("otp_sms_authorize_send")).status_code, 200)
                     self.assertEqual(browser.post(reverse("otp_sms_mark_sent")).status_code, 200)
                     sms_verified = browser.post(reverse("otp_verify"), {
                         "code": "123456", "firebase_id_token": "signed-test-token",
                     })
                     self.assertRedirects(sms_verified, reverse("otp_verify"), fetch_redirect_response=False)
+                    self.assertEqual(browser.session["authshield_otp_channel"], "email")
                     email_verified = browser.post(reverse("otp_verify"), {"code": self._email_code()})
                     self.assertRedirects(email_verified, reverse("dashboard"), fetch_redirect_response=False)
                     runs.append((time.perf_counter() - started) * 1000)

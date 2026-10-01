@@ -49,14 +49,15 @@ def admin_mfa_settings(request):
             prefix=role,
             initial={
                 "enabled": True,
-                "sms_enabled": policy.sms_enabled or (
-                    not readiness["email"] and readiness["sms"]
+                "sms_enabled": readiness["sms"] or policy.sms_enabled,
+                "email_enabled": readiness["email"] or policy.email_enabled,
+                "require_both_factors": (
+                    policy.require_both_factors or (readiness["sms"] and readiness["email"])
                 ),
-                "email_enabled": policy.email_enabled or readiness["email"],
-                "require_both_factors": policy.require_both_factors,
             },
             mandatory=True,
             require_email=readiness["email"],
+            mandatory_both=readiness["sms"] and readiness["email"],
         )
     keycloak_form = KeycloakMFAPolicyForm(
         request.POST if request.method == "POST" else None,

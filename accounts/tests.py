@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from school.models import PortalAuditEvent, StudentRecord
 
-from .models import EmailOTPChallenge, RoleMFAPolicy, SMSOTPDeliveryLimit, User
+from .models import EmailOTPChallenge, OTPDeliveryLimit, RoleMFAPolicy, SMSOTPDeliveryLimit, User
 from .otp import (
     GmailEmailOTP,
     MAX_OTP_ATTEMPTS,
@@ -22,6 +22,7 @@ from .otp import (
     OTPChallengeExpired,
     check_otp,
 )
+from .views import _reserve_otp_delivery
 
 
 class LoginPresentationTests(SimpleTestCase):
@@ -55,7 +56,7 @@ class KeycloakPortalFlowTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
             "keycloak-user@example.test", "FictionalDemo!2468", full_name="Keycloak User",
-            role=User.Role.STUDENT,
+            role=User.Role.STUDENT, phone_number="+15550100222",
         )
 
     def test_login_form_posts_selected_otp_channel_to_keycloak(self):
@@ -91,9 +92,6 @@ class KeycloakPortalFlowTests(TestCase):
                 "sub": "verified-keycloak-subject",
             },
         }
-        otp_start = patch("accounts.views._start_otp").start()
-        otp_start.return_value = None
-
         response = self.client.get(reverse("keycloak_callback"))
 
         self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
@@ -101,8 +99,8 @@ class KeycloakPortalFlowTests(TestCase):
         self.assertEqual(self.user.keycloak_subject, "verified-keycloak-subject")
         self.assertEqual(self.client.session["authshield_keycloak_id_token"], "signed-id-token")
         self.assertEqual(self.client.session["authshield_otp_next"], reverse("dashboard"))
+        self.assertEqual(self.client.session["authshield_otp_channel"], "sms")
         self.assertNotIn("_auth_user_id", self.client.session)
-        otp_start.assert_called_once()
 
     @override_settings(
         DEBUG=True,
@@ -113,12 +111,13 @@ class KeycloakPortalFlowTests(TestCase):
         AUTHSHIELD_FIREBASE_PROJECT_ID="authshield-test",
         AUTHSHIELD_FIREBASE_APP_ID="1:123:web:test",
     )
-    def test_sms_choice_appears_when_firebase_is_configured(self):
+    def test_login_explains_sms_then_email_when_firebase_is_configured(self):
         response = self.client.get(reverse("login"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "SMS text message")
-        self.assertContains(response, "Email")
+        self.assertContains(response, "verify by SMS first")
+        self.assertContains(response, "email code")
+        self.assertNotContains(response, 'name="otp_channel"')
 
 
 @override_settings(
@@ -329,6 +328,90 @@ class EmailOTPChallengeAttemptTests(TestCase):
         )
         self.provider = GmailEmailOTP()
 
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="authshield-test@example.test",
+        AUTHSHIELD_EMAIL_OTP_TTL_SECONDS=300,
+    )
+    def test_email_identifies_role_student_id_and_purpose_with_copyable_code(self):
+        StudentRecord.objects.create(
+            student=self.user,
+            admission_number="STU-2042",
+            grade="Grade 8",
+        )
+
+        self.provider._send_code(
+            self.user.email,
+            "123456",
+            self.user.full_name,
+            "email_step_up",
+            300,
+            user=self.user,
+        )
+
+        message = mail.outbox[-1]
+        html = message.alternatives[0][0]
+        self.assertIn("additional sign-in verification", message.subject)
+        self.assertIn("Dear Student Email Code User", html)
+        self.assertIn("Student ID: <strong>STU-2042</strong>", html)
+        self.assertIn('user-select:all', html)
+        self.assertIn(">123456</td>", html)
+        self.assertIn("123456", message.body)
+        self.assertNotIn("1</td>", html)
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="authshield-test@example.test",
+        AUTHSHIELD_EMAIL_OTP_TTL_SECONDS=300,
+    )
+    def test_email_subject_and_body_name_password_reset_or_account_creation(self):
+        for purpose, expected_subject, expected_heading in (
+            ("password_reset", "password reset", "Reset your password"),
+            ("account_creation", "account creation verification", "Verify your account request"),
+        ):
+            with self.subTest(purpose=purpose):
+                self.provider._send_code(
+                    self.user.email,
+                    "654321",
+                    self.user.full_name,
+                    purpose,
+                    300,
+                    user=self.user,
+                )
+                message = mail.outbox[-1]
+                self.assertIn(expected_subject, message.subject)
+                self.assertIn(expected_heading, message.alternatives[0][0])
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="authshield-test@example.test",
+        AUTHSHIELD_EMAIL_OTP_TTL_SECONDS=300,
+    )
+    def test_teacher_and_administrator_email_codes_name_their_account_roles(self):
+        recipients = (
+            User.objects.create_user(
+                "teacher-code@example.test", "FictionalDemo!2468", full_name="Sara Ahmed",
+                role=User.Role.TEACHER,
+            ),
+            User.objects.create_superuser(
+                "admin-code@example.test", "FictionalDemo!2468", full_name="Mina Rahman",
+            ),
+        )
+
+        for user, role_label in zip(recipients, ("Teacher", "Administrator")):
+            with self.subTest(role=role_label):
+                self.provider._send_code(
+                    user.email,
+                    "987654",
+                    user.full_name,
+                    "sign_in",
+                    300,
+                    user=user,
+                )
+                message = mail.outbox[-1]
+                self.assertIn("login verification", message.subject)
+                self.assertIn(f"Dear {role_label} {user.full_name}", message.alternatives[0][0])
+
     @patch.object(GmailEmailOTP, "_send_code")
     def test_email_code_is_disabled_after_five_wrong_guesses_across_requests(self, send_code):
         self.provider.start(self.user.email, {}, user=self.user)
@@ -438,23 +521,55 @@ class OTPLoginTests(TestCase):
             "otp_channel": channel,
         })
 
-    def complete_sms_send(self):
-        authorized = self.client.post(reverse("otp_sms_authorize_send"))
+    def complete_sms_send(self, browser=None):
+        browser = browser or self.client
+        authorized = browser.post(reverse("otp_sms_authorize_send"))
         self.assertEqual(authorized.status_code, 200)
-        sent = self.client.post(reverse("otp_sms_mark_sent"))
+        sent = browser.post(reverse("otp_sms_mark_sent"))
         self.assertEqual(sent.status_code, 200)
 
-    def test_valid_password_starts_firebase_sms_challenge_without_authenticating(self):
+    def continue_to_sms(self, browser=None):
+        browser = browser or self.client
+        self.assertEqual(browser.session.get("authshield_otp_channel"), "sms")
+
+    def continue_to_email(self, browser=None):
+        browser = browser or self.client
+        self.continue_to_sms(browser)
+        self.complete_sms_send(browser)
+        response = browser.post(reverse("otp_verify"), {
+            "code": "123456", "firebase_id_token": "signed-token",
+        })
+        self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
+        self.assertEqual(browser.session.get("authshield_otp_channel"), "email")
+        self.assertEqual(browser.session.get("authshield_otp_phase"), "email_step_up")
+        return response
+
+    def test_valid_password_starts_sms_first_without_authenticating(self):
         response = self.submit_password()
 
         self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
         self.assertNotIn("_auth_user_id", self.client.session)
         self.assertEqual(self.client.session["authshield_otp_channel"], "sms")
-        self.assertFalse(self.client.session["authshield_otp_sms_sent"])
+        self.assertContains(self.client.get(reverse("otp_verify")), "We’ll send a one-time SMS code")
+        self.assertFalse(self.email_provider.start.called)
+        self.assertFalse(self.client.session.get("authshield_otp_sms_sent", False))
+
+    def test_missing_phone_cannot_silently_skip_required_sms_factor(self):
+        self.user.phone_number = ""
+        self.user.save(update_fields=("phone_number",))
+
+        response = self.submit_password()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "valid mobile number for required SMS verification")
+        self.assertFalse(self.email_provider.start.called)
+        self.assertNotIn("authshield_otp_user_id", self.client.session)
+        self.assertNotIn("_auth_user_id", self.client.session)
 
     @override_settings(AUTHSHIELD_FIREBASE_APPCHECK_SITE_KEY="test-app-check-site-key")
     def test_sms_verification_page_includes_configured_app_check_site_key(self):
         self.submit_password()
+        self.continue_to_sms()
 
         response = self.client.get(reverse("otp_verify"))
 
@@ -463,6 +578,7 @@ class OTPLoginTests(TestCase):
 
     def test_sms_code_alone_cannot_authenticate_without_firebase_id_token(self):
         self.submit_password()
+        self.continue_to_sms()
         self.complete_sms_send()
         self.verify_firebase_token.return_value = None
 
@@ -501,12 +617,15 @@ class OTPLoginTests(TestCase):
 
     def test_user_is_authenticated_only_after_provider_approves_code(self):
         self.submit_password(channel="email")
-        response = self.client.post(reverse("otp_verify"), {"code": "123456"})
+        self.continue_to_email()
+        response = self.client.post(reverse("otp_verify"), {
+            "code": "123456",
+        })
 
         self.assertRedirects(response, reverse("dashboard"), fetch_redirect_response=False)
         self.assertEqual(int(self.client.session["_auth_user_id"]), self.user.pk)
         event = PortalAuditEvent.objects.get(action="login_success")
-        self.assertEqual(event.auth_mode, PortalAuditEvent.AuthMode.OTP)
+        self.assertEqual(event.auth_mode, PortalAuditEvent.AuthMode.OTP_EMAIL)
         self.assertEqual(event.factor, PortalAuditEvent.Factor.EMAIL_OTP)
         self.assertIsNotNone(event.duration_ms)
         self.assertTrue(PortalAuditEvent.objects.filter(action="otp_success", factor="email_otp").exists())
@@ -514,6 +633,7 @@ class OTPLoginTests(TestCase):
     def test_invalid_code_is_logged_and_does_not_authenticate(self):
         self.email_provider.check.return_value = False
         self.submit_password(channel="email")
+        self.continue_to_email()
 
         response = self.client.post(reverse("otp_verify"), {"code": "000000"})
 
@@ -556,10 +676,14 @@ class OTPLoginTests(TestCase):
 
     def test_expired_email_code_can_be_resent_without_restarting_password_sign_in(self):
         self.submit_password(channel="email")
+        self.continue_to_email()
         session = self.client.session
-        session["authshield_otp_sent_at"] = timezone.now().timestamp() - 61
+        session["authshield_otp_sent_at"] = timezone.now().timestamp() - 301
         session["authshield_otp_expires_at"] = timezone.now().timestamp() - 1
         session.save()
+        delivery_limit = OTPDeliveryLimit.objects.get(user=self.user, channel="email")
+        delivery_limit.last_requested_at -= timedelta(seconds=301)
+        delivery_limit.save(update_fields=("last_requested_at",))
 
         page = self.client.get(reverse("otp_verify"))
         response = self.client.post(reverse("otp_resend"), {})
@@ -572,6 +696,7 @@ class OTPLoginTests(TestCase):
     def test_five_wrong_email_codes_do_not_trigger_a_password_lockout(self):
         self.email_provider.check.return_value = False
         self.submit_password(channel="email")
+        self.continue_to_email()
 
         for _ in range(5):
             response = self.client.post(reverse("otp_verify"), {"code": "000000"})
@@ -589,6 +714,7 @@ class OTPLoginTests(TestCase):
     def test_administrator_email_otp_is_capped_without_password_lockout(self):
         admin = User.objects.create_superuser(
             "otp-admin-flow@example.test", "FictionalDemo!2468", full_name="OTP Admin Flow",
+            phone_number="+15550100223",
         )
         self.email_provider.check.return_value = False
         response = self.client.post(reverse("login"), {
@@ -597,6 +723,12 @@ class OTPLoginTests(TestCase):
             "otp_channel": "email",
         })
         self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
+        self.complete_sms_send()
+        response = self.client.post(reverse("otp_verify"), {
+            "code": "123456", "firebase_id_token": "signed-token",
+        })
+        self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
+        self.assertEqual(self.client.session["authshield_otp_channel"], "email")
 
         for _ in range(MAX_OTP_ATTEMPTS):
             response = self.client.post(reverse("otp_verify"), {"code": "000000"})
@@ -611,8 +743,9 @@ class OTPLoginTests(TestCase):
             MAX_OTP_ATTEMPTS,
         )
 
+    @override_settings(AUTHSHIELD_OTP_RESEND_COOLDOWN_SECONDS=0, AUTHSHIELD_OTP_MAX_SENDS=3)
     def test_sms_delivery_limit_is_shared_across_fresh_sign_in_sessions(self):
-        for request_number in range(4):
+        for request_number in range(3):
             browser = Client()
             login_response = browser.post(reverse("login"), {
                 "username": self.user.email,
@@ -620,12 +753,13 @@ class OTPLoginTests(TestCase):
                 "otp_channel": "sms",
             })
             self.assertRedirects(login_response, reverse("otp_verify"), fetch_redirect_response=False)
+            self.continue_to_sms(browser)
+            # Keep the email-factor quota out of this test; this test isolates SMS delivery limits.
+            OTPDeliveryLimit.objects.filter(user=self.user, channel="email").delete()
             send_response = browser.post(reverse("otp_sms_authorize_send"))
             self.assertEqual(send_response.status_code, 200)
-            limit = SMSOTPDeliveryLimit.objects.get(user=self.user)
+            limit = OTPDeliveryLimit.objects.get(user=self.user, channel="sms")
             self.assertEqual(limit.request_count, request_number + 1)
-            limit.last_requested_at -= timedelta(seconds=61)
-            limit.save(update_fields=("last_requested_at",))
 
         fresh_browser = Client()
         fresh_browser.post(reverse("login"), {
@@ -633,16 +767,18 @@ class OTPLoginTests(TestCase):
             "password": "FictionalDemo!2468",
             "otp_channel": "sms",
         })
+        self.continue_to_sms(fresh_browser)
+        OTPDeliveryLimit.objects.filter(user=self.user, channel="email").delete()
         denied = fresh_browser.post(reverse("otp_sms_authorize_send"))
 
         self.assertEqual(denied.status_code, 429)
-        self.assertEqual(
-            denied.json()["error"],
-            "The SMS request limit was reached for this account. Try again later.",
-        )
-        self.assertEqual(SMSOTPDeliveryLimit.objects.get(user=self.user).request_count, 4)
+        self.assertIn("SMS sending is paused", denied.json()["error"])
+        self.assertEqual(OTPDeliveryLimit.objects.get(user=self.user, channel="sms").request_count, 3)
 
-    @override_settings(AUTHSHIELD_SMS_OTP_ACCOUNT_LIMIT=10)
+    @override_settings(
+        AUTHSHIELD_OTP_MAX_SENDS=10,
+        AUTHSHIELD_OTP_RESEND_COOLDOWN_SECONDS=0,
+    )
     def test_sms_code_guesses_are_limited_across_fresh_sessions_for_admins_too(self):
         admin = User.objects.create_superuser(
             "sms-admin@example.test", "FictionalDemo!2468", full_name="SMS Administrator",
@@ -655,14 +791,14 @@ class OTPLoginTests(TestCase):
                 "password": "FictionalDemo!2468",
                 "otp_channel": "sms",
             })
+            self.continue_to_sms(browser)
+            OTPDeliveryLimit.objects.filter(user=admin, channel="email").delete()
             self.assertEqual(browser.post(reverse("otp_sms_authorize_send")).status_code, 200)
             self.assertEqual(browser.post(reverse("otp_sms_mark_sent")).status_code, 200)
             failure = browser.post(reverse("otp_sms_record_failure"))
             if attempt < MAX_OTP_ATTEMPTS - 1:
                 self.assertEqual(failure.status_code, 200)
                 limit = SMSOTPDeliveryLimit.objects.get(user=admin)
-                limit.last_requested_at -= timedelta(seconds=61)
-                limit.save(update_fields=("last_requested_at",))
             else:
                 self.assertEqual(failure.status_code, 429)
 
@@ -670,8 +806,6 @@ class OTPLoginTests(TestCase):
         limit = SMSOTPDeliveryLimit.objects.get(user=admin)
         self.assertEqual(limit.verification_attempts, MAX_OTP_ATTEMPTS)
         self.assertIsNone(admin.locked_until)
-        limit.last_requested_at -= timedelta(seconds=61)
-        limit.save(update_fields=("last_requested_at",))
 
         fresh_browser = Client()
         fresh_browser.post(reverse("login"), {
@@ -679,6 +813,8 @@ class OTPLoginTests(TestCase):
             "password": "FictionalDemo!2468",
             "otp_channel": "sms",
         })
+        self.continue_to_sms(fresh_browser)
+        OTPDeliveryLimit.objects.filter(user=admin, channel="email").delete()
         denied = fresh_browser.post(reverse("otp_sms_authorize_send"))
 
         self.assertEqual(denied.status_code, 429)
@@ -693,6 +829,7 @@ class OTPLoginTests(TestCase):
             })
         self.email_provider.check.return_value = False
         self.submit_password(channel="email")
+        self.continue_to_email()
 
         self.client.post(reverse("otp_verify"), {"code": "000000"})
 
@@ -700,10 +837,14 @@ class OTPLoginTests(TestCase):
         self.assertIsNone(self.user.locked_until)
 
     @override_settings(AUTHSHIELD_EMAIL_STEP_UP=True)
-    def test_email_step_up_requires_a_second_code_after_sms(self):
+    def test_sms_verification_precedes_email_step_up(self):
         self.submit_password()
+        self.assertEqual(self.client.session["authshield_otp_channel"], "sms")
+        self.assertFalse(self.email_provider.start.called)
         self.complete_sms_send()
-        first = self.client.post(reverse("otp_verify"), {"code": "123456", "firebase_id_token": "signed-token"})
+        first = self.client.post(reverse("otp_verify"), {
+            "code": "123456", "firebase_id_token": "signed-token",
+        })
 
         self.assertRedirects(first, reverse("otp_verify"), fetch_redirect_response=False)
         self.assertNotIn("_auth_user_id", self.client.session)
@@ -715,9 +856,11 @@ class OTPLoginTests(TestCase):
         email_page = self.client.get(reverse("otp_verify"))
         self.assertContains(email_page, 'name="code"')
         self.assertContains(email_page, 'autocomplete="one-time-code"')
-        self.assertContains(email_page, "Verify and sign in")
+        self.assertContains(email_page, "SMS verification is complete")
 
-        second = self.client.post(reverse("otp_verify"), {"code": "654321"})
+        second = self.client.post(reverse("otp_verify"), {
+            "code": "123456",
+        })
 
         self.assertRedirects(second, reverse("dashboard"), fetch_redirect_response=False)
         self.assertEqual(int(self.client.session["_auth_user_id"]), self.user.pk)
@@ -727,21 +870,53 @@ class OTPLoginTests(TestCase):
         self.assertEqual(PortalAuditEvent.objects.filter(action="otp_success").count(), 2)
 
     @override_settings(AUTHSHIELD_EMAIL_STEP_UP=True)
-    def test_email_step_up_cannot_be_skipped_by_selecting_email_as_primary(self):
-        response = self.submit_password(channel="email")
+    def test_email_step_up_cannot_be_skipped_by_posting_sms_after_the_primary_step(self):
+        response = self.submit_password(channel="sms")
 
         self.assertRedirects(response, reverse("otp_verify"), fetch_redirect_response=False)
         self.assertEqual(self.client.session["authshield_otp_channel"], "sms")
+        self.continue_to_email()
+        session = self.client.session
+        session["authshield_otp_channel"] = "sms"
+        session.save()
+        response = self.client.get(reverse("otp_verify"))
+        self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
         self.assertNotIn("_auth_user_id", self.client.session)
 
     def test_completed_challenge_cannot_be_replayed_without_pending_challenge(self):
-        self.submit_password(channel="email")
-        self.client.post(reverse("otp_verify"), {"code": "123456"})
+        self.submit_password()
+        self.continue_to_email()
+        completed = self.client.post(reverse("otp_verify"), {"code": "123456"})
+        self.assertRedirects(completed, reverse("dashboard"), fetch_redirect_response=False)
 
         replay = self.client.post(reverse("otp_verify"), {"code": "123456"})
 
         self.assertRedirects(replay, reverse("login"), fetch_redirect_response=False)
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.user.pk)
         self.email_provider.check.assert_called_once()
+
+    @override_settings(
+        AUTHSHIELD_OTP_RESEND_COOLDOWN_SECONDS=300,
+        AUTHSHIELD_OTP_MAX_SENDS=3,
+        AUTHSHIELD_OTP_SEND_LOCKOUT_MINUTES=30,
+    )
+    def test_third_email_send_starts_persistent_thirty_minute_pause(self):
+        now = timezone.now()
+        available = []
+        for send_number in range(3):
+            sent_at = now + timedelta(minutes=5 * send_number)
+            allowed, available_at = _reserve_otp_delivery(self.user, "email", sent_at)
+            self.assertTrue(allowed)
+            available.append(available_at)
+
+        limit = OTPDeliveryLimit.objects.get(user=self.user, channel="email")
+        self.assertEqual(limit.request_count, 3)
+        self.assertEqual(limit.locked_until, now + timedelta(minutes=40))
+        self.assertEqual(available[-1], limit.locked_until)
+
+        blocked, retry_at = _reserve_otp_delivery(self.user, "email", now + timedelta(minutes=11))
+        self.assertFalse(blocked)
+        self.assertEqual(retry_at, limit.locked_until)
 
 
 @override_settings(

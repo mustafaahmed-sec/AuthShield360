@@ -1,7 +1,10 @@
 """Teacher actions limited to assigned courses and students."""
 
 from urllib.parse import urlencode
+from datetime import timedelta
+from math import ceil
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -12,7 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from accounts.models import User
+from accounts.models import OTPDeliveryLimit, User
 
 from .access import portal_teacher_view, require_portal_teacher
 from .audit import record_event
@@ -149,13 +152,17 @@ def create_exam_result(request):
 def teacher_students(request):
     require_portal_teacher(request.user, request)
     teacher_courses = Course.objects.filter(teacher=request.user, teacher__is_active=True)
+    can_reset_student_otp_timers = (
+        request.user.is_portal_teacher
+        and request.user.email.lower() == "sara.ahmed.authshield@gmail.com"
+    )
     roster = User.objects.filter(
         role=User.Role.STUDENT,
         is_active=True,
         approval_status=User.ApprovalStatus.APPROVED,
         student_record__isnull=False,
     )
-    if not request.user.can_manage_all_students:
+    if not request.user.can_manage_all_students and not can_reset_student_otp_timers:
         roster = roster.filter(enrollments__course__in=teacher_courses).distinct()
     visible_enrollments = Enrollment.objects.select_related("course")
     if not request.user.can_manage_all_students:
@@ -172,7 +179,7 @@ def teacher_students(request):
     students = roster
     search = request.GET.get("q", "").strip()
     grade = request.GET.get("grade", "").strip()
-    course_id = "" if request.user.can_manage_all_students else request.GET.get("course", "").strip()
+    course_id = "" if request.user.can_manage_all_students or can_reset_student_otp_timers else request.GET.get("course", "").strip()
     if search:
         students = students.filter(
             Q(full_name__icontains=search)
@@ -187,14 +194,38 @@ def teacher_students(request):
         students = students.filter(enrollments__course_id=course_id)
     else:
         course_id = ""
+    student_page = Paginator(students.order_by("full_name"), 30).get_page(request.GET.get("page"))
+    if can_reset_student_otp_timers:
+        now = timezone.now()
+        waits_by_user = {student.pk: [] for student in student_page.object_list}
+        for limit in OTPDeliveryLimit.objects.filter(user_id__in=waits_by_user):
+            available_at = limit.locked_until if limit.locked_until and limit.locked_until > now else None
+            if available_at is None and not limit.locked_until and limit.last_requested_at:
+                candidate = limit.last_requested_at + timedelta(
+                    seconds=settings.AUTHSHIELD_OTP_RESEND_COOLDOWN_SECONDS
+                )
+                if candidate > now:
+                    available_at = candidate
+            if available_at:
+                seconds = max(0, ceil((available_at - now).total_seconds()))
+                minutes, remainder = divmod(seconds, 60)
+                waits_by_user[limit.user_id].append({
+                    "channel": limit.get_channel_display(),
+                    "until": available_at.timestamp(),
+                    "remaining": f"{minutes:02d}:{remainder:02d}",
+                })
+        for student in student_page.object_list:
+            student.otp_delivery_waits = waits_by_user.get(student.pk, [])
     context = {
-        "students": Paginator(students.order_by("full_name"), 30).get_page(request.GET.get("page")),
+        "students": student_page,
         "grades": grades,
         "courses": teacher_courses.order_by("code"),
         "search": search,
         "grade_filter": grade,
         "course_filter": course_id,
         "can_manage_all_students": request.user.can_manage_all_students,
+        "can_reset_student_otp_timers": can_reset_student_otp_timers,
+        "can_view_all_students": request.user.can_manage_all_students or can_reset_student_otp_timers,
         "student_page_url": "?" + urlencode({"q": search, "grade": grade, "course": course_id}) + "&page=",
         "requests": EnrollmentChangeRequest.objects.filter(requester=request.user)
         .select_related("course", "student")[:12],

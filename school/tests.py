@@ -8,7 +8,7 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from django.urls import reverse
 
-from accounts.models import User
+from accounts.models import OTPDeliveryLimit, User
 from .models import (
     Announcement,
     Assignment,
@@ -140,6 +140,66 @@ class AccountApprovalFlowTests(TestCase):
         self.assertEqual(event.actor, self.admin)
         self.assertEqual(event.factor, PortalAuditEvent.Factor.ACCESS)
         self.assertEqual(event.outcome, PortalAuditEvent.Outcome.SUCCESS)
+
+    def test_admin_resets_otp_delivery_timers_without_clearing_other_security_state(self):
+        target = User.objects.create_superuser(
+            "other-admin@example.test", "test-admin-password", full_name="Other Administrator",
+        )
+        now = timezone.now()
+        email_limit = OTPDeliveryLimit.objects.create(
+            user=target, channel="email", request_count=3,
+            last_requested_at=now - timedelta(minutes=1), locked_until=now + timedelta(minutes=29),
+        )
+        sms_limit = OTPDeliveryLimit.objects.create(
+            user=target, channel="sms", request_count=2,
+            last_requested_at=now - timedelta(minutes=1), locked_until=now + timedelta(minutes=4),
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(reverse("reset_otp_delivery_lock", args=[target.pk]), follow=True)
+
+        self.assertRedirects(response, reverse("admin_management"))
+        email_limit.refresh_from_db()
+        sms_limit.refresh_from_db()
+        self.assertEqual(email_limit.request_count, 0)
+        self.assertIsNone(email_limit.last_requested_at)
+        self.assertIsNone(email_limit.locked_until)
+        self.assertEqual(sms_limit.request_count, 0)
+        self.assertIsNone(sms_limit.locked_until)
+        event = PortalAuditEvent.objects.get(action="otp_delivery_lock_reset", target_name=target.email)
+        self.assertEqual(event.actor, self.admin)
+        self.assertEqual(event.outcome, PortalAuditEvent.Outcome.SUCCESS)
+        self.assertContains(response, "OTP send timers cleared for Other Administrator")
+
+    def test_sara_can_reset_only_approved_students_otp_send_timers(self):
+        sara = User.objects.create_user(
+            "sara.ahmed.authshield@gmail.com", "teacher-password", full_name="Sara Ahmed",
+            role=User.Role.TEACHER,
+        )
+        student = User.objects.create_user(
+            "timer-student@example.test", "student-password", full_name="Timer Student",
+            role=User.Role.STUDENT,
+        )
+        target_teacher = User.objects.create_user(
+            "another-teacher@example.test", "teacher-password", full_name="Another Teacher",
+            role=User.Role.TEACHER,
+        )
+        now = timezone.now()
+        OTPDeliveryLimit.objects.create(
+            user=student, channel="sms", request_count=3, locked_until=now + timedelta(minutes=30),
+        )
+        OTPDeliveryLimit.objects.create(
+            user=target_teacher, channel="sms", request_count=3, locked_until=now + timedelta(minutes=30),
+        )
+        self.client.force_login(sara)
+
+        allowed = self.client.post(reverse("reset_otp_delivery_lock", args=[student.pk]))
+        denied = self.client.post(reverse("reset_otp_delivery_lock", args=[target_teacher.pk]))
+
+        self.assertRedirects(allowed, reverse("teacher_students"))
+        self.assertEqual(denied.status_code, 403)
+        self.assertIsNone(OTPDeliveryLimit.objects.get(user=student, channel="sms").locked_until)
+        self.assertIsNotNone(OTPDeliveryLimit.objects.get(user=target_teacher, channel="sms").locked_until)
 
     def test_unlock_action_is_admin_only_post_only_and_rejects_unlocked_accounts(self):
         student = User.objects.create_user(

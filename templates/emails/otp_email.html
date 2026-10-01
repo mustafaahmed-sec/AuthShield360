@@ -3,11 +3,11 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Your AuthShield 360 {% if is_password_reset %}password reset{% else %}sign-in{% endif %} code</title>
+    <title>Your AuthShield 360 {{ purpose_label|lower }} code</title>
   </head>
   <body style="margin:0;padding:0;background-color:#f2f6fa;font-family:Arial,Helvetica,sans-serif;color:#203247;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
-      Your one-time AuthShield 360 {% if is_password_reset %}password reset{% else %}sign-in{% endif %} code expires in {{ expiration }}.
+      Your one-time AuthShield 360 {{ purpose_label|lower }} code expires in {{ expiration }}.
     </div>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f2f6fa;padding:28px 12px;">
       <tr>
@@ -29,21 +29,19 @@
             </tr>
             <tr>
               <td style="padding:32px 28px 18px;">
-                <p style="margin:0 0 8px;color:#087c75;font-size:12px;font-weight:bold;letter-spacing:1.5px;text-transform:uppercase;">{% if is_password_reset %}Account recovery{% else %}Secure sign-in{% endif %}</p>
-                <h1 style="margin:0 0 22px;color:#18324b;font-size:27px;line-height:1.25;font-weight:700;">{% if is_password_reset %}Reset your password{% else %}Verify your sign-in{% endif %}</h1>
-                <p style="margin:0 0 14px;font-size:16px;line-height:1.6;">Dear {{ recipient_name }},</p>
+                <p style="margin:0 0 8px;color:#087c75;font-size:12px;font-weight:bold;letter-spacing:1.5px;text-transform:uppercase;">{{ purpose_label }}</p>
+                <h1 style="margin:0 0 22px;color:#18324b;font-size:27px;line-height:1.25;font-weight:700;">{{ purpose_heading }}</h1>
+                <p style="margin:0 0 14px;font-size:16px;line-height:1.6;">Dear {% if recipient_role %}{{ recipient_role }}{% if recipient_name != 'there' %} {{ recipient_name }}{% endif %}{% else %}{{ recipient_name }}{% endif %},</p>
+                {% if recipient_role %}<p style="margin:0 0 18px;color:#506579;font-size:14px;line-height:1.6;">Account type: <strong>{{ recipient_role }}</strong>{% if recipient_name != 'there' %}<br>Account name: <strong>{{ recipient_name }}</strong>{% endif %}{% if student_identifier %}<br>Student ID: <strong>{{ student_identifier }}</strong>{% endif %}</p>{% endif %}
                 <p style="margin:0 0 22px;color:#506579;font-size:15px;line-height:1.65;">
-                  {% if is_password_reset %}We received a password reset request for your AuthShield 360 account. Enter this one-time code on the password reset page to choose a new password:{% else %}We received a sign-in request for your AuthShield 360 account. Enter this one-time code on the sign-in page to continue:{% endif %}
+                  {{ purpose_instruction }}
                 </p>
-                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 22px;">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 22px;">
                   <tr>
-                    {% for digit in code %}
-                      <td align="center" valign="middle" style="width:42px;height:52px;padding:0 3px;">
-                        <div style="border:1px solid #cbd9e5;border-radius:8px;background-color:#f6f9fc;color:#124a78;font-family:Arial,Helvetica,sans-serif;font-size:27px;font-weight:bold;line-height:50px;text-align:center;">{{ digit }}</div>
-                      </td>
-                    {% endfor %}
+                    <td dir="ltr" style="border:1px solid #cbd9e5;border-radius:8px;background-color:#f6f9fc;padding:12px 18px;color:#124a78;font-family:Arial,Helvetica,sans-serif;font-size:27px;font-weight:bold;letter-spacing:4px;white-space:nowrap;user-select:all;-webkit-user-select:all;">{{ code }}</td>
                   </tr>
                 </table>
+                <p style="margin:-14px 0 20px;color:#506579;font-size:13px;line-height:1.5;">You can copy and paste the six-digit code into the verification field.</p>
                 <p style="margin:0 0 20px;padding:13px 15px;border-left:4px solid #20a39a;border-radius:4px;background-color:#eef8f7;color:#36566b;font-size:14px;line-height:1.6;">
                   This code expires in <strong>{{ expiration }}</strong> and can only be used once. Repeated requests reuse this code; after 30 seconds, a replacement request invalidates it.
                 </p>

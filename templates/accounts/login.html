@@ -15,23 +15,21 @@
           <span data-lockout-message>Try again in <span class="lockout-clock" data-lockout-countdown data-until="{{ lockout_until }}" role="timer">{{ lockout_clock_initial }}</span>.</span>
         </div>
       {% elif form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+      {% if otp_delivery_wait_until %}<p class="muted" data-otp-resend-countdown data-resend-at="{{ otp_delivery_wait_until }}" role="timer">You can request another code soon.</p>{% endif %}
       {% if keycloak_enabled %}
         <p class="muted">Continue to the AuthShield identity service to enter your account credentials.</p>
         <form method="post" action="{% url 'keycloak_login' %}" data-busy-label="Opening secure sign-in…">
           {% csrf_token %}
           {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-          {% if otp_enabled and not email_step_up and mobile_otp_enabled %}
-            <div class="form-field"><label for="id_otp_channel">Send the verification code by</label><select id="id_otp_channel" name="otp_channel"><option value="sms">SMS text message</option><option value="email">Email</option></select></div>
-          {% endif %}
           <button class="button full" type="submit">Continue with Keycloak</button>
         </form>
-        {% if otp_enabled %}<p class="help-text">After your password, complete the verification step{% if email_step_up %} and confirm the email code{% endif %} before entering the portal.</p>{% endif %}
+        {% if otp_enabled %}<p class="help-text">After your password, verify by SMS first. An email code follows when both methods are required.</p>{% endif %}
       {% else %}
       <form method="post" action="{% url 'login' %}" novalidate data-busy-label="Signing in…">
         {% csrf_token %}
         {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
         {% for field in form %}
-          {% if field.name != 'otp_channel' or otp_enabled and not email_step_up and mobile_otp_enabled %}
+          {% if field.name != 'otp_channel' %}
           <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.name == 'password' %}<div class="password-input-row">{{ field }}<button class="password-toggle" type="button" data-password-toggle aria-controls="{{ field.id_for_label }}" aria-pressed="false">Show</button></div>{% else %}{{ field }}{% endif %}{% if field.errors %}<div class="field-error">{{ field.errors }}</div>{% endif %}</div>
           {% endif %}
         {% endfor %}
@@ -42,10 +40,10 @@
       <p class="form-foot">Waiting for access approval? <a href="{% url 'registration_status' %}">Check your request status</a>.</p>
     </section>
     <aside class="side-card">
-      <span class="eyebrow">{% if otp_enabled %}{% if email_step_up %}SMS + email verification{% elif mobile_otp_enabled %}SMS and email verification{% else %}Email verification{% endif %}{% else %}{% if keycloak_enabled %}Identity verification{% else %}Role-based verification{% endif %}{% endif %}</span>
+      <span class="eyebrow">{% if otp_enabled %}{% if mobile_otp_enabled %}Email and SMS verification{% else %}Email verification{% endif %}{% else %}{% if keycloak_enabled %}Identity verification{% else %}Role-based verification{% endif %}{% endif %}</span>
       <h2>{% if otp_enabled %}Verify it’s you{% else %}Your school portal{% endif %}</h2>
-      <p>{% if otp_enabled %}{% if email_step_up %}After your password is accepted by {% if keycloak_enabled %}Keycloak{% else %}the portal{% endif %}, verify with an SMS code and then confirm with a second code sent to your email.{% elif mobile_otp_enabled %}After your password is accepted, we’ll send a one-time code using your selected method. Email is available when SMS is unavailable or your account has no usable phone.{% else %}After your password is accepted, we’ll send a one-time code to your account email.{% endif %} Students, teachers, and administrators must complete this step before they are signed in.{% else %}{% if keycloak_enabled %}Sign in through the configured AuthShield identity service, then continue to your approved school account. Role-based verification may follow.{% else %}Every student, teacher, and administrator must enter an additional SMS or email code after the password. Email is used when SMS is unavailable or no usable phone is enrolled.{% endif %}{% endif %}</p>
+      <p>{% if otp_enabled %}{% if mobile_otp_enabled %}After your password, verify by SMS first. If both methods are required, the portal then asks you to verify the email code. You can request a new code every five minutes; after three sends, code sending pauses for 30 minutes. {% else %}After your password, verify the one-time code sent to your account email. {% endif %}Students, teachers, and administrators complete the applicable verification before they are signed in.{% else %}{% if keycloak_enabled %}Sign in through the configured AuthShield identity service, then continue to your approved school account. Role-based verification may follow.{% else %}Every student, teacher, and administrator must enter an additional SMS or email code after the password. Email is used when SMS is unavailable or no usable phone is enrolled.{% endif %}{% endif %}</p>
     </aside>
   </div>
-  {% if lockout_until %}<script src="{% static 'js/otp-countdown.js' %}?v={{ static_version }}" defer></script>{% endif %}
+  {% if lockout_until or otp_delivery_wait_until %}<script src="{% static 'js/otp-countdown.js' %}?v={{ static_version }}" defer></script>{% endif %}
 {% endblock %}

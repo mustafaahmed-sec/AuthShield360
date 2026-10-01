@@ -2,7 +2,9 @@
   const timer = document.querySelector("[data-otp-countdown]");
   const resetResendTimer = document.querySelector("[data-reset-resend-countdown]");
   const lockoutTimer = document.querySelector("[data-lockout-countdown]");
-  if (!timer && !resetResendTimer && !lockoutTimer) return;
+  const smsSendButton = document.querySelector("#send-sms-code");
+  const resendHint = document.querySelector("[data-otp-resend-countdown]");
+  if (!timer && !resetResendTimer && !lockoutTimer && !resendHint) return;
 
   const codeInput = document.querySelector("[name='code']");
   const verifyButton = document.querySelector("[data-otp-verify]");
@@ -11,7 +13,7 @@
   const countdownPrefix = timer?.dataset.countdownPrefix || "Code expires in";
   const expiredMessage = timer?.dataset.expiredMessage || "Code expired. Request a new code to continue.";
   let expiresAt = Number(timer?.dataset.expiresAt || 0);
-  let resendAt = Number(timer?.dataset.resendAt || resetResendTimer?.dataset.resendAt || 0);
+  let resendAt = Number(timer?.dataset.resendAt || resetResendTimer?.dataset.resendAt || resendHint?.dataset.resendAt || 0);
 
   function format(seconds) {
     const minutes = Math.floor(seconds / 60);
@@ -46,6 +48,23 @@
       resendButton.textContent = wait > 0 ? `${resendLabel} (${wait}s)` : resendLabel;
     }
 
+    if (resendHint) {
+      const wait = Math.max(0, Math.ceil(resendAt - now));
+      resendHint.textContent = wait
+        ? `You can request another code in ${format(wait)}.`
+        : "You can request another code now.";
+    }
+
+    if (smsSendButton && resendButton?.hidden) {
+      const wait = Math.max(0, Math.ceil(resendAt - now));
+      const captchaPending = smsSendButton.dataset.captchaRequired === "true"
+        && smsSendButton.dataset.captchaVerified !== "true";
+      smsSendButton.disabled = wait > 0 || captchaPending;
+      smsSendButton.textContent = wait > 0
+        ? `Send SMS code (${format(wait)})`
+        : "Send SMS code";
+    }
+
     if (lockoutTimer) {
       if (lockoutTimer.dataset.expired === "true") return;
       const remaining = Math.max(0, Math.ceil(Number(lockoutTimer.dataset.until || 0) - now));
@@ -61,14 +80,21 @@
 
   window.authShieldOtpCountdown = {
     update(nextExpiresAt, nextResendAt) {
-      if (!timer) return;
       expiresAt = Number(nextExpiresAt || 0);
       resendAt = Number(nextResendAt || 0);
-      timer.hidden = false;
-      timer.dataset.expiresAt = String(expiresAt);
-      timer.dataset.resendAt = String(resendAt);
-      timer.dataset.expired = "false";
+      if (timer) {
+        timer.hidden = false;
+        timer.dataset.expiresAt = String(expiresAt);
+        timer.dataset.resendAt = String(resendAt);
+        timer.dataset.expired = "false";
+      }
       if (codeInput) codeInput.disabled = false;
+      tick();
+    },
+    updateResendAt(nextResendAt) {
+      resendAt = Number(nextResendAt || 0);
+      if (timer) timer.dataset.resendAt = String(resendAt);
+      if (resendHint) resendHint.dataset.resendAt = String(resendAt);
       tick();
     },
   };

@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
-from django.core.exceptions import ImproperlyConfigured
+from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
 from django.db import OperationalError, ProgrammingError, transaction
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
@@ -120,7 +120,7 @@ class GmailEmailOTP:
                 "Gmail email verification is enabled but its server-side settings are incomplete."
             )
 
-    def _send_code(self, destination, code, recipient_name, purpose, ttl_seconds):
+    def _send_code(self, destination, code, recipient_name, purpose, ttl_seconds, *, user=None):
         if not destination or "@" not in destination:
             raise OTPProviderError("The account has no usable email address.")
         if ttl_seconds % 60 == 0:
@@ -128,21 +128,61 @@ class GmailEmailOTP:
             expiration = f"{minutes} minute{'s' if minutes != 1 else ''}"
         else:
             expiration = f"{ttl_seconds} seconds"
-        is_reset = purpose == "password_reset"
+        purpose_copy = {
+            "sign_in": {
+                "subject": "login verification",
+                "label": "Login verification",
+                "heading": "Verify your login",
+                "instruction": "We received a login request for your AuthShield 360 account. Enter this one-time code on the login page to continue.",
+            },
+            "email_step_up": {
+                "subject": "additional sign-in verification",
+                "label": "Additional sign-in verification",
+                "heading": "Complete sign-in verification",
+                "instruction": "Your first sign-in check is complete. Enter this additional one-time code on the sign-in page to finish.",
+            },
+            "password_reset": {
+                "subject": "password reset",
+                "label": "Password reset",
+                "heading": "Reset your password",
+                "instruction": "We received a password reset request for your AuthShield 360 account. Enter this one-time code on the password reset page to choose a new password.",
+            },
+            "account_creation": {
+                "subject": "account creation verification",
+                "label": "Account creation verification",
+                "heading": "Verify your account request",
+                "instruction": "Enter this one-time code on the account creation page to continue setting up your AuthShield 360 account.",
+            },
+        }
+        copy = purpose_copy.get(purpose, purpose_copy["sign_in"])
+        role = getattr(user, "role", "") if user is not None else ""
+        role_copy = {
+            "student": ("Student", "Student"),
+            "teacher": ("Teacher", "Teacher"),
+            "admin": ("Administrator", "Administrator"),
+        }.get(role, ("", ""))
+        student_identifier = ""
+        if role == "student":
+            try:
+                student_identifier = user.student_record.admission_number
+            except (AttributeError, ObjectDoesNotExist):
+                student_identifier = ""
+        recipient_name = (recipient_name or "").strip()
         context = {
             "code": code,
             "expiration": expiration,
             "recipient_email": destination,
-            "recipient_name": (recipient_name or "").strip() or "there",
+            "recipient_name": recipient_name or "there",
+            "recipient_role": role_copy[0],
+            "student_identifier": student_identifier,
             "purpose": purpose,
-            "is_password_reset": is_reset,
+            "purpose_label": copy["label"],
+            "purpose_heading": copy["heading"],
+            "purpose_instruction": copy["instruction"],
         }
         try:
             message = EmailMultiAlternatives(
-                subject=(
-                    "Your AuthShield 360 password reset code"
-                    if is_reset else "Your AuthShield 360 sign-in code"
-                ),
+                subject=f"Your AuthShield 360 {copy['subject']} code",
                 body=render_to_string("emails/otp_email.txt", context),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 to=[destination],
@@ -199,7 +239,7 @@ class GmailEmailOTP:
                         if purpose == "password_reset"
                         else settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
                     )
-                    self._send_code(destination, code, recipient_name, purpose, ttl_seconds)
+                    self._send_code(destination, code, recipient_name, purpose, ttl_seconds, user=user)
                     sent_at = timezone.now()
                     challenge.code_hash = make_password(code)
                     challenge.sent_at = sent_at
@@ -223,7 +263,7 @@ class GmailEmailOTP:
             if purpose == "password_reset"
             else settings.AUTHSHIELD_EMAIL_OTP_TTL_SECONDS
         )
-        self._send_code(destination, code, recipient_name, purpose, ttl_seconds)
+        self._send_code(destination, code, recipient_name, purpose, ttl_seconds, user=user)
         session[self.SESSION_KEY] = make_password(code)
         return None
 

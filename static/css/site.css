@@ -51,6 +51,7 @@ button { cursor: pointer; }
 .form-card h1 { font-size: clamp(2.1rem, 4vw, 3rem); margin: .8rem 0 .5rem; }
 .muted, .form-foot, .empty { color: #50647b; line-height: 1.55; }
 .form-field { margin: 1.3rem 0; }
+#sms-code-field[hidden], #firebase-captcha-complete[hidden] { display: none !important; }
 .form-field label { display: block; margin-bottom: .4rem; font-weight: 700; }
 .form-field input, .form-field select, .form-field textarea { display: block; width: 100%; min-height: 2.9rem; border: 1px solid #9db1c4; border-radius: .5rem; padding: .65rem .8rem; background: #fff; color: #172b42; }
 .form-field textarea { min-height: 7rem; resize: vertical; }

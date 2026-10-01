@@ -1,12 +1,14 @@
 {% extends "base.html" %}
-{% load school_extras %}
-{% block title %}{% if can_manage_all_students %}All students{% else %}My students{% endif %} | AuthShield 360{% endblock %}
+{% load static school_extras %}
+{% block title %}{% if can_view_all_students %}All students{% else %}My students{% endif %} | AuthShield 360{% endblock %}
 {% block content %}
   <div class="eyebrow">Teacher portal</div>
-  <h1>{% if can_manage_all_students %}All students{% else %}My students{% endif %}</h1>
+  <h1>{% if can_view_all_students %}All students{% else %}My students{% endif %}</h1>
   <p class="intro">
     {% if can_manage_all_students %}
       Search and manage all active student records across the school. Class roster changes still require administrator approval.
+    {% elif can_reset_student_otp_timers %}
+      Find active student accounts and reset their email or SMS code-send timer when needed. Student record edits remain limited to assigned classes.
     {% else %}
       Search students enrolled in your assigned classes. You can update limited school-record fields; class roster changes require administrator approval.
     {% endif %}
@@ -28,7 +30,7 @@
           {% endfor %}
         </select>
       </label>
-      {% if not can_manage_all_students %}
+      {% if not can_view_all_students %}
         <label>Course
           <select name="course">
             <option value="">All my courses</option>
@@ -45,7 +47,7 @@
     {% if students %}
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Student</th><th>Admission</th><th>Grade</th><th>Age</th><th>Assigned class</th><th>Record</th></tr></thead>
+          <thead><tr><th>Student</th><th>Admission</th><th>Grade</th><th>Age</th><th>Assigned class</th><th>Record</th>{% if can_reset_student_otp_timers %}<th>OTP send timer</th>{% endif %}</tr></thead>
           <tbody>
             {% for student in students %}
               <tr>
@@ -67,6 +69,19 @@
                     <span class="muted">View only</span>
                   {% endif %}
                 </td>
+                {% if can_reset_student_otp_timers %}
+                  <td>
+                    {% if student.otp_delivery_waits %}
+                      <div data-otp-delivery-wait>
+                        <strong data-otp-delivery-state>Code sending paused</strong>
+                        {% for wait in student.otp_delivery_waits %}<div>{{ wait.channel }} · <time data-otp-send-countdown data-until="{{ wait.until }}" role="timer">{{ wait.remaining }}</time></div>{% endfor %}
+                        <form method="post" action="{% url 'reset_otp_delivery_lock' student.pk %}" onsubmit="return confirm('Clear this student’s email and SMS code-send timers? Incorrect-code limits will remain unchanged.');">
+                          {% csrf_token %}<button class="button compact secondary" type="submit">Reset OTP timer</button>
+                        </form>
+                      </div>
+                    {% else %}<span class="muted">No active OTP wait</span>{% endif %}
+                  </td>
+                {% endif %}
               </tr>
             {% endfor %}
           </tbody>
@@ -107,4 +122,5 @@
       {% else %}<p class="empty">Your student-record changes and requests will appear here.</p>{% endif %}
     </section>
   </div>
+  {% if can_reset_student_otp_timers %}<script src="{% static 'js/admin-lockout-countdown.js' %}?v={{ static_version }}" defer></script>{% endif %}
 {% endblock %}
